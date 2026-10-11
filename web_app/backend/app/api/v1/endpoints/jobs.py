@@ -27,11 +27,9 @@ async def submit_analysis_job(
         job_id = session_manager.create_session()
         input_image = session_manager.get_input_image_path(job_id)
         
-        with open(input_image, "wb") as f:
-            f.write(content)
+        await asyncio.to_thread(_write_file_bytes, input_image, content)
             
-        with Image.open(input_image) as img:
-            orig_w, orig_h = img.size
+        orig_w, orig_h = await asyncio.to_thread(_read_image_dims, input_image)
             
         ctu_size = settings.CTU_SIZE
         calc_w, calc_h = analysis_service.compute_frame_dimensions(orig_w, orig_h, scale_mode)
@@ -40,8 +38,8 @@ async def submit_analysis_job(
         num_ctu_h = (calc_h + ctu_size - 1) // ctu_size
 
         roi = ROICoordinates(
-            ctu_x=min(ctu_x, max(0, num_ctu_w - 1)),
-            ctu_y=min(ctu_y, max(0, num_ctu_h - 1)),
+            ctu_x=max(0, min(ctu_x, max(0, num_ctu_w - 1))),
+            ctu_y=max(0, min(ctu_y, max(0, num_ctu_h - 1))),
             cu_size=cu_size
         )
         frame_meta = FrameMetadata(
@@ -76,6 +74,45 @@ async def get_job_status(job_id: str):
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
+def _write_file_bytes(target: Path, data: bytes) -> None:
+    with open(target, "wb") as f:
+        f.write(data)
+
+def _read_image_dims(img_path: Path) -> tuple[int, int]:
+    with Image.open(img_path) as img:
+        return img.size
+
+def _generate_residual_image(input_img: Path, recon_png: Path, residual_png: Path, gain: int, img_w: int, img_h: int) -> None:
+    if recon_png.exists():
+        with Image.open(input_img) as orig_raw, Image.open(recon_png) as recon_raw:
+            orig = orig_raw.convert("RGB")
+            recon = recon_raw.convert("RGB")
+            # Both must match target YUV dimensions to ensure 1:1 CTU overlay alignment
+            if orig.size != (img_w, img_h):
+                orig = orig.resize((img_w, img_h), Image.Resampling.LANCZOS)
+            if recon.size != (img_w, img_h):
+                recon = recon.resize((img_w, img_h), Image.Resampling.NEAREST)
+            diff = ImageChops.difference(orig, recon)
+            if gain != 1:
+                diff = diff.point(lambda p: min(255, p * gain))
+            diff.save(residual_png)
+    else:
+        empty = Image.new("RGB", (img_w, img_h), (0, 0, 0))
+        empty.save(residual_png)
+
+def _generate_fallback_plane(input_img: Path, plane_png: Path, norm_type: str, img_w: int, img_h: int) -> None:
+    with Image.open(input_img) as img:
+        if img.size != (img_w, img_h):
+            img = img.resize((img_w, img_h), Image.Resampling.LANCZOS)
+        img_ycbcr = img.convert("YCbCr")
+        y_plane, cb_plane, cr_plane = img_ycbcr.split()
+        if norm_type == "y":
+            y_plane.save(plane_png)
+        elif norm_type == "u":
+            cb_plane.save(plane_png)
+        else:
+            cr_plane.save(plane_png)
+
 @router.get("/{job_id}/images/{image_type}")
 async def get_job_image(job_id: str, image_type: str, gain: int = 4):
     """
@@ -91,9 +128,13 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
     if not input_img.exists():
         raise HTTPException(status_code=404, detail="Input image not found for this job.")
 
-    # Read image dimensions for YUV operations
-    with Image.open(input_img) as img:
-        img_w, img_h = img.size
+    # Determine aligned YUV dimensions from job metadata (HM standard)
+    try:
+        job = await job_manager.get_job(job_id)
+        img_w = job.frame.aligned_width
+        img_h = job.frame.aligned_height
+    except Exception:
+        img_w, img_h = await asyncio.to_thread(_read_image_dims, input_img)
 
     norm_type = image_type.lower().strip()
 
@@ -122,21 +163,16 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
         if not recon_png.exists() and recon_yuv.exists():
             await ffmpeg_adapter.convert_yuv_to_png(recon_yuv, recon_png, img_w, img_h)
 
-        if recon_png.exists():
-            orig = Image.open(input_img).convert("RGB")
-            recon = Image.open(recon_png).convert("RGB")
-            if orig.size != recon.size:
-                recon = recon.resize(orig.size)
-            diff = ImageChops.difference(orig, recon)
-            if gain != 1:
-                diff = diff.point(lambda p: min(255, p * gain))
-            diff.save(residual_png)
-            return FileResponse(residual_png, media_type="image/png")
-        else:
-            # Fallback zero-residual image
-            empty = Image.new("RGB", (img_w, img_h), (0, 0, 0))
-            empty.save(residual_png)
-            return FileResponse(residual_png, media_type="image/png")
+        await asyncio.to_thread(
+            _generate_residual_image,
+            input_img,
+            recon_png,
+            residual_png,
+            gain,
+            img_w,
+            img_h
+        )
+        return FileResponse(residual_png, media_type="image/png")
 
     if norm_type in ["y", "u", "v"]:
         plane_png = session_dir / f"plane_{norm_type}.png"
@@ -149,15 +185,8 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
             if norm_type in planes and planes[norm_type].exists():
                 return FileResponse(planes[norm_type], media_type="image/png")
 
-        # Fallback plane generation via PIL native YCbCr split
-        img_ycbcr = Image.open(input_img).convert("YCbCr")
-        y_plane, cb_plane, cr_plane = img_ycbcr.split()
-        if norm_type == "y":
-            y_plane.save(plane_png)
-        elif norm_type == "u":
-            cb_plane.save(plane_png)
-        else:
-            cr_plane.save(plane_png)
+        # Fallback plane generation via PIL native YCbCr split in thread
+        await asyncio.to_thread(_generate_fallback_plane, input_img, plane_png, norm_type, img_w, img_h)
         return FileResponse(plane_png, media_type="image/png")
 
     raise HTTPException(status_code=400, detail=f"Unsupported image type: {image_type}")

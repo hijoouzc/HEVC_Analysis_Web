@@ -1,4 +1,7 @@
-import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import HmSourceCodeModal from './common/HmSourceCodeModal';
+import { HM_CTU_BOUNDARY_SNIPPET } from '../constants/hmSourceSnippets';
+import { HEVC_DEPTH_COLORS } from '../utils/colorUtils';
 
 /**
  * FullFrameViewer - HEVC Full Frame Coding Tree & CU Partition Visualizer
@@ -9,16 +12,9 @@ import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react'
  * - Layer 4: Active Selection Reticle (Ultra-lightweight ~5 DOM nodes, instantaneous <0.5ms response)
  */
 
-const DEPTH_COLORS = {
-  0: (alpha) => `rgba(2, 132, 199, ${alpha})`,   // Depth 0: 64x64 (Sky Blue)
-  1: (alpha) => `rgba(14, 165, 233, ${alpha})`,  // Depth 1: 32x32 (Cyan)
-  2: (alpha) => `rgba(249, 115, 22, ${alpha})`,  // Depth 2: 16x16 (Orange)
-  3: (alpha) => `rgba(234, 179, 8, ${alpha})`,   // Depth 3: 8x8 (Amber/Yellow)
-};
-
 const getDepthFill = (depth, alpha = 0.35) => {
-  const colorFn = DEPTH_COLORS[depth];
-  return colorFn ? colorFn(alpha) : `rgba(100, 116, 139, ${alpha})`;
+  const depthConf = HEVC_DEPTH_COLORS[depth];
+  return depthConf ? depthConf.bgAlpha(alpha) : `rgba(100, 116, 139, ${alpha})`;
 };
 
 /**
@@ -49,19 +45,17 @@ const StaticPartitionLayer = React.memo(function StaticPartitionLayer({
         return (
           <g key={`partition-ctu-${key}`}>
             {leaves.map((leaf, lIdx) => {
-              let absX = ctuOriginX;
-              if (typeof leaf.x === 'number' && !isNaN(leaf.x)) {
-                absX = (leaf.x < 64 && ctuOriginX >= 64) ? (ctuOriginX + leaf.x) : leaf.x;
-              } else if (typeof leaf.rel_x === 'number' && !isNaN(leaf.rel_x)) {
-                absX = ctuOriginX + leaf.rel_x;
-              }
+              const absX = (typeof leaf.abs_x === 'number' && !isNaN(leaf.abs_x))
+                ? leaf.abs_x
+                : ((typeof leaf.rel_x === 'number' && !isNaN(leaf.rel_x))
+                  ? ctuOriginX + leaf.rel_x
+                  : (typeof leaf.x === 'number' && !isNaN(leaf.x) ? leaf.x : ctuOriginX));
 
-              let absY = ctuOriginY;
-              if (typeof leaf.y === 'number' && !isNaN(leaf.y)) {
-                absY = (leaf.y < 64 && ctuOriginY >= 64) ? (ctuOriginY + leaf.y) : leaf.y;
-              } else if (typeof leaf.rel_y === 'number' && !isNaN(leaf.rel_y)) {
-                absY = ctuOriginY + leaf.rel_y;
-              }
+              const absY = (typeof leaf.abs_y === 'number' && !isNaN(leaf.abs_y))
+                ? leaf.abs_y
+                : ((typeof leaf.rel_y === 'number' && !isNaN(leaf.rel_y))
+                  ? ctuOriginY + leaf.rel_y
+                  : (typeof leaf.y === 'number' && !isNaN(leaf.y) ? leaf.y : ctuOriginY));
 
               const leafW = (typeof leaf.width === 'number' && !isNaN(leaf.width) && leaf.width > 0) ? leaf.width : 64;
               const leafH = (typeof leaf.height === 'number' && !isNaN(leaf.height) && leaf.height > 0) ? leaf.height : 64;
@@ -112,6 +106,7 @@ const StaticCtuGridLayer = React.memo(function StaticCtuGridLayer({
   gridColor = 'white',
   showCtuNumbers,
   viewMode,
+  showBoundary = false,
   onCtuClick
 }) {
   const ctuStrokeColor = gridColor === 'yellow'
@@ -122,20 +117,35 @@ const StaticCtuGridLayer = React.memo(function StaticCtuGridLayer({
 
   return (
     <g className="static-ctu-grid-layer">
-      {ctus.map(({ index, x, y, px, py, pw, ph }) => (
+      {ctus.map(({ index, x, y, px, py, pw, ph, isBoundary }) => (
         <g
           key={`ctu-grid-${x}-${y}`}
           onClick={() => onCtuClick(x, y)}
           style={{ cursor: 'pointer' }}
         >
-          {/* CTU Outer Boundary Box */}
+          {/* Boundary CTU: Render subtle out-of-bounds cross-hatch for nominal 64x64 extent only when showBoundary is active */}
+          {showBoundary && isBoundary && (
+            <rect
+              x={px}
+              y={py}
+              width={64}
+              height={64}
+              fill="url(#ctu-boundary-hatch)"
+              stroke="rgba(245, 158, 11, 0.45)"
+              strokeWidth={1}
+              strokeDasharray="2 2"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {/* CTU Outer Boundary Box for valid pixel samples */}
           <rect
             x={px}
             y={py}
             width={pw}
             height={ph}
             fill="transparent"
-            stroke={showGrid ? ctuStrokeColor : 'transparent'}
+            stroke={showGrid ? ((showBoundary && isBoundary) ? '#F59E0B' : ctuStrokeColor) : 'transparent'}
             strokeWidth={viewMode === 'original' ? 1.2 : 2.0}
             strokeDasharray={viewMode === 'original' ? '4 3' : 'none'}
             vectorEffect="non-scaling-stroke"
@@ -146,13 +156,13 @@ const StaticCtuGridLayer = React.memo(function StaticCtuGridLayer({
             <text
               x={px + 4}
               y={py + 13}
-              fill="#FEF08A"
+              fill={isBoundary ? '#FDE68A' : '#FEF08A'}
               fontSize="10"
               fontFamily="JetBrains Mono, monospace"
               fontWeight="900"
               textAnchor="start"
               stroke="#000000"
-              strokeWidth="1.8"
+              strokeWidth={1.8}
               paintOrder="stroke"
               pointerEvents="none"
             >
@@ -173,22 +183,39 @@ const StaticCtuGridLayer = React.memo(function StaticCtuGridLayer({
 const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
   activeCtu,
   activeCu,
-  viewMode
+  viewMode,
+  showBoundary = false
 }) {
   return (
     <g className="active-selection-layer" pointerEvents="none">
       {/* 1. Active Selected CTU Reticle */}
       {activeCtu && (
-        <rect
-          x={activeCtu.px}
-          y={activeCtu.py}
-          width={activeCtu.pw}
-          height={activeCtu.ph}
-          fill={viewMode === 'original' ? 'rgba(0, 163, 224, 0.12)' : 'rgba(0, 163, 224, 0.22)'}
-          stroke="#00A3E0"
-          strokeWidth={2.5}
-          vectorEffect="non-scaling-stroke"
-        />
+        <>
+          {/* If boundary CTU: render out-of-bounds cross-hatch overlay only when showBoundary is active */}
+          {showBoundary && activeCtu.isBoundary && (
+            <rect
+              x={activeCtu.px}
+              y={activeCtu.py}
+              width={64}
+              height={64}
+              fill="url(#ctu-boundary-hatch)"
+              stroke="#F59E0B"
+              strokeWidth={2}
+              strokeDasharray="4 2"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          <rect
+            x={activeCtu.px}
+            y={activeCtu.py}
+            width={activeCtu.pw}
+            height={activeCtu.ph}
+            fill={viewMode === 'original' ? 'rgba(0, 163, 224, 0.12)' : 'rgba(0, 163, 224, 0.22)'}
+            stroke="#00A3E0"
+            strokeWidth={2.5}
+            vectorEffect="non-scaling-stroke"
+          />
+        </>
       )}
 
       {/* 2. Active Selected CU Box */}
@@ -198,15 +225,16 @@ const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
           y={activeCu.y}
           width={activeCu.width}
           height={activeCu.height}
-          fill="rgba(222, 0, 106, 0.35)"
-          stroke="var(--c-magenta)"
-          strokeWidth={2.5}
+          fill="rgba(175, 82, 222, 0.25)"
+          stroke="var(--apple-purple)"
+          strokeWidth={2}
           vectorEffect="non-scaling-stroke"
         />
       )}
     </g>
   );
 });
+
 
 function FullFrameViewer({
   imageSrc,
@@ -218,7 +246,7 @@ function FullFrameViewer({
   partitionData = null,
   ctuPartitionsMap = {},
   isAnalyzed = false,
-  onReAnalyze = null,
+  _onReAnalyze = null,
   loading = false,
   selectedCu: propsSelectedCu = undefined,
   onSelectCU = null
@@ -226,15 +254,14 @@ function FullFrameViewer({
   const [viewMode, setViewMode] = useState(isAnalyzed ? 'partition' : 'original');
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (clean transparent) or 'depth'
   const [showGrid, setShowGrid] = useState(true);
+  const [showBoundary, setShowBoundary] = useState(false);
   const [gridColor, setGridColor] = useState('white'); // 'white' (default: pure white), 'yellow' (#FACC15), 'cyan' (#38BDF8)
-  const [showCtuNumbers, setShowCtuNumbers] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1); // 1, 2, 4
-  const [focusActive, setFocusActive] = useState(false);
+  const showCtuNumbers = false;
   const [selectedCu, setSelectedCu] = useState(null);
   const [selectedOverride, setSelectedOverride] = useState(null);
+  const [showHmModal, setShowHmModal] = useState(false);
   const [prevPropsCtu, setPrevPropsCtu] = useState({ x: ctuX, y: ctuY });
   const [prevIsAnalyzed, setPrevIsAnalyzed] = useState(isAnalyzed);
-  const containerRef = useRef(null);
 
   if (isAnalyzed !== prevIsAnalyzed) {
     setPrevIsAnalyzed(isAnalyzed);
@@ -258,12 +285,14 @@ function FullFrameViewer({
     return { x: activeCtuX, y: activeCtuY };
   }, [activeCtuX, activeCtuY]);
 
-  // Quick keyboard toggle: Press 'T' or 't' to toggle between Original and Partitioned view
+  // Quick keyboard toggle: Press 'T' or 't' for partition toggle, 'B' or 'b' for boundary toggle
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
       if (e.key === 't' || e.key === 'T') {
         setViewMode(prev => (prev === 'partition' ? 'original' : 'partition'));
+      } else if (e.key === 'b' || e.key === 'B') {
+        setShowBoundary(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -285,7 +314,10 @@ function FullFrameViewer({
         const pw = Math.min(ctuSize, width - px);
         const ph = Math.min(ctuSize, height - py);
         const index = y * numCols + x;
-        list.push({ index, x, y, px, py, pw, ph });
+        const uiRPelX = px + ctuSize - 1;
+        const uiBPelY = py + ctuSize - 1;
+        const isBoundary = !(uiRPelX < width && uiBPelY < height);
+        list.push({ index, x, y, px, py, pw, ph, uiRPelX, uiBPelY, isBoundary });
       }
     }
     return list;
@@ -335,52 +367,52 @@ function FullFrameViewer({
     }
   }, [activeCu, onSelectCTU, onSelectCU]);
 
-  // Lightweight active CTU bounding box data
+  // Lightweight active CTU bounding box data (Tier 1: CTU HM standard)
   const activeCtuData = useMemo(() => {
     if (!localCtu) return null;
     const px = localCtu.x * ctuSize;
     const py = localCtu.y * ctuSize;
     const pw = Math.min(ctuSize, width - px);
     const ph = Math.min(ctuSize, height - py);
-    return { x: localCtu.x, y: localCtu.y, px, py, pw, ph };
-  }, [localCtu, width, height, ctuSize]);
-
-  // Active CTU partition data if present
-  const activePartition = (localCtu && combinedPartitions[`${localCtu.x}_${localCtu.y}`]) || (
-    localCtu && partitionData && (partitionData.ctu_x === localCtu.x && partitionData.ctu_y === localCtu.y) ? partitionData : null
-  );
-
-  // Zoom transform style
-  const getCanvasTransform = () => {
-    if (focusActive && localCtu) {
-      const centerX = ((localCtu.x * 64 + 32) / width) * 100;
-      const centerY = ((localCtu.y * 64 + 32) / height) * 100;
-      return {
-        transformOrigin: `${centerX}% ${centerY}%`,
-        transform: 'scale(3)',
-        transition: 'none'
-      };
-    }
-    if (zoomLevel > 1) {
-      return {
-        transformOrigin: 'top left',
-        transform: `scale(${zoomLevel})`,
-        transition: 'none'
-      };
-    }
+    const index = localCtu.y * numCols + localCtu.x;
+    const uiRPelX = px + ctuSize - 1;
+    const uiBPelY = py + ctuSize - 1;
+    const isBoundary = !(uiRPelX < width && uiBPelY < height);
     return {
-      transform: 'none',
-      transition: 'none'
+      x: localCtu.x,
+      y: localCtu.y,
+      px,
+      py,
+      pw,
+      ph,
+      index,
+      uiRPelX,
+      uiBPelY,
+      isBoundary
     };
-  };
+  }, [localCtu, width, height, ctuSize, numCols]);
+
+  // HM-16.0 Live Parameters for Source Code Inspector
+  const hmVariables = useMemo(() => {
+    if (!activeCtuData) return [];
+    return [
+      { name: 'pCtu->getCtuRsAddr()', value: activeCtuData.index, highlight: true },
+      { name: 'uiLPelX (CUPelX)', value: activeCtuData.px },
+      { name: 'uiTPelY (CUPelY)', value: activeCtuData.py },
+      { name: 'uiRPelX', value: activeCtuData.uiRPelX },
+      { name: 'uiBPelY', value: activeCtuData.uiBPelY },
+      { name: 'PicWidth', value: width },
+      { name: 'PicHeight', value: height },
+      { name: 'bBoundary', value: activeCtuData.isBoundary ? 'TRUE (Forced Split)' : 'FALSE (Regular RDO)', highlight: true },
+      { name: 'Valid Dimensions', value: `${activeCtuData.pw} × ${activeCtuData.ph}` }
+    ];
+  }, [activeCtuData, width, height]);
+
 
   return (
-    <div className="full-frame-card" style={{
-      background: 'var(--c-white)',
-      border: '2px solid var(--c-black)',
-      padding: '1.25rem',
-      marginBottom: '1.5rem',
-      boxShadow: '4px 4px 0px rgba(0,0,0,0.1)'
+    <div className="apple-card" style={{
+      padding: '0.85rem 1rem',
+      marginBottom: '1rem'
     }}>
       {/* Header & Controls Toolbar */}
       <div style={{
@@ -388,19 +420,19 @@ function FullFrameViewer({
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '0.75rem',
-        marginBottom: '1rem',
-        paddingBottom: '0.75rem',
-        borderBottom: '2px solid var(--c-light-gray)'
+        gap: '0.65rem',
+        marginBottom: '0.65rem',
+        paddingBottom: '0.65rem',
+        borderBottom: '1px solid var(--apple-hairline)'
       }}>
         {/* Title & Metadata */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, color: 'var(--apple-label)' }}>
             {viewMode === 'original' ? 'Original Frame' : 'Partition Map'}
           </h2>
           <span style={{
             fontSize: '0.72rem',
-            color: '#64748B',
+            color: 'var(--apple-label-secondary)',
             fontFamily: 'JetBrains Mono',
           }}>
             {width} × {height} • {numCols} × {numRows} CTUs
@@ -408,218 +440,125 @@ function FullFrameViewer({
         </div>
 
         {/* Action & Display Toggles */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {/* Main View Mode Toggle */}
-          <div style={{ display: 'flex', border: '1px solid #CBD5E1', marginRight: '0.35rem' }}>
+          <div className="apple-segmented">
             <button
               type="button"
+              className={`apple-segmented-item ${viewMode === 'original' ? 'active' : ''}`}
               onClick={() => setViewMode('original')}
-              style={{
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.74rem',
-                fontWeight: 600,
-                fontFamily: 'JetBrains Mono',
-                background: viewMode === 'original' ? 'var(--c-black)' : 'var(--c-white)',
-                color: viewMode === 'original' ? 'var(--c-white)' : 'var(--c-black)',
-                border: 'none',
-                cursor: 'pointer'
-              }}
             >
               Original
             </button>
             <button
               type="button"
+              className={`apple-segmented-item ${viewMode === 'partition' ? 'active' : ''}`}
               onClick={() => setViewMode('partition')}
-              style={{
-                padding: '0.25rem 0.6rem',
-                fontSize: '0.74rem',
-                fontWeight: 600,
-                fontFamily: 'JetBrains Mono',
-                background: viewMode === 'partition' ? 'var(--c-black)' : 'var(--c-white)',
-                color: viewMode === 'partition' ? 'var(--c-white)' : 'var(--c-black)',
-                border: 'none',
-                borderLeft: '1px solid #CBD5E1',
-                cursor: 'pointer'
-              }}
             >
               Partition Map
             </button>
           </div>
 
           {/* Color Mode Toggle */}
-          <div style={{
-            display: 'flex',
-            border: '1.5px solid var(--c-black)',
+          <div className="apple-segmented" style={{
             opacity: viewMode === 'original' ? 0.45 : 1,
             pointerEvents: viewMode === 'original' ? 'none' : 'auto'
           }}>
             <button
               type="button"
+              className={`apple-segmented-item ${colorScheme === 'outline' ? 'active' : ''}`}
               onClick={() => setColorScheme('outline')}
-              style={{
-                padding: '0.3rem 0.55rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                fontFamily: 'JetBrains Mono',
-                background: colorScheme === 'outline' ? 'var(--c-black)' : 'var(--c-white)',
-                color: colorScheme === 'outline' ? 'var(--c-white)' : 'var(--c-black)',
-                border: 'none',
-                cursor: 'pointer'
-              }}
               title="Clean transparent partition boundary outlines without color overlay"
             >
-              OUTLINE
+              Outline
             </button>
             <button
               type="button"
+              className={`apple-segmented-item ${colorScheme === 'depth' ? 'active' : ''}`}
               onClick={() => setColorScheme('depth')}
-              style={{
-                padding: '0.3rem 0.55rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                fontFamily: 'JetBrains Mono',
-                background: colorScheme === 'depth' ? 'var(--c-black)' : 'var(--c-white)',
-                color: colorScheme === 'depth' ? 'var(--c-white)' : 'var(--c-black)',
-                border: 'none',
-                borderLeft: '1px solid var(--c-black)',
-                cursor: 'pointer'
-              }}
               title="Color by QuadTree Depth (0:64, 1:32, 2:16, 3:8)"
             >
-              DEPTH
+              Depth
             </button>
           </div>
-
-          {/* Yellow CTU Index Numbers Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowCtuNumbers(prev => !prev)}
-            style={{
-              padding: '0.3rem 0.55rem',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              fontFamily: 'JetBrains Mono',
-              border: '1.5px solid #CA8A04',
-              background: showCtuNumbers ? '#FEF08A' : 'var(--c-white)',
-              color: '#854D0E',
-              cursor: 'pointer'
-            }}
-            title="Toggle Yellow CTU Index numbers (0-59) in top-left of each CTU"
-          >
-            CTU NUMS: {showCtuNumbers ? 'ON' : 'OFF'}
-          </button>
 
           {/* Grid Toggle */}
           <button
             type="button"
+            className={`apple-btn-tool ${showGrid ? 'active' : ''}`}
             onClick={() => setShowGrid(prev => !prev)}
             style={{
-              padding: '0.3rem 0.55rem',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              fontFamily: 'JetBrains Mono',
-              border: '1.5px solid var(--c-black)',
-              background: showGrid ? 'var(--c-black)' : 'var(--c-white)',
-              color: showGrid ? 'var(--c-white)' : 'var(--c-black)',
-              cursor: 'pointer'
+              background: showGrid ? 'rgba(0, 122, 255, 0.12)' : 'transparent',
+              color: showGrid ? 'var(--apple-blue)' : 'var(--apple-label)',
+              border: '1px solid var(--apple-hairline)'
             }}
             title="Toggle 64x64 CTU boundaries"
           >
             GRID: {showGrid ? 'ON' : 'OFF'}
           </button>
 
+          {/* Boundary Toggle Button */}
+          <button
+            type="button"
+            className={`apple-btn-tool ${showBoundary ? 'active' : ''}`}
+            onClick={() => setShowBoundary(prev => !prev)}
+            style={{
+              background: showBoundary ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
+              color: showBoundary ? 'var(--apple-orange, #FF9500)' : 'var(--apple-label)',
+              border: showBoundary ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid var(--apple-hairline)'
+            }}
+            title="Toggle picture boundary CTU cross-hatch overlay (B)"
+          >
+            BOUNDARY: {showBoundary ? 'ON' : 'OFF'}
+          </button>
+
           {/* Grid Color Cycle: White -> Yellow -> Cyan */}
           <button
             type="button"
+            className="apple-btn-tool"
             onClick={() => setGridColor(c => c === 'white' ? 'yellow' : c === 'yellow' ? 'cyan' : 'white')}
             style={{
-              padding: '0.3rem 0.55rem',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              fontFamily: 'JetBrains Mono',
-              border: '1.5px solid var(--c-black)',
-              background: 'var(--c-white)',
-              color: gridColor === 'yellow' ? '#A16207' : gridColor === 'cyan' ? '#0369A1' : '#0F172A',
-              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.35rem'
+              gap: '0.35rem',
+              border: '1px solid var(--apple-hairline)'
             }}
-            title="Cycle Grid Color: White (#FFF) -> Yellow (#FACC15) -> Cyan (#38BDF8)"
+            title="Cycle Grid Color: White -> Yellow -> Cyan"
           >
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              background: gridColor === 'yellow' ? '#FACC15' : gridColor === 'cyan' ? '#38BDF8' : '#FFFFFF',
-              border: '1px solid #000',
-              display: 'inline-block'
-            }} />
-            <span>{gridColor.toUpperCase()}</span>
+            <span>Grid: {gridColor.toUpperCase()}</span>
           </button>
 
-          {/* Zoom Level Toggle */}
+          {/* HM-16.0 Source Code Modal Trigger */}
           <button
             type="button"
-            onClick={() => {
-              setFocusActive(false);
-              setZoomLevel(prev => (prev === 1 ? 2 : prev === 2 ? 4 : 1));
-            }}
+            className="apple-btn-tool"
+            onClick={() => setShowHmModal(true)}
             style={{
-              padding: '0.3rem 0.55rem',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              fontFamily: 'JetBrains Mono',
-              border: '1.5px solid var(--c-black)',
-              background: zoomLevel > 1 && !focusActive ? 'var(--c-black)' : 'var(--c-white)',
-              color: zoomLevel > 1 && !focusActive ? 'var(--c-white)' : 'var(--c-black)',
-              cursor: 'pointer'
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              border: '1px solid var(--apple-hairline)'
             }}
-            title="Cycle Zoom: 1x -> 2x -> 4x"
+            title="View HM C++ source code for compressCtu & boundary checking"
           >
-            ZOOM: {zoomLevel}×
+            <span>[&lt;&gt;] HM Code</span>
           </button>
 
-          {/* Focus Active CTU */}
-          {localCtu && (
+          {onNavigateToQuadTree && activeCtuData && (
             <button
               type="button"
-              onClick={() => setFocusActive(prev => !prev)}
+              className="apple-btn-primary"
+              onClick={() => onNavigateToQuadTree(activeCtuData.x, activeCtuData.y)}
               style={{
-                padding: '0.3rem 0.55rem',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                fontFamily: 'JetBrains Mono',
-                border: '1.5px solid var(--c-blue)',
-                background: focusActive ? 'var(--c-blue)' : 'var(--c-white)',
-                color: focusActive ? 'var(--c-white)' : 'var(--c-blue)',
-                cursor: 'pointer'
+                fontSize: '0.74rem',
+                padding: '0.3rem 0.65rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem'
               }}
-              title="Focus and magnify the active CTU (64x64)"
+              title="Navigate to Stage 2: CU QuadTree"
             >
-              FOCUS CTU [{localCtu.x},{localCtu.y}]
-            </button>
-          )}
-
-          {/* Re-Analyze CTU Button */}
-          {isAnalyzed && onReAnalyze && localCtu && (
-            <button
-              type="button"
-              onClick={() => onReAnalyze(localCtu.x, localCtu.y)}
-              disabled={loading}
-              style={{
-                padding: '0.3rem 0.75rem',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                fontFamily: 'JetBrains Mono',
-                border: '1.5px solid var(--c-magenta)',
-                background: loading ? '#888888' : 'var(--c-magenta)',
-                color: 'var(--c-white)',
-                cursor: loading ? 'not-allowed' : 'pointer'
-              }}
-              title="Focus HM intra analysis on selected CTU"
-            >
-              {loading ? 'ANALYZING...' : `ANALYZE CTU (${localCtu.x}, ${localCtu.y}) →`}
+              Go to CU QuadTree →
             </button>
           )}
         </div>
@@ -627,23 +566,22 @@ function FullFrameViewer({
 
       {/* Interactive Frame Canvas Viewport */}
       <div 
-        ref={containerRef}
         style={{
           position: 'relative',
           width: '100%',
-          maxHeight: '720px',
-          overflow: zoomLevel > 1 || focusActive ? 'auto' : 'hidden',
-          border: '2px solid var(--c-black)',
-          background: '#1E293B',
+          maxWidth: `min(100%, calc((100vh - 210px) * ${width} / ${height}))`,
+          aspectRatio: `${width} / ${height}`,
+          margin: '0 auto',
+          border: '1px solid var(--apple-hairline)',
+          borderRadius: 0,
+          background: 'var(--apple-canvas)',
           cursor: 'default',
-          userSelect: 'none'
+          userSelect: 'none',
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+          lineHeight: 0
         }}
       >
-        <div style={{
-          position: 'relative',
-          width: '100%',
-          ...getCanvasTransform()
-        }}>
           {loading && (
             <div style={{
               position: 'absolute',
@@ -657,7 +595,7 @@ function FullFrameViewer({
               fontFamily: 'JetBrains Mono',
               fontWeight: 800,
               fontSize: '0.9rem',
-              color: 'var(--c-black)'
+              color: 'var(--apple-label)'
             }}>
               [ENCODING IN PROGRESS... PLEASE WAIT]
             </div>
@@ -669,8 +607,7 @@ function FullFrameViewer({
               alt="Source Frame"
               style={{
                 width: '100%',
-                height: 'auto',
-                aspectRatio: `${width} / ${height}`,
+                height: '100%',
                 objectFit: 'fill',
                 display: 'block',
                 imageRendering: 'pixelated'
@@ -678,19 +615,18 @@ function FullFrameViewer({
             />
           ) : (
             <div style={{
-              height: '340px',
+              height: '300px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#94A3B8',
+              color: 'var(--apple-label-secondary)',
               fontFamily: 'JetBrains Mono',
-              fontSize: '0.9rem'
+              fontSize: '0.85rem'
             }}>
               [NO FRAME LOADED]
             </div>
           )}
 
-          {/* SVG Accurate CTU & CU Partition Overlay (ITU-T H.265 Standard) */}
           <svg
             viewBox={`0 0 ${width} ${height}`}
             style={{
@@ -702,6 +638,18 @@ function FullFrameViewer({
               pointerEvents: 'all'
             }}
           >
+            <defs>
+              <pattern
+                id="ctu-boundary-hatch"
+                width="8"
+                height="8"
+                patternTransform="rotate(45 0 0)"
+                patternUnits="userSpaceOnUse"
+              >
+                <line x1="0" y1="0" x2="0" y2="8" stroke="#EF4444" strokeWidth="1.5" strokeOpacity="0.45" />
+              </pattern>
+            </defs>
+
             {/* LAYER 1: Static Leaf CUs across ALL CTUs (Memoized, 0 re-render on CTU click) */}
             {viewMode === 'partition' && (
               <StaticPartitionLayer
@@ -719,6 +667,7 @@ function FullFrameViewer({
               gridColor={gridColor}
               showCtuNumbers={showCtuNumbers}
               viewMode={viewMode}
+              showBoundary={showBoundary}
               onCtuClick={handleCtuClick}
             />
 
@@ -727,81 +676,23 @@ function FullFrameViewer({
               activeCtu={activeCtuData}
               activeCu={activeCu}
               viewMode={viewMode}
+              showBoundary={showBoundary}
             />
           </svg>
         </div>
-      </div>
 
-      {/* Bottom Technical HUD & Inspector Footer */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '0.75rem',
-        marginTop: '0.75rem',
-        padding: '0.65rem 0.85rem',
-        background: 'var(--c-light-gray)',
-        border: '1px solid var(--c-silver)',
-        fontFamily: 'JetBrains Mono',
-        fontSize: '0.78rem'
-      }}>
-        {/* Left Side: Context */}
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          {localCtu ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ color: '#64748B' }}>Target CTU:</span>
-              <strong style={{ color: '#0284C7' }}>
-                ({localCtu.x}, {localCtu.y})
-              </strong>
-              {onNavigateToQuadTree && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToQuadTree(localCtu.x, localCtu.y)}
-                  style={{
-                    marginLeft: '0.5rem',
-                    padding: '0.2rem 0.55rem',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    fontFamily: 'JetBrains Mono',
-                    background: 'var(--c-black)',
-                    color: 'var(--c-white)',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  QuadTree →
-                </button>
-              )}
-            </div>
-          ) : (
-            <div>
-              <span style={{ color: '#64748B' }}>All CTUs</span>
-            </div>
-          )}
-
-          {activePartition && (
-            <div style={{ borderLeft: '1px solid #CBD5E1', paddingLeft: '1rem' }}>
-              <span style={{ color: '#666' }}>CU Splits: </span>
-              <strong>{activePartition.leaf_nodes || activePartition.nodes?.filter(n => !n.split).length} Leaf CUs</strong>
-            </div>
-          )}
-
-          {activeCu && (
-            <div style={{ borderLeft: '1px solid #CBD5E1', paddingLeft: '1rem', color: '#1E293B' }}>
-              <span style={{ color: 'var(--c-magenta)', fontWeight: 700 }}>CU: </span>
-              <strong>{activeCu.width}×{activeCu.height}</strong> | 
-              <span style={{ marginLeft: '0.3rem' }}>Mode: <strong>{activeCu.mode || 'INTRA'}</strong></span>
-              {activeCu.intra_dir !== null && activeCu.intra_dir !== undefined && (
-                <span style={{ marginLeft: '0.3rem' }}>(Dir {activeCu.intra_dir})</span>
-              )}
-              {activeCu.cost !== null && activeCu.cost !== undefined && (
-                <span style={{ marginLeft: '0.3rem', color: '#666' }}>Cost: {Math.round(activeCu.cost)}</span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* HM-16.0 Source Code Inspector Modal */}
+      <HmSourceCodeModal
+        isOpen={showHmModal}
+        onClose={() => setShowHmModal(false)}
+        title={HM_CTU_BOUNDARY_SNIPPET.title}
+        sourceFile={HM_CTU_BOUNDARY_SNIPPET.sourceFile}
+        functionName={HM_CTU_BOUNDARY_SNIPPET.functionName}
+        standardRef={HM_CTU_BOUNDARY_SNIPPET.standardRef}
+        description={HM_CTU_BOUNDARY_SNIPPET.description}
+        variables={hmVariables}
+        codeSnippet={HM_CTU_BOUNDARY_SNIPPET.codeSnippet}
+      />
     </div>
   );
 }

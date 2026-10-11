@@ -1,45 +1,14 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { INTRA_PRED_ANGLES, INV_ANGLES, getPixelTrace } from '../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, SELECTION_HIGHLIGHT_COLOR } from '../utils/colorUtils';
+import { computeMdisSmoothedRef } from '../utils/metricsUtils';
+import { HM_INTRA_PREDICTION_SNIPPET } from '../constants/hmSourceSnippets';
 import ReferencePerimeter from './flow/ReferencePerimeter';
 import StageDetailSection from './flow/StageDetailSection';
 import ResidualMatrix from './flow/ResidualMatrix';
-
-/**
- * Computes 3-tap lowpass filter [1, 2, 1] / 4 for (2N + 1) reference samples
- * Exactly matches TComPattern.cpp lines 235-260 for Luma block size N
- */
-const computeMdisSmoothedRef = (refTop, refLeft, N = 8) => {
-  const reqLen = 2 * N + 1;
-  if (!refTop || !refLeft || refTop.length < reqLen || refLeft.length < reqLen) {
-    return { top: Array(reqLen).fill(128), left: Array(reqLen).fill(128) };
-  }
-  const smoothedTop = [...refTop];
-  const smoothedLeft = [...refLeft];
-
-  // Corner [-1, -1]
-  const corner = (refLeft[1] + 2 * refTop[0] + refTop[1] + 2) >> 2;
-  smoothedTop[0] = corner;
-  smoothedLeft[0] = corner;
-
-  // Top row smoothing: 1 to 2N-1
-  for (let x = 1; x < 2 * N; x++) {
-    const prev = refTop[x - 1];
-    const curr = refTop[x];
-    const next = x + 1 < refTop.length ? refTop[x + 1] : refTop[x];
-    smoothedTop[x] = (prev + 2 * curr + next + 2) >> 2;
-  }
-
-  // Left column smoothing: 1 to 2N-1
-  for (let y = 1; y < 2 * N; y++) {
-    const prev = refLeft[y - 1];
-    const curr = refLeft[y];
-    const next = y + 1 < refLeft.length ? refLeft[y + 1] : refLeft[y];
-    smoothedLeft[y] = (prev + 2 * curr + next + 2) >> 2;
-  }
-
-  return { top: smoothedTop, left: smoothedLeft };
-};
+import AngularCompass from './AngularCompass';
+import HmSourceCodeModal from './common/HmSourceCodeModal';
+import { Button, SegmentedControl, Badge, Card } from './apple';
 
 /**
  * Computes ray start and end coordinates connected strictly to cell borders,
@@ -125,6 +94,11 @@ const getRayBorderEndpoints = (ref, activeCoord, stageGridCellSize) => {
 
 const IntraPredictionFlow = ({
   modeData = null,
+  modesData = [],
+  currentModeIdx = 0,
+  onSelectModeIndex = null,
+  isPlaying = false,
+  onTogglePlay = null,
   refSamples = null,
   currentMode = 0,
   blockSize = 8,
@@ -140,6 +114,7 @@ const IntraPredictionFlow = ({
   const [channel, setChannel] = useState('Y'); // 'Y' (Luma), 'U' (Chroma Cb), 'V' (Chroma Cr)
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'step1', 'step2', 'step3', 'step4'
+  const [showHmModal, setShowHmModal] = useState(false);
 
   const selectedMode = (modeData && modeData.mode !== undefined) ? modeData.mode : currentMode;
   const modeInfo = getIntraModeInfo(selectedMode);
@@ -204,8 +179,13 @@ const IntraPredictionFlow = ({
       : ((selectedMode === 0 || selectedMode === 2 || selectedMode === 18 || selectedMode === 34) && N >= 8)
   );
 
-  // Compute or extract smoothed reference samples for Stage 02
-  const simulatedRefs = useMemo(() => computeMdisSmoothedRef(refTopRaw, refLeftRaw, N), [refTopRaw, refLeftRaw, N]);
+  // Compute or extract smoothed reference samples for Stage 02 (Bypassed for Chroma per H.265 Section 8.4.4.2.3)
+  const simulatedRefs = useMemo(() => {
+    if (channel !== 'Y') {
+      return { top: [...refTopRaw], left: [...refLeftRaw] };
+    }
+    return computeMdisSmoothedRef(refTopRaw, refLeftRaw, N);
+  }, [channel, refTopRaw, refLeftRaw, N]);
   const hasGroundTruthFiltered = gtRefTopFilt && gtRefTopFilt.length >= refSpan;
   const refTopFilt = hasGroundTruthFiltered ? gtRefTopFilt : simulatedRefs.top;
   const refLeftFilt = (gtRefLeftFilt && gtRefLeftFilt.length >= refSpan) ? gtRefLeftFilt : simulatedRefs.left;
@@ -269,7 +249,7 @@ const IntraPredictionFlow = ({
       color: color,
       border: isActive 
         ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` 
-        : (isCorner ? '1.5px solid #0F172A' : (isExtended ? '1px dashed #94A3B8' : '1px solid #64748B')),
+        : (isCorner ? '1.5px solid var(--apple-label)' : (isExtended ? '1px dashed #94A3B8' : '1px solid #64748B')),
       boxShadow: 'none',
       transform: 'none',
       zIndex: isActive ? 15 : 2,
@@ -289,127 +269,207 @@ const IntraPredictionFlow = ({
 
   return (
     <div className="flow-container">
-      {/* 1. COMPACT ENGINEERING TOOLBAR (Replaces old multi-layer headers) */}
+      {/* 1. COMPACT ENGINEERING TOOLBAR */}
       <div className="flow-toolbar">
         <div className="flow-toolbar-left">
           {onBackToQuadTree && (
-            <button
-              type="button"
+            <Button
+              variant="gray"
+              size="small"
               onClick={onBackToQuadTree}
-              className="flow-back-btn"
               title="Return to QuadTree CTU layout"
             >
               ← CTU ({ctuX}, {ctuY})
-            </button>
+            </Button>
           )}
-          <div className="flow-status-chip">
-            <span className="chip-cu">CU {blockSize}×{blockSize} ({channel === 'Y' ? 'Luma' : channel === 'U' ? 'Cb' : 'Cr'})</span>
-            <span className="chip-sep">•</span>
-            <span className="chip-mode">Mode {selectedMode}: {modeInfo.name}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <Badge variant="tag" color="gray">
+              CU {blockSize}×{blockSize} ({channel === 'Y' ? 'Luma' : channel === 'U' ? 'Cb' : 'Cr'})
+            </Badge>
+            <Badge variant="filled" color="blue">
+              Mode {selectedMode}: {modeInfo.name}
+            </Badge>
           </div>
         </div>
 
-        <div className="flow-toolbar-right">
+        <div className="flow-toolbar-right" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           {/* Channel Selector Toggle */}
-          <div className="channel-segmented-group">
-            <button
-              type="button"
-              className={`channel-pill-btn ${channel === 'Y' ? 'active-y' : ''}`}
-              onClick={() => handleChannelChange('Y')}
-              title="Luma Y Channel"
-            >
-              <span className="channel-dot y-dot" /> Y (Luma)
-            </button>
-            <button
-              type="button"
-              className={`channel-pill-btn ${channel === 'U' ? 'active-u' : ''}`}
-              onClick={() => handleChannelChange('U')}
-              title="Chroma Cb Channel (Blue-Difference)"
-            >
-              <span className="channel-dot u-dot" /> Cb
-            </button>
-            <button
-              type="button"
-              className={`channel-pill-btn ${channel === 'V' ? 'active-v' : ''}`}
-              onClick={() => handleChannelChange('V')}
-              title="Chroma Cr Channel (Red-Difference)"
-            >
-              <span className="channel-dot v-dot" /> Cr
-            </button>
-          </div>
+          <SegmentedControl
+            value={channel}
+            onChange={handleChannelChange}
+            size="small"
+            items={[
+              { id: 'Y', label: 'Y (Luma)' },
+              { id: 'U', label: 'Cb' },
+              { id: 'V', label: 'Cr' },
+            ]}
+          />
+
+          {/* HM Source Code Modal Trigger */}
+          <Button
+            variant="tinted"
+            size="small"
+            onClick={() => setShowHmModal(true)}
+            title="Inspect HM-16.0 C++ Source Code for predIntraLumaAng"
+          >
+            &lt;&gt; Show HM Code
+          </Button>
 
           {/* Zoom Toggle */}
-          <button
-            type="button"
+          <Button
+            variant="gray"
+            size="small"
             onClick={() => setZoomLevel(prev => prev === 'fit' ? 'zoom' : 'fit')}
-            className="flow-action-btn"
             title="Toggle between fit-to-card and enlarged zoom mode"
           >
-            {zoomLevel === 'zoom' ? 'ZOOM: 1.5×' : 'FIT'}
-          </button>
+            {zoomLevel === 'zoom' ? 'Zoom: 1.5×' : 'Fit'}
+          </Button>
 
           {onGoTo4Way && (
-            <button
-              type="button"
+            <Button
+              variant="gray"
+              size="small"
               onClick={onGoTo4Way}
-              className="flow-action-btn primary"
-              title="Inspect with Synchronized 4-Way Crosshair Viewport"
+              title="Inspect Local Reconstruction Loop"
             >
-              4-WAY VIEW →
-            </button>
+              Reconstruction →
+            </Button>
           )}
         </div>
       </div>
 
-      {/* 2. STAGE STEPPER NAVIGATION */}
-      <div className="pipeline-stepper-bar">
-        <button
-          type="button"
-          className={`stepper-pill ${activeTab === 'all' ? 'active' : ''}`}
-          onClick={() => setActiveTab('all')}
-        >
-          <span className="stepper-idx">Overview</span>
-        </button>
+      {/* 2. INTRA MODE NAVIGATION & RD COST CONTROLLER */}
+      <Card style={{
+        padding: '0.65rem 0.85rem',
+        marginBottom: '0.85rem',
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '0.85rem'
+      }}>
+        {/* Left: Mode Stepper Buttons & Auto-Play */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--apple-label-primary)', fontFamily: 'JetBrains Mono', marginRight: '0.2rem' }}>
+            INTRA MODE:
+          </span>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+            <Button
+              variant="gray"
+              size="small"
+              onClick={() => onSelectModeIndex && onSelectModeIndex(Math.max(0, currentModeIdx - 1))}
+              disabled={!modesData || currentModeIdx === 0}
+              title="Previous Mode (←)"
+              style={{ fontFamily: 'JetBrains Mono', fontSize: '11px', padding: '0 8px' }}
+            >
+              ←
+            </Button>
+            <Button
+              variant={isPlaying ? 'filled' : 'gray'}
+              size="small"
+              onClick={() => onTogglePlay && onTogglePlay()}
+              title={isPlaying ? "Pause Auto-play (Space)" : "Auto-play candidate modes (Space)"}
+              style={{
+                padding: '0 10px',
+                fontFamily: 'JetBrains Mono',
+                fontSize: '11px',
+                fontWeight: 700,
+                ...(isPlaying ? { background: 'var(--apple-orange)', borderColor: 'rgba(0,0,0,0.1)' } : {})
+              }}
+            >
+              {isPlaying ? 'Pause' : 'Play'}
+            </Button>
+            <Button
+              variant="gray"
+              size="small"
+              onClick={() => onSelectModeIndex && onSelectModeIndex(Math.min((modesData?.length || 1) - 1, currentModeIdx + 1))}
+              disabled={!modesData || currentModeIdx >= (modesData?.length || 1) - 1}
+              title="Next Mode (→)"
+              style={{ fontFamily: 'JetBrains Mono', fontSize: '11px', padding: '0 8px' }}
+            >
+              →
+            </Button>
+          </div>
+        </div>
 
-        <span className="stepper-arrow">→</span>
+        {/* Center: Clean Mode Selector Dropdown */}
+        <div style={{ flex: '1 1 260px', maxWidth: '380px', display: 'flex', alignItems: 'center' }}>
+          <select
+            className="apple-select-control font-mono"
+            value={currentModeIdx}
+            onChange={e => onSelectModeIndex && onSelectModeIndex(Number(e.target.value))}
+            style={{ width: '100%', height: '28px', fontSize: '11.5px' }}
+          >
+            {modesData && modesData.length > 0 ? (
+              modesData.map((item, idx) => {
+                const info = getIntraModeInfo(item.mode);
+                const isBest = idx === 0;
+                return (
+                  <option key={idx} value={idx}>
+                    {isBest ? '[Best] ' : ''}Mode {item.mode}: {info.name} — Cost: {typeof item.cost === 'number' ? item.cost.toFixed(1) : (item.cost ?? '—')}
+                  </option>
+                );
+              })
+            ) : (
+              <option value={0}>
+                Mode {selectedMode}: {modeInfo.name} — Cost: {typeof modeData?.cost === 'number' ? modeData.cost.toFixed(1) : (modeData?.cost ?? '—')}
+              </option>
+            )}
+          </select>
+        </div>
 
-        <button
-          type="button"
-          className={`stepper-pill ${activeTab === 'step1' ? 'active' : ''}`}
-          onClick={() => setActiveTab('step1')}
-        >
-          <span className="stepper-idx">Stage 01</span>
-        </button>
+        {/* Right: Angular Compass + Active Mode Info & RD Cost Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <AngularCompass
+            currentMode={selectedMode}
+            onSelectMode={(targetMode) => {
+              if (modesData && onSelectModeIndex) {
+                const targetIdx = modesData.findIndex(d => d.mode === targetMode);
+                if (targetIdx !== -1) onSelectModeIndex(targetIdx);
+              }
+            }}
+          />
 
-        <span className="stepper-arrow">→</span>
+          <div style={{
+            background: 'var(--apple-canvas)',
+            border: '1px solid var(--apple-hairline)',
+            borderRadius: '6px',
+            padding: '0.35rem 0.75rem',
+            fontFamily: 'JetBrains Mono',
+            fontSize: '0.74rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.15rem',
+            minWidth: '160px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+              <strong style={{ color: 'var(--apple-label-primary)' }}>Mode {selectedMode}</strong>
+              <span style={{ fontSize: '0.68rem', color: 'var(--apple-label-secondary)' }}>{modeInfo.name}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'var(--apple-label-secondary)' }}>RD Cost:</span>
+              <strong style={{ color: '#D97706', fontSize: '0.82rem' }}>
+                {typeof modeData?.cost === 'number' ? modeData.cost.toFixed(2) : (modeData?.cost ?? '—')}
+              </strong>
+            </div>
+          </div>
+        </div>
+      </Card>
 
-        <button
-          type="button"
-          className={`stepper-pill ${activeTab === 'step2' ? 'active' : ''}`}
-          onClick={() => setActiveTab('step2')}
-        >
-          <span className="stepper-idx">Stage 02</span>
-        </button>
-
-        <span className="stepper-arrow">→</span>
-
-        <button
-          type="button"
-          className={`stepper-pill ${activeTab === 'step3' ? 'active' : ''}`}
-          onClick={() => setActiveTab('step3')}
-        >
-          <span className="stepper-idx">Stage 03</span>
-        </button>
-
-        <span className="stepper-arrow">→</span>
-
-        <button
-          type="button"
-          className={`stepper-pill ${activeTab === 'step4' ? 'active' : ''}`}
-          onClick={() => setActiveTab('step4')}
-        >
-          <span className="stepper-idx">Stage 04</span>
-        </button>
+      {/* 3. STAGE STEPPER NAVIGATION (Apple Segmented Control) */}
+      <div style={{ marginBottom: '0.85rem' }}>
+        <SegmentedControl
+          value={activeTab}
+          onChange={setActiveTab}
+          size="regular"
+          items={[
+            { id: 'all', label: 'Overview' },
+            { id: 'step1', label: '1. Ref Samples' },
+            { id: 'step2', label: '2. MDIS Filter' },
+            { id: 'step3', label: '3. Projection' },
+            { id: 'step4', label: '4. Post-Filter' },
+          ]}
+        />
       </div>
 
       {/* 3. VIEW 1: THE LIVE EQUATION TRIO (Original - Prediction = Residual) */}
@@ -445,7 +505,7 @@ const IntraPredictionFlow = ({
                     left: stageGridCellSize,
                     width: N * stageGridCellSize,
                     height: N * stageGridCellSize,
-                    border: '2px solid #0F172A',
+                    border: '2px solid var(--apple-label)',
                     boxSizing: 'border-box',
                     pointerEvents: 'none',
                     zIndex: 10
@@ -573,7 +633,7 @@ const IntraPredictionFlow = ({
                     left: stageGridCellSize,
                     width: N * stageGridCellSize,
                     height: N * stageGridCellSize,
-                    border: '2px solid #0F172A',
+                    border: '2px solid var(--apple-label)',
                     boxSizing: 'border-box',
                     pointerEvents: 'none',
                     zIndex: 10
@@ -709,6 +769,27 @@ const IntraPredictionFlow = ({
         resiData={resiData}
         modeData={modeData}
         getSampleColor={getSampleColor}
+      />
+
+      {/* HM-16.0 Source Code Inspector Modal for PU Intra Prediction */}
+      <HmSourceCodeModal
+        isOpen={showHmModal}
+        onClose={() => setShowHmModal(false)}
+        title={HM_INTRA_PREDICTION_SNIPPET.title}
+        sourceFile={HM_INTRA_PREDICTION_SNIPPET.sourceFile}
+        functionName={HM_INTRA_PREDICTION_SNIPPET.functionName}
+        standardRef={HM_INTRA_PREDICTION_SNIPPET.standardRef}
+        description={HM_INTRA_PREDICTION_SNIPPET.description}
+        variables={[
+          { name: 'Selected Mode', value: `Mode ${selectedMode} (${modeInfo.name})`, highlight: true },
+          { name: 'Color Channel', value: `${channel} (${channel === 'Y' ? 'Luma' : channel === 'U' ? 'Cb' : 'Cr'})` },
+          { name: 'Block Dimension (N)', value: `${N}×${N}` },
+          { name: 'Intra Pred Angle (Δ)', value: `${angle}/32 pel`, highlight: true },
+          { name: 'Inverse Angle', value: invAngle !== 0 ? invAngle : 'N/A' },
+          { name: 'MDIS Filter', value: isMDISSmoothed ? 'ENABLED (3-tap [1, 2, 1]/4)' : 'BYPASSED' },
+          { name: 'Boundary Filter', value: hasEdgeFilter ? 'ACTIVE' : 'OFF' },
+        ]}
+        codeSnippet={HM_INTRA_PREDICTION_SNIPPET.codeSnippet}
       />
     </div>
   );

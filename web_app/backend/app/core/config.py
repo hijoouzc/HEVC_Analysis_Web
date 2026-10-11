@@ -71,7 +71,19 @@ class Settings(BaseModel):
     DEFAULT_FPS: int = 50
     DEFAULT_FRAMES: int = 1
     
-    # CORS
-    CORS_ORIGINS: list[str] = ["*"]
+    # CORS configuration
+    @property
+    def CORS_ORIGINS(self) -> list[str]:
+        env_origins = os.environ.get("CORS_ORIGINS")
+        if env_origins:
+            return [o.strip() for o in env_origins.split(",") if o.strip()]
+        return [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+        ]
 
 settings = Settings()

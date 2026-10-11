@@ -1,0 +1,452 @@
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { getIntraModeInfo } from '../utils/colorUtils';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
+/**
+ * Custom Hook: useAnalysisSession
+ * Encapsulates session state, async job polling, client-side caching,
+ * keyboard navigation, and checkpoint synchronization.
+ */
+export function useAnalysisSession() {
+  const [file, setFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [rawImageDims, setRawImageDims] = useState({ width: 0, height: 0 });
+  const [imageDims, setImageDims] = useState({ width: 640, height: 360 });
+  const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
+  const [errorMsg, setErrorMsg] = useState(null);
+  const [data, setData] = useState(null);
+  const [refSamples, setRefSamples] = useState(null);
+  const [currentModeIdx, setCurrentModeIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [ctuX, setCtuX] = useState(0);
+  const [ctuY, setCtuY] = useState(0);
+  const [analyzedCtu, setAnalyzedCtu] = useState({ x: 0, y: 0 });
+  const [cuSize, setCuSize] = useState(8);
+  const [analyzedCuSize, setAnalyzedCuSize] = useState(8);
+
+  const [activeStageTab, setActiveStageTab] = useState('MACRO');
+  const [jobId, setJobId] = useState(null);
+  const [partitionData, setPartitionData] = useState(null);
+  const [transformData, setTransformData] = useState([]);
+  const [quantData, setQuantData] = useState([]);
+  const [selectedCu, setSelectedCu] = useState(null);
+  const [ctuPartitionsMap, setCtuPartitionsMap] = useState({});
+  const [ctuAnalysisCache, setCtuAnalysisCache] = useState({});
+
+  // Auto-play mode loop
+  useEffect(() => {
+    let interval;
+    if (isPlaying && data && data.length > 0) {
+      interval = setInterval(() => {
+        setCurrentModeIdx(prev => {
+          if (prev >= data.length - 1) {
+            setIsPlaying(false);
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 750);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, data]);
+
+  // Keyboard navigation shortcuts (ArrowLeft, ArrowRight, Space)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (!data || data.length === 0) return;
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setCurrentModeIdx(prev => Math.max(0, prev - 1));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setCurrentModeIdx(prev => Math.min(data.length - 1, prev + 1));
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        setIsPlaying(p => !p);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [data]);
+
+  const computeDims = useCallback((origW, origH) => {
+    if (!origW || !origH) return { width: 640, height: 360 };
+    return {
+      width: Math.max(64, Math.round(origW / 8) * 8),
+      height: Math.max(64, Math.round(origH / 8) * 8)
+    };
+  }, []);
+
+  const handleFileChange = useCallback((e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      setFile(selectedFile);
+      setErrorMsg(null);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const origW = img.naturalWidth || img.width;
+          const origH = img.naturalHeight || img.height;
+          setRawImageDims({ width: origW, height: origH });
+          const dims = computeDims(origW, origH);
+          setImageDims(dims);
+          setImagePreview(event.target.result);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(selectedFile);
+      setData(null);
+      setPartitionData(null);
+      setSelectedCu(null);
+      setRefSamples(null);
+      setTransformData([]);
+      setQuantData([]);
+      setJobId(null);
+      setCtuPartitionsMap({});
+      setCtuAnalysisCache({});
+    }
+  }, [computeDims]);
+
+  // Helper to fetch checkpoints for a completed job
+  const fetchCheckpoints = useCallback(async (currentJobId, targetX, targetY, targetCuSize) => {
+    const ctuParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
+      ? `&ctu_x=${targetX}&ctu_y=${targetY}`
+      : '';
+    const ctuOnlyParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
+      ? `?ctu_x=${targetX}&ctu_y=${targetY}`
+      : '';
+
+    const [p, allParts, ref, transform, quant] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_01_PARTITION${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/partitions`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_02_INTRA_REF?cu_size=${targetCuSize}${ctuParams}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_06_TRANSFORM${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${ctuOnlyParams}`).then(r => r.ok ? r.json() : [])
+    ]);
+
+    if (p) {
+      const keyX = p.ctu_x !== undefined ? p.ctu_x : targetX;
+      const keyY = p.ctu_y !== undefined ? p.ctu_y : targetY;
+      const normalized = { ...p, ctu_x: keyX, ctu_y: keyY };
+      setPartitionData(normalized);
+      setCtuPartitionsMap(prev => ({
+        ...prev,
+        [`${keyX}_${keyY}`]: normalized
+      }));
+    }
+    if (Array.isArray(allParts) && allParts.length > 0) {
+      setCtuPartitionsMap(prev => {
+        const updated = { ...prev };
+        allParts.forEach(part => {
+          const kX = part.ctu_x !== undefined ? part.ctu_x : targetX;
+          const kY = part.ctu_y !== undefined ? part.ctu_y : targetY;
+          updated[`${kX}_${kY}`] = { ...part, ctu_x: kX, ctu_y: kY };
+        });
+        return updated;
+      });
+    }
+    if (ref) setRefSamples(ref);
+    if (Array.isArray(transform) && transform.length > 0) setTransformData(transform);
+    if (Array.isArray(quant) && quant.length > 0) setQuantData(quant);
+    return { p, allParts, ref, transform, quant };
+  }, []);
+
+  // Poll job status until COMPLETED or FAILED
+  const pollJobCompletion = useCallback(async (currentJobId, maxAttempts = 150) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentJobId}`);
+      if (!res.ok) {
+        throw new Error(`Failed to check job status (${res.status})`);
+      }
+      const jobInfo = await res.json();
+      if (jobInfo.status === 'COMPLETED') {
+        return jobInfo;
+      }
+      if (jobInfo.status === 'FAILED') {
+        throw new Error(jobInfo.error_message || 'Encoder execution failed');
+      }
+      // Wait 400ms before next poll
+      await new Promise(resolve => setTimeout(resolve, 400));
+    }
+    throw new Error('Analysis timed out after 60 seconds.');
+  }, []);
+
+  const handleUpload = useCallback(async (e, customX = null, customY = null, customCuSize = null, targetMode = null) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!file) return;
+
+    const targetX = customX !== null ? customX : (ctuX !== null ? ctuX : 0);
+    const targetY = customY !== null ? customY : (ctuY !== null ? ctuY : 0);
+    const targetCuSize = customCuSize !== null ? customCuSize : (cuSize !== null ? cuSize : 8);
+
+    setCtuX(targetX);
+    setCtuY(targetY);
+    setCuSize(targetCuSize);
+
+    setLoading(true);
+    setLoadingStatus('Submitting analysis job...');
+    setErrorMsg(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('ctu_x', targetX);
+    formData.append('ctu_y', targetY);
+    formData.append('cu_size', targetCuSize);
+    formData.append('scale_mode', 'native');
+
+    try {
+      // 1. Attempt Modern Asynchronous Job Workflow (HTTP 202 + Polling)
+      let currentJobId = null;
+      let jobInfo = null;
+
+      try {
+        const submitRes = await fetch(`${API_BASE_URL}/api/v1/jobs/submit`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (submitRes.status === 202) {
+          const initJob = await submitRes.json();
+          currentJobId = initJob.job_id;
+          setJobId(currentJobId);
+          setLoadingStatus('Running HM-16.0 Encoder & Tracing Checkpoints...');
+          jobInfo = await pollJobCompletion(currentJobId);
+        }
+      } catch (asyncErr) {
+        console.warn('Async job submission failed, falling back to synchronous /upload:', asyncErr);
+      }
+
+      // If async job succeeded:
+      if (jobInfo && currentJobId) {
+        setLoadingStatus('Parsing Checkpoints...');
+        const ctuParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
+          ? `&ctu_x=${targetX}&ctu_y=${targetY}`
+          : '';
+        const modesRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTRA_SEARCH?cu_size=${targetCuSize}${ctuParams}`);
+        const modesData = modesRes.ok ? await modesRes.json() : [];
+
+        if (modesData.length > 0) {
+          setData(modesData);
+          if (jobInfo.frame?.width && jobInfo.frame?.height) {
+            setImageDims({ width: jobInfo.frame.width, height: jobInfo.frame.height });
+          }
+          setAnalyzedCtu({ x: targetX, y: targetY });
+          setAnalyzedCuSize(targetCuSize);
+
+          const { ref } = await fetchCheckpoints(currentJobId, targetX, targetY, targetCuSize);
+
+          // Update client cache for 0ms instant reload
+          setCtuAnalysisCache(prev => ({
+            ...prev,
+            [`${targetX}_${targetY}_${targetCuSize}`]: {
+              data: modesData,
+              refSamples: ref || null,
+              bestMode: jobInfo.best_mode,
+              bestCost: jobInfo.best_cost,
+              jobId: currentJobId
+            }
+          }));
+
+          // Intelligently select active mode
+          if (targetMode !== null && targetMode !== undefined) {
+            const idx = modesData.findIndex(d => d.mode === targetMode);
+            setCurrentModeIdx(idx !== -1 ? idx : 0);
+          } else {
+            const prevMode = (data && data[currentModeIdx]) ? data[currentModeIdx].mode : 0;
+            const idx = modesData.findIndex(d => d.mode === prevMode);
+            setCurrentModeIdx(idx !== -1 ? idx : 0);
+          }
+          setLoading(false);
+          setLoadingStatus('');
+          return;
+        }
+      }
+
+      // 2. Fallback to Synchronous /upload endpoint if async flow did not return data
+      setLoadingStatus('Executing encoder (Synchronous fallback)...');
+      const res = await fetch(`${API_BASE_URL}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      let result;
+      try {
+        result = await res.json();
+      } catch {
+        throw new Error(`Server returned HTTP ${res.status}: ${res.statusText || 'Invalid response'}`);
+      }
+
+      if (res.ok && result.status === 'success' && result.data && result.data.length > 0) {
+        setData(result.data);
+        if (result.ref_samples) setRefSamples(result.ref_samples);
+        if (result.width && result.height) setImageDims({ width: result.width, height: result.height });
+        setAnalyzedCtu({ x: targetX, y: targetY });
+        setAnalyzedCuSize(targetCuSize);
+
+        setCtuAnalysisCache(prev => ({
+          ...prev,
+          [`${targetX}_${targetY}_${targetCuSize}`]: {
+            data: result.data,
+            refSamples: result.ref_samples || null,
+            bestMode: result.best_mode,
+            bestCost: result.best_cost,
+            jobId: result.job_id
+          }
+        }));
+
+        if (targetMode !== null && targetMode !== undefined) {
+          const idx = result.data.findIndex(d => d.mode === targetMode);
+          setCurrentModeIdx(idx !== -1 ? idx : 0);
+        } else {
+          const prevMode = (data && data[currentModeIdx]) ? data[currentModeIdx].mode : 0;
+          const idx = result.data.findIndex(d => d.mode === prevMode);
+          setCurrentModeIdx(idx !== -1 ? idx : 0);
+        }
+
+        const legacyJobId = result.job_id;
+        if (legacyJobId) {
+          setJobId(legacyJobId);
+          fetchCheckpoints(legacyJobId, targetX, targetY, targetCuSize).catch(err => console.warn(err));
+        }
+      } else {
+        const errorDetail = result?.detail || result?.message || 'Failed to extract Intra Search data from HM encoder.';
+        setErrorMsg(errorDetail);
+      }
+    } catch (err) {
+      console.error('Upload failed', err);
+      setErrorMsg(err.message?.includes('Server returned') ? err.message : `Cannot connect to backend server (${API_BASE_URL || 'localhost:8000'}).`);
+    } finally {
+      setLoading(false);
+      setLoadingStatus('');
+    }
+  }, [file, ctuX, ctuY, cuSize, data, currentModeIdx, pollJobCompletion, fetchCheckpoints]);
+
+  const safeModeIdx = (data && data.length > 0) ? Math.min(Math.max(0, currentModeIdx), data.length - 1) : 0;
+  const currentMode = (data && data.length > 0) ? data[safeModeIdx] : null;
+  const currentModeInfo = useMemo(() => {
+    return currentMode ? getIntraModeInfo(currentMode.mode) : null;
+  }, [currentMode]);
+
+  const handleResetImage = useCallback(() => {
+    setData(null);
+    setIsPlaying(false);
+    setPartitionData(null);
+    setSelectedCu(null);
+    setRefSamples(null);
+    setTransformData([]);
+    setQuantData([]);
+    setJobId(null);
+    setErrorMsg(null);
+    setCtuPartitionsMap({});
+    setCtuAnalysisCache({});
+  }, []);
+
+  const handleSelectCU = useCallback((cu) => {
+    setSelectedCu(prev => {
+      if (!cu) return null;
+      if (prev && prev.x === cu.x && prev.y === cu.y && prev.width === cu.width) {
+        return null;
+      }
+      return cu;
+    });
+  }, []);
+
+  const handleSelectCTU = useCallback((x, y) => {
+    setCtuX(x);
+    setCtuY(y);
+    if (x === null || y === null) {
+      return;
+    }
+
+    // Guard against desynchronized selectedCu belonging to a different CTU
+    setSelectedCu(prev => {
+      if (!prev) return null;
+      const ctuOriginX = x * 64;
+      const ctuOriginY = y * 64;
+      const px = prev.abs_x ?? prev.x;
+      const py = prev.abs_y ?? prev.y;
+      if (typeof px === 'number' && typeof py === 'number') {
+        if (px < ctuOriginX || px >= ctuOriginX + 64 || py < ctuOriginY || py >= ctuOriginY + 64) {
+          return null;
+        }
+      }
+      return prev;
+    });
+
+    const cachedPart = ctuPartitionsMap[`${x}_${y}`];
+    if (cachedPart) {
+      setPartitionData(cachedPart);
+    } else if (jobId) {
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_01_PARTITION?ctu_x=${x}&ctu_y=${y}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((part) => {
+          if (part && Array.isArray(part.nodes) && part.nodes.length > 0) {
+            const normalized = { ...part, ctu_x: x, ctu_y: y };
+            setPartitionData(normalized);
+            setCtuPartitionsMap((prev) => ({
+              ...prev,
+              [`${x}_${y}`]: normalized,
+            }));
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Instant restoration from analysis cache if this CTU was previously analyzed
+    const cachedAnalysis = ctuAnalysisCache[`${x}_${y}_${cuSize}`];
+    if (cachedAnalysis) {
+      setData(cachedAnalysis.data);
+      if (cachedAnalysis.refSamples) setRefSamples(cachedAnalysis.refSamples);
+      if (cachedAnalysis.jobId) setJobId(cachedAnalysis.jobId);
+      setAnalyzedCtu({ x, y });
+    }
+  }, [ctuPartitionsMap, ctuAnalysisCache, cuSize, jobId]);
+
+  const hasDesync = data && ctuX !== null && ctuY !== null && (ctuX !== analyzedCtu.x || ctuY !== analyzedCtu.y);
+
+  return {
+    file,
+    imagePreview,
+    rawImageDims,
+    imageDims,
+    loading,
+    loadingStatus,
+    errorMsg,
+    setErrorMsg,
+    data,
+    refSamples,
+    currentModeIdx,
+    setCurrentModeIdx,
+    currentMode,
+    currentModeInfo,
+    isPlaying,
+    setIsPlaying,
+    ctuX,
+    ctuY,
+    analyzedCtu,
+    cuSize,
+    analyzedCuSize,
+    activeStageTab,
+    setActiveStageTab,
+    jobId,
+    partitionData,
+    setPartitionData,
+    transformData,
+    quantData,
+    selectedCu,
+    ctuPartitionsMap,
+    hasDesync,
+    API_BASE_URL,
+    handleFileChange,
+    handleUpload,
+    handleResetImage,
+    handleSelectCU,
+    handleSelectCTU,
+  };
+}

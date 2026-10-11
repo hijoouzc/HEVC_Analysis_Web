@@ -1,19 +1,32 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_v1_router
 from app.services.analysis_service import analysis_service
+from app.storage.session_manager import session_manager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Prune obsolete sessions older than 24 hours
+    try:
+        session_manager.cleanup_old_sessions(max_age_hours=24, max_keep=50)
+    except Exception:
+        pass
+    yield
 
 def create_app() -> FastAPI:
     application = FastAPI(
         title=settings.PROJECT_NAME,
         version=settings.VERSION,
-        description="Clean, modular, checkpoint-driven backend for HEVC codec data flow analysis"
+        description="Clean, modular, checkpoint-driven backend for HEVC codec data flow analysis",
+        lifespan=lifespan
     )
 
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ORIGINS,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

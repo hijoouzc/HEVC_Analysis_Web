@@ -54,7 +54,7 @@ const StageDetailSection = ({
 
                 <div className="io-visual-box" style={{ marginTop: '10px' }}>
                   {imagePreview ? (
-                    <div style={{ position: 'relative', width: '220px', height: '140px', overflow: 'hidden', border: '2px solid #000' }}>
+                    <div style={{ position: 'relative', width: '220px', height: '140px', overflow: 'hidden', border: '1px solid var(--apple-hairline)', borderRadius: '6px' }}>
                       <img src={imagePreview} alt="Reconstructed Frame" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       <div
                         style={{
@@ -79,8 +79,8 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col" style={{ flex: 1.2 }}>
-              <span className="io-col-badge" style={{ background: '#000', color: '#FFF' }}>BOUNDARY EXTRACTION</span>
-              <div className="stage-io-card" style={{ background: '#FFF' }}>
+              <span className="io-col-badge">BOUNDARY EXTRACTION</span>
+              <div className="stage-io-card">
                 <div className="math-display" style={{ fontSize: '0.78rem' }}>
                   <div className="math-row">
                     <span className="math-lhs">Top Samples:</span>
@@ -92,7 +92,7 @@ const StageDetailSection = ({
                   </div>
                 </div>
 
-                <div style={{ marginTop: '10px', fontSize: '0.74rem', color: '#333', lineHeight: 1.4 }}>
+                <div style={{ marginTop: '10px', fontSize: '0.74rem', color: 'var(--apple-label-secondary)', lineHeight: 1.4 }}>
                   • Gathers 1 Top-Left + 2N ({2 * N}) Above + 2N ({2 * N}) Left = <strong>4N + 1 ({4 * N + 1} samples)</strong> for {channel} channel.
                 </div>
               </div>
@@ -104,13 +104,13 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col">
-              <span className="io-col-badge" style={{ background: 'var(--c-green)', color: '#000' }}>OUTPUT DATA</span>
+              <span className="io-col-badge" style={{ background: 'var(--apple-green)', color: '#FFF' }}>OUTPUT DATA</span>
               <div className="stage-io-card">
                 <div className="io-meta-line"><strong>Sample Count:</strong> {4 * N + 1} Raw Perimeter Samples</div>
 
                 <div className="io-visual-box" style={{ marginTop: '10px' }}>
                   <div style={{ fontSize: '0.7rem', fontWeight: 700, marginBottom: '4px' }}>Top Row ({2 * N + 1} Pels):</div>
-                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: '#CBD5E1', padding: '1px', border: '1px solid #94A3B8' }}>
+                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: 'var(--apple-hairline)', padding: '1px', border: '1px solid var(--apple-hairline)' }}>
                     {refTopRaw.slice(0, Math.min(33, 2 * N + 1)).map((v, i) => {
                       const { bg, color, border } = getSampleColor(v);
                       return (
@@ -121,7 +121,7 @@ const StageDetailSection = ({
                     })}
                   </div>
                   <div style={{ fontSize: '0.7rem', fontWeight: 700, marginTop: '6px', marginBottom: '4px' }}>Left Col ({2 * N + 1} Pels):</div>
-                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: '#CBD5E1', padding: '1px', border: '1px solid #94A3B8' }}>
+                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: 'var(--apple-hairline)', padding: '1px', border: '1px solid var(--apple-hairline)' }}>
                     {refLeftRaw.slice(0, Math.min(33, 2 * N + 1)).map((v, i) => {
                       const { bg, color, border } = getSampleColor(v);
                       return (
@@ -156,7 +156,7 @@ const StageDetailSection = ({
 
                 <div className="io-visual-box" style={{ marginTop: '10px' }}>
                   <div style={{ fontSize: '0.7rem', fontWeight: 700 }}>Raw Top Reference:</div>
-                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: '#CBD5E1', padding: '1px', border: '1px solid #94A3B8' }}>
+                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: 'var(--apple-hairline)', padding: '1px', border: '1px solid var(--apple-hairline)' }}>
                     {refTopRaw.slice(0, Math.min(33, 2 * N + 1)).map((v, i) => {
                       const { bg, color, border } = getSampleColor(v);
                       return (
@@ -176,8 +176,8 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col" style={{ flex: 1.2 }}>
-              <span className="io-col-badge" style={{ background: '#000', color: '#FFF' }}>SMOOTHING PROCESS</span>
-              <div className="stage-io-card" style={{ background: '#FFF' }}>
+              <span className="io-col-badge">SMOOTHING PROCESS</span>
+              <div className="stage-io-card">
                 <div className="formula-badge">3-Tap Smoothing Kernel [1, 2, 1] / 4</div>
                 <div className="math-display" style={{ fontSize: '0.78rem' }}>
                   <div className="math-row">
@@ -190,7 +190,7 @@ const StageDetailSection = ({
                   </div>
                 </div>
 
-                <div style={{ marginTop: '10px', fontSize: '0.74rem', color: '#333', lineHeight: 1.4 }}>
+                <div style={{ marginTop: '10px', fontSize: '0.74rem', color: 'var(--apple-label-secondary)', lineHeight: 1.4 }}>
                   • <strong>MDIS Criteria (Luma):</strong> Selected diagonal modes activate the 3-tap filter to eliminate high-frequency perimeter noise.
                 </div>
               </div>
@@ -202,14 +202,14 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col">
-              <span className="io-col-badge" style={{ background: 'var(--c-blue)', color: '#FFF' }}>OUTPUT: CLEAN REFS</span>
+              <span className="io-col-badge" style={{ background: 'var(--apple-blue)', color: '#FFF' }}>OUTPUT: CLEAN REFS</span>
               <div className="stage-io-card">
                 <div className="io-meta-line"><strong>Status:</strong> {isMDISSmoothed ? 'Smoothed' : 'Direct Pass-through'}</div>
                 <div className="io-meta-line"><strong>Samples:</strong> {4 * N + 1} Perimeter Samples</div>
 
                 <div className="io-visual-box" style={{ marginTop: '10px' }}>
                   <div style={{ fontSize: '0.7rem', fontWeight: 700 }}>Effective Top Reference:</div>
-                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: '#CBD5E1', padding: '1px', border: '1px solid #94A3B8' }}>
+                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: 'var(--apple-hairline)', padding: '1px', border: '1px solid var(--apple-hairline)' }}>
                     {refTopActive.slice(0, Math.min(33, 2 * N + 1)).map((v, i) => {
                       const { bg, color, border } = getSampleColor(v);
                       return (
@@ -244,7 +244,7 @@ const StageDetailSection = ({
 
                 <div className="io-visual-box" style={{ marginTop: '10px' }}>
                   <div style={{ fontSize: '0.7rem', fontWeight: 700 }}>Perimeter Buffer:</div>
-                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: '#CBD5E1', padding: '1px', border: '1px solid #94A3B8' }}>
+                  <div style={{ display: 'flex', gap: '1px', flexWrap: 'wrap', maxWidth: '220px', background: 'var(--apple-hairline)', padding: '1px', border: '1px solid var(--apple-hairline)' }}>
                     {refTopActive.slice(0, Math.min(10, 2 * N + 1)).map((v, i) => {
                       const { bg, color, border } = getSampleColor(v);
                       return (
@@ -264,8 +264,8 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col" style={{ flex: 1.2 }}>
-              <span className="io-col-badge" style={{ background: '#000', color: '#FFF' }}>HM C++ PROCESS & FORMULA</span>
-              <div className="stage-io-card" style={{ background: '#FFF' }}>
+              <span className="io-col-badge">HM C++ PROCESS & FORMULA</span>
+              <div className="stage-io-card">
                 <div className="formula-badge">Mathematical Prediction for Mode {selectedMode} (N={N})</div>
                 {selectedMode === 0 ? (
                   <div className="math-display" style={{ fontSize: '0.78rem' }}>
@@ -321,7 +321,7 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col">
-              <span className="io-col-badge" style={{ background: 'var(--c-blue)', color: '#FFF' }}>PRED BLOCK</span>
+              <span className="io-col-badge" style={{ background: 'var(--apple-blue)', color: '#FFF' }}>PRED BLOCK</span>
               <div className="stage-io-card">
                 <div className="io-meta-line"><strong>Dimensions:</strong> {N} × {N}</div>
                 <div className="io-meta-line"><strong>Mode:</strong> {modeInfo.name}</div>
@@ -332,8 +332,9 @@ const StageDetailSection = ({
                     gridTemplateColumns: `repeat(${N}, ${Math.max(4, Math.floor(160 / N))}px)`,
                     gridTemplateRows: `repeat(${N}, ${Math.max(4, Math.floor(160 / N))}px)`,
                     gap: '1px',
-                    background: '#CBD5E1',
-                    border: '1.5px solid #0F172A'
+                    background: 'var(--apple-hairline)',
+                    border: '1px solid var(--apple-hairline)',
+                    borderRadius: '4px'
                   }}>
                     {predData.map((v, i) => {
                       const { bg, color, border } = getSampleColor(v);
@@ -375,8 +376,9 @@ const StageDetailSection = ({
                       gridTemplateColumns: `repeat(${N}, ${Math.max(3, Math.floor(96 / N))}px)`,
                       gridTemplateRows: `repeat(${N}, ${Math.max(3, Math.floor(96 / N))}px)`,
                       gap: '1px',
-                      background: '#CBD5E1',
-                      border: '1px solid #0F172A'
+                      background: 'var(--apple-hairline)',
+                      border: '1px solid var(--apple-hairline)',
+                      borderRadius: '4px'
                     }}>
                       {orgData.map((v, i) => {
                         const { bg, border } = getSampleColor(v);
@@ -391,8 +393,9 @@ const StageDetailSection = ({
                       gridTemplateColumns: `repeat(${N}, ${Math.max(3, Math.floor(96 / N))}px)`,
                       gridTemplateRows: `repeat(${N}, ${Math.max(3, Math.floor(96 / N))}px)`,
                       gap: '1px',
-                      background: '#CBD5E1',
-                      border: '1px solid #0F172A'
+                      background: 'var(--apple-hairline)',
+                      border: '1px solid var(--apple-hairline)',
+                      borderRadius: '4px'
                     }}>
                       {predData.map((v, i) => {
                         const { bg, border } = getSampleColor(v);
@@ -411,8 +414,8 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col" style={{ flex: 1.2 }}>
-              <span className="io-col-badge" style={{ background: '#000', color: '#FFF' }}>PROCESS & FORMULA</span>
-              <div className="stage-io-card" style={{ background: '#FFF' }}>
+              <span className="io-col-badge">PROCESS & FORMULA</span>
+              <div className="stage-io-card">
                 <div className="formula-badge">Boundary Smoothing & Residual Subtraction</div>
                 <div className="math-display" style={{ fontSize: '0.78rem' }}>
                   <div className="math-row">
@@ -442,7 +445,7 @@ const StageDetailSection = ({
             </div>
 
             <div className="stage-io-col">
-              <span className="io-col-badge" style={{ background: 'var(--c-magenta)', color: '#FFF' }}>RESIDUAL</span>
+              <span className="io-col-badge" style={{ background: 'var(--apple-purple)', color: '#FFF' }}>RESIDUAL</span>
               <div className="stage-io-card">
                 <div className="io-meta-line"><strong>Dimensions:</strong> {N} × {N}</div>
                 <div className="io-meta-line"><strong>RDO Cost:</strong> {modeData?.cost !== undefined ? Number(modeData.cost).toFixed(1) : '0.0'}</div>
@@ -453,8 +456,9 @@ const StageDetailSection = ({
                     gridTemplateColumns: `repeat(${N}, ${Math.max(4, Math.floor(160 / N))}px)`,
                     gridTemplateRows: `repeat(${N}, ${Math.max(4, Math.floor(160 / N))}px)`,
                     gap: '1px',
-                    background: '#CBD5E1',
-                    border: '1.5px solid #0F172A'
+                    background: 'var(--apple-hairline)',
+                    border: '1px solid var(--apple-hairline)',
+                    borderRadius: '4px'
                   }}>
                     {resiData.map((v, i) => {
                       const resStyle = getResidualColorAndTextColor(v, 64);

@@ -20,6 +20,118 @@ const clamp = (val, min, max) => Math.max(min, Math.min(max, val));
 export const SELECTION_HIGHLIGHT_COLOR = '#F59E0B';
 
 /**
+ * Standardized HEVC QuadTree CU Depth Color Palette (Apple HIG Pro Spectrum).
+ * Cold -> Hot Spectrum (Official Measured Tokens):
+ * - Depth 0 (64×64 CTU): System Cyan (#00C0E8)
+ * - Depth 1 (32×32 CU): System Green (#34C759)
+ * - Depth 2 (16×16 CU): System Orange (#FF8D28)
+ * - Depth 3 (8×8 CU): System Red (#FF383C)
+ */
+export const HEVC_DEPTH_COLORS = {
+  0: {
+    depth: 0,
+    size: 64,
+    label: 'Depth 0 (64×64)',
+    hex: '#00C0E8',
+    border: '#00C0E8',
+    text: '#008FA8',
+    bg: 'rgba(0, 192, 232, 0.18)',
+    bgSolid: '#E0F8FF',
+    bgAlpha: (alpha = 0.18) => `rgba(0, 192, 232, ${alpha})`
+  },
+  1: {
+    depth: 1,
+    size: 32,
+    label: 'Depth 1 (32×32)',
+    hex: '#34C759',
+    border: '#34C759',
+    text: '#248A3D',
+    bg: 'rgba(52, 199, 89, 0.18)',
+    bgSolid: '#E8F8EE',
+    bgAlpha: (alpha = 0.18) => `rgba(52, 199, 89, ${alpha})`
+  },
+  2: {
+    depth: 2,
+    size: 16,
+    label: 'Depth 2 (16×16)',
+    hex: '#FF8D28',
+    border: '#FF8D28',
+    text: '#C96700',
+    bg: 'rgba(255, 141, 40, 0.18)',
+    bgSolid: '#FFF3E8',
+    bgAlpha: (alpha = 0.18) => `rgba(255, 141, 40, ${alpha})`
+  },
+  3: {
+    depth: 3,
+    size: 8,
+    label: 'Depth 3 (8×8)',
+    hex: '#FF383C',
+    border: '#FF383C',
+    text: '#D72318',
+    bg: 'rgba(255, 56, 60, 0.18)',
+    bgSolid: '#FEECEB',
+    bgAlpha: (alpha = 0.18) => `rgba(255, 56, 60, ${alpha})`
+  }
+};
+
+export const HEVC_DEPTH_COLORS_LIGHT = {
+  0: { depth: 0, size: 64, hex: '#00C0E8', text: '#008FA8', bgSolid: '#E0F8FF', border: '#00C0E8' },
+  1: { depth: 1, size: 32, hex: '#34C759', text: '#248A3D', bgSolid: '#E8F8EE', border: '#34C759' },
+  2: { depth: 2, size: 16, hex: '#FF8D28', text: '#C96700', bgSolid: '#FFF3E8', border: '#FF8D28' },
+  3: { depth: 3, size: 8,  hex: '#FF383C', text: '#D72318', bgSolid: '#FEECEB', border: '#FF383C' }
+};
+
+/**
+ * Standardized HEVC Prediction Mode Color Palette (Official Measured Tokens).
+ * - INTRA: System Purple (#CB30E0)
+ * - INTER Uni-Pred: System Blue (#007AFF)
+ * - INTER Bi-Pred: System Mint (#00C8B3)
+ * - SKIP / Merge: System Gray (#8E8E93)
+ */
+export const HEVC_MODE_COLORS = {
+  INTRA: {
+    mode: 'INTRA',
+    label: 'Intra (#CB30E0)',
+    hex: '#CB30E0',
+    border: '#CB30E0',
+    text: '#9F1CB5',
+    bg: 'rgba(203, 48, 224, 0.18)',
+    bgSolid: '#F9EAFB',
+    bgAlpha: (alpha = 0.18) => `rgba(203, 48, 224, ${alpha})`
+  },
+  INTER: {
+    mode: 'INTER',
+    label: 'Inter (#007AFF)',
+    hex: '#007AFF',
+    border: '#007AFF',
+    text: '#0062CC',
+    bg: 'rgba(0, 122, 255, 0.18)',
+    bgSolid: '#E5F2FF',
+    bgAlpha: (alpha = 0.18) => `rgba(0, 122, 255, ${alpha})`
+  },
+  INTER_BIPRED: {
+    mode: 'INTER_BIPRED',
+    label: 'Bi-Pred (#00C8B3)',
+    hex: '#00C8B3',
+    border: '#00C8B3',
+    text: '#008A7C',
+    bg: 'rgba(0, 200, 179, 0.18)',
+    bgSolid: '#E6F9F7',
+    bgAlpha: (alpha = 0.18) => `rgba(0, 200, 179, ${alpha})`
+  },
+  SKIP: {
+    mode: 'SKIP',
+    label: 'Skip (#8E8E93)',
+    hex: '#8E8E93',
+    border: '#8E8E93',
+    text: '#636366',
+    bg: 'rgba(142, 142, 147, 0.18)',
+    bgSolid: '#F2F2F7',
+    bgAlpha: (alpha = 0.18) => `rgba(142, 142, 147, ${alpha})`
+  }
+};
+
+/**
  * Returns accurate CSS background color, text color, and border for a Luma (Y) sample (0-255).
  * 
  * @param {number} val - 8-bit luma sample value (0-255)
@@ -165,4 +277,43 @@ export const getIntraModeInfo = (mode) => {
   if (mode > 18 && mode < 26) return { name: `Angular ${mode}`, type: 'Diagonal → Ver', desc: `Angular prediction (Mode ${mode})` };
   if (mode > 26 && mode < 34) return { name: `Angular ${mode}`, type: 'Ver → Top-Right', desc: `Angular prediction (Mode ${mode})` };
   return { name: `Mode ${mode}`, type: 'Intra', desc: `Intra Mode ${mode}` };
+};
+
+/**
+ * Exact ITU-R BT.709 Full-Range YCbCr (YUV) to sRGB conversion.
+ * Primary standard for HD / Full HD HEVC content.
+ * 
+ * @param {number} y  - 8-bit Luma sample [0, 255]
+ * @param {number} cb - 8-bit Chroma Blue sample [0, 255]
+ * @param {number} cr - 8-bit Chroma Red sample [0, 255]
+ * @returns {{ r: number, g: number, b: number, hex: string }}
+ */
+export const bt709YuvToRgb = (y, cb, cr) => {
+  const dCb = (cb ?? 128) - 128;
+  const dCr = (cr ?? 128) - 128;
+  const luma = y ?? 128;
+  const r = clamp(Math.round(luma + 1.57480 * dCr), 0, 255);
+  const g = clamp(Math.round(luma - 0.18732 * dCb - 0.46812 * dCr), 0, 255);
+  const b = clamp(Math.round(luma + 1.85560 * dCb), 0, 255);
+  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+  return { r, g, b, hex };
+};
+
+/**
+ * Exact ITU-R BT.601 Full-Range YCbCr (YUV) to sRGB conversion.
+ * 
+ * @param {number} y  - 8-bit Luma sample [0, 255]
+ * @param {number} cb - 8-bit Chroma Blue sample [0, 255]
+ * @param {number} cr - 8-bit Chroma Red sample [0, 255]
+ * @returns {{ r: number, g: number, b: number, hex: string }}
+ */
+export const bt601YuvToRgb = (y, cb, cr) => {
+  const dCb = (cb ?? 128) - 128;
+  const dCr = (cr ?? 128) - 128;
+  const luma = y ?? 128;
+  const r = clamp(Math.round(luma + 1.40200 * dCr), 0, 255);
+  const g = clamp(Math.round(luma - 0.34414 * dCb - 0.71414 * dCr), 0, 255);
+  const b = clamp(Math.round(luma + 1.77200 * dCb), 0, 255);
+  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+  return { r, g, b, hex };
 };

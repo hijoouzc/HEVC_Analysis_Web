@@ -68,3 +68,5 @@ deploy/
 *.opensdf
 *.user
 .vs/
+.agents/
+.antigravity/

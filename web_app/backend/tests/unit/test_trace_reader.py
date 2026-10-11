@@ -35,3 +35,18 @@ def test_trace_reader_find_one(sample_trace_file):
     assert event["mode"] == 0
     assert "cost" in event
     assert "pred_data" in event
+
+def test_trace_reader_caching(sample_trace_file):
+    TraceReader.clear_cache()
+    # First call populates cache
+    events_1 = TraceReader.read_all(sample_trace_file, event_filter="RDO_INTRA_SEARCH")
+    assert len(events_1) == 35
+    
+    # Second call uses cache
+    events_2 = TraceReader.read_all(sample_trace_file, event_filter="RDO_INTRA_SEARCH")
+    assert len(events_2) == 35
+    assert events_1 == events_2
+    
+    # Cache clear resets
+    TraceReader.clear_cache()
+    assert len(TraceReader._cache) == 0

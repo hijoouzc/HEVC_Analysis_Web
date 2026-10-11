@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { getIntraModeInfo } from '../utils/colorUtils';
+import { getIntraModeInfo, HEVC_DEPTH_COLORS, HEVC_MODE_COLORS } from '../utils/colorUtils';
+import HmSourceCodeModal from './common/HmSourceCodeModal';
+import DrawioExportModal from './common/DrawioExportModal';
+import QuadtreeHierarchyGraph from './common/QuadtreeHierarchyGraph';
+import { HM_QUADTREE_RDO_SNIPPET } from '../constants/hmSourceSnippets';
 
 /**
  * QuadTreeVisualizer (CP_01_PARTITION)
@@ -14,19 +18,43 @@ export default function QuadTreeVisualizer({
   selectedCU = null,
   onSelectCU = null,
   onNavigateToIntra = null,
-  onBackToFrame = null
+  onBackToFrame = null,
+  onNavigateToSim = null
 }) {
   const [selectedNode, setSelectedNode] = useState(undefined); // undefined: initial load, null: explicitly deselected
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (default: clean transparent, no mode overlay), 'mode', 'depth'
   const [textureMode, setTextureMode] = useState('color'); // 'color', 'grayscale', 'off'
+  const [viewLayout, setViewLayout] = useState('dual'); // 'dual' (side-by-side), '2d' (spatial grid only), 'tree' (quadtree graph only)
+  const [showHmModal, setShowHmModal] = useState(false);
+  const [showDrawioModal, setShowDrawioModal] = useState(false);
 
   if (!partitionData || !partitionData.nodes || partitionData.nodes.length === 0) {
     return (
-      <div className="card-box" style={{ padding: '2rem', textAlign: 'center', background: 'var(--c-light-gray)' }}>
-        <h3 style={{ marginBottom: '0.5rem' }}>CP_01: CTU QuadTree Partitioning</h3>
-        <p style={{ color: '#666', fontSize: '0.9rem' }}>
-          No partition trace data available for CTU ({ctuX}, {ctuY}). Encode an image to view the quadtree hierarchy.
+      <div className="apple-card" style={{ padding: '2rem', textAlign: 'center', background: 'var(--apple-canvas)' }}>
+        <h3 style={{ marginBottom: '0.5rem', color: 'var(--apple-label)' }}>CP_01: CTU QuadTree Partitioning</h3>
+        <p style={{ color: 'var(--apple-label-secondary)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+          No partition trace data available for CTU ({ctuX ?? 0}, {ctuY ?? 0}). Encode an image to view the quadtree hierarchy or explore via simulator.
         </p>
+        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {onBackToFrame && (
+            <button
+              type="button"
+              className="apple-btn-secondary"
+              onClick={onBackToFrame}
+            >
+              ← Return to CTU Grid
+            </button>
+          )}
+          {onNavigateToSim && (
+            <button
+              type="button"
+              className="apple-btn-primary"
+              onClick={onNavigateToSim}
+            >
+              Launch RDO Simulator →
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -43,19 +71,10 @@ export default function QuadTreeVisualizer({
   const splitNodes = nodes.filter(n => n.split);
 
   // Depth color palettes matching H.265 quadtree hierarchy
-  const depthColors = {
-    0: { bg: 'rgba(2, 132, 199, 0.22)', bgSolid: '#E0F2FE', border: '#0284C7', text: '#0369A1', label: 'Depth 0 (64×64)' },
-    1: { bg: 'rgba(14, 165, 233, 0.22)', bgSolid: '#BAE6FD', border: '#0EA5E9', text: '#0284C7', label: 'Depth 1 (32×32)' },
-    2: { bg: 'rgba(249, 115, 22, 0.22)', bgSolid: '#FFEDD5', border: '#F97316', text: '#C2410C', label: 'Depth 2 (16×16)' },
-    3: { bg: 'rgba(234, 179, 8, 0.22)', bgSolid: '#FEF08A', border: '#EAB308', text: '#A16207', label: 'Depth 3 (8×8)' },
-  };
+  const depthColors = HEVC_DEPTH_COLORS;
 
   // Prediction Mode color palettes (H.265 standard)
-  const modeColors = {
-    INTRA: { bg: 'rgba(220, 38, 38, 0.22)', bgSolid: '#FEE2E2', border: '#DC2626', text: '#B91C1C', label: 'Intra (#DC2626)' },
-    INTER: { bg: 'rgba(37, 99, 235, 0.22)', bgSolid: '#DBEAFE', border: '#2563EB', text: '#1D4ED8', label: 'Inter (#2563EB)' },
-    SKIP:  { bg: 'rgba(22, 163, 74, 0.22)', bgSolid: '#DCFCE7', border: '#16A34A', text: '#15803D', label: 'Skip (#16A34A)' },
-  };
+  const modeColors = HEVC_MODE_COLORS;
 
   // Safe relative coordinate helper eliminating NaN and coordinate misalignment
   const getSafeRelCoord = (val, basePixel) => {
@@ -111,134 +130,156 @@ export default function QuadTreeVisualizer({
           {onBackToFrame && (
             <button
               type="button"
+              className="apple-btn-secondary"
               onClick={onBackToFrame}
-              style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                fontFamily: 'JetBrains Mono',
-                border: '1.5px solid var(--c-black)',
-                background: 'var(--c-white)',
-                cursor: 'pointer'
-              }}
               title="Return to full frame view"
             >
               ← Frame View
             </button>
           )}
-          <span style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'JetBrains Mono' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 800, fontFamily: 'JetBrains Mono', color: 'var(--apple-label)' }}>
             CTU ({targetCtuX}, {targetCtuY}) QuadTree
           </span>
         </div>
 
-        {onNavigateToIntra && (
-          activeNode ? (
+        <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* View Mode Segmented: [ Dual View | 2D Grid | Tree Graph ] */}
+          <div className="apple-segmented">
             <button
               type="button"
-              onClick={() => {
-                if (activeNode.width === 8) {
-                  onNavigateToIntra(activeNode);
-                }
-              }}
-              disabled={activeNode.width !== 8}
-              style={{
-                padding: '0.35rem 0.85rem',
-                fontSize: '0.75rem',
-                fontWeight: 800,
-                fontFamily: 'JetBrains Mono',
-                border: '1.5px solid var(--c-black)',
-                background: activeNode.width === 8 ? 'var(--c-magenta)' : '#94A3B8',
-                color: '#FFFFFF',
-                cursor: activeNode.width === 8 ? 'pointer' : 'not-allowed',
-                opacity: activeNode.width === 8 ? 1 : 0.7
-              }}
-              title={activeNode.width === 8 ? "Inspect 8×8 Intra Prediction Flow" : "Intra prediction pipeline chỉ hỗ trợ phân tích ma trận khối 8×8"}
+              className={`apple-segmented-item ${viewLayout === 'dual' ? 'active' : ''}`}
+              onClick={() => setViewLayout('dual')}
+              title="View 2D Grid and QuadTree Graph Side-by-Side"
             >
-              {activeNode.width === 8 ? 'Inspect Intra (8×8) →' : `8×8 Only (${activeW}×${activeH})`}
+              Dual View
             </button>
-          ) : (
-            <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontFamily: 'JetBrains Mono', fontWeight: 700 }}>
-              No CU selected
-            </span>
-          )
-        )}
+            <button
+              type="button"
+              className={`apple-segmented-item ${viewLayout === '2d' ? 'active' : ''}`}
+              onClick={() => setViewLayout('2d')}
+              title="View 2D Spatial Partition Grid Only"
+            >
+              2D Grid
+            </button>
+            <button
+              type="button"
+              className={`apple-segmented-item ${viewLayout === 'tree' ? 'active' : ''}`}
+              onClick={() => setViewLayout('tree')}
+              title="View QuadTree Hierarchical Graph Only"
+            >
+              Tree Graph
+            </button>
+          </div>
+
+          {/* Export Draw.io Button */}
+          <button
+            type="button"
+            className="apple-btn-secondary"
+            onClick={() => setShowDrawioModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            title="Export / Copy Draw.io XML for this CTU QuadTree"
+          >
+            <span>[+]</span>
+            <span>Draw.io XML</span>
+          </button>
+
+          <button
+            type="button"
+            className="apple-btn-secondary"
+            onClick={() => setShowHmModal(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            title="Inspect HM-16.0 C++ Source Code for xCompressCU QuadTree"
+          >
+            <span>&lt;&gt;</span>
+            <span>Show HM Code</span>
+          </button>
+
+          {onNavigateToSim && (
+            <button
+              type="button"
+              className="apple-btn-primary"
+              onClick={onNavigateToSim}
+              title="Open RDO Simulator"
+            >
+              RDO Simulator →
+            </button>
+          )}
+
+          {onNavigateToIntra && (
+            activeNode ? (
+              <button
+                type="button"
+                className="apple-btn-primary"
+                onClick={() => {
+                  if (activeNode.width === 8) {
+                    onNavigateToIntra(activeNode);
+                  }
+                }}
+                disabled={activeNode.width !== 8}
+                style={{
+                  background: activeNode.width === 8 ? 'var(--apple-purple, #AF52DE)' : '#94A3B8',
+                  cursor: activeNode.width === 8 ? 'pointer' : 'not-allowed',
+                  opacity: activeNode.width === 8 ? 1 : 0.7
+                }}
+                title={activeNode.width === 8 ? "Inspect 8×8 Intra Prediction Flow" : "Intra prediction pipeline is strictly available for 8×8 block inspection"}
+              >
+                {activeNode.width === 8 ? 'Inspect Intra (8×8) →' : `8×8 Only (${activeW}×${activeH})`}
+              </button>
+            ) : (
+              <span style={{ fontSize: '0.75rem', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono', fontWeight: 700 }}>
+                No CU selected
+              </span>
+            )
+          )}
+        </div>
       </div>
 
       {/* Top Stats Banner */}
-      <div className="metrics-banner" style={{
+      <div className="apple-card" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
         gap: '1rem',
-        padding: '1rem 1.25rem',
-        background: 'var(--c-white)',
-        border: '2px solid var(--c-black)'
+        padding: '0.85rem 1.25rem'
       }}>
         <div>
-          <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>CTU Target</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>({targetCtuX}, {targetCtuY})</div>
+          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>CTU Target</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-label)' }}>({targetCtuX}, {targetCtuY})</div>
         </div>
         <div>
-          <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>Leaf CUs</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--c-blue)' }}>{leaf_nodes || leafNodes.length}</div>
+          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>Leaf CUs</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-blue)' }}>{leaf_nodes || leafNodes.length}</div>
         </div>
         <div>
-          <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>Max Depth</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--c-orange)' }}>{max_depth} / 3</div>
+          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>Max Depth</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-orange, #FF9500)' }}>{max_depth} / 3</div>
         </div>
         <div>
-          <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#666', fontWeight: 700 }}>CU Size Range</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800 }}>64 → 8 px</div>
+          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>CU Size Range</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-label)' }}>64 → 8 px</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>Color Overlay:</span>
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Color Overlay:</span>
+          <div className="apple-segmented">
             <button
               type="button"
+              className={`apple-segmented-item ${colorScheme === 'outline' ? 'active' : ''}`}
               onClick={() => setColorScheme('outline')}
-              style={{
-                flex: 1,
-                padding: '0.3rem 0.5rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                border: '1.5px solid var(--c-black)',
-                background: colorScheme === 'outline' ? 'var(--c-black)' : 'var(--c-white)',
-                color: colorScheme === 'outline' ? 'var(--c-white)' : 'var(--c-black)',
-                cursor: 'pointer'
-              }}
               title="Clean transparent CU partition lines with NO mode color overlay"
             >
               None
             </button>
             <button
               type="button"
+              className={`apple-segmented-item ${colorScheme === 'mode' ? 'active' : ''}`}
               onClick={() => setColorScheme('mode')}
-              style={{
-                flex: 1,
-                padding: '0.3rem 0.5rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                border: '1.5px solid var(--c-black)',
-                background: colorScheme === 'mode' ? 'var(--c-black)' : 'var(--c-white)',
-                color: colorScheme === 'mode' ? 'var(--c-white)' : 'var(--c-black)',
-                cursor: 'pointer'
-              }}
               title="Prediction Modes cell overlay: INTRA / INTER / SKIP"
             >
               Mode
             </button>
             <button
               type="button"
+              className={`apple-segmented-item ${colorScheme === 'depth' ? 'active' : ''}`}
               onClick={() => setColorScheme('depth')}
-              style={{
-                flex: 1,
-                padding: '0.3rem 0.5rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                border: '1.5px solid var(--c-black)',
-                background: colorScheme === 'depth' ? 'var(--c-black)' : 'var(--c-white)',
-                color: colorScheme === 'depth' ? 'var(--c-white)' : 'var(--c-black)',
-                cursor: 'pointer'
-              }}
               title="Quadtree Depth levels overlay: D0..D3"
             >
               Depth
@@ -247,57 +288,45 @@ export default function QuadTreeVisualizer({
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>Texture:</span>
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
-            <button
-              type="button"
-              onClick={() => setTextureMode(m => m === 'color' ? 'grayscale' : m === 'grayscale' ? 'off' : 'color')}
-              style={{
-                padding: '0.3rem 0.6rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                border: '1.5px solid var(--c-black)',
-                background: textureMode !== 'off' ? 'var(--c-black)' : 'var(--c-white)',
-                color: textureMode !== 'off' ? 'var(--c-white)' : 'var(--c-black)',
-                cursor: 'pointer'
-              }}
-              title="Toggle CTU block texture: COLOR / GRAYSCALE / OFF"
-            >
-              {textureMode === 'color' ? 'COLOR' : textureMode === 'grayscale' ? 'GRAY' : 'OFF'}
-            </button>
-          </div>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Texture:</span>
+          <button
+            type="button"
+            className="apple-btn-secondary"
+            onClick={() => setTextureMode(m => m === 'color' ? 'grayscale' : m === 'grayscale' ? 'off' : 'color')}
+            title="Toggle CTU block texture: COLOR / GRAYSCALE / OFF"
+          >
+            {textureMode === 'color' ? 'COLOR' : textureMode === 'grayscale' ? 'GRAY' : 'OFF'}
+          </button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
-          <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>Pred Modes:</span>
-          <div style={{ display: 'flex', gap: '0.3rem' }}>
-            <button
-              type="button"
-              onClick={() => setColorScheme(c => c === 'mode' ? 'outline' : 'mode')}
-              style={{
-                padding: '0.3rem 0.6rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                border: '1.5px solid var(--c-black)',
-                background: colorScheme === 'mode' ? 'var(--c-magenta)' : 'var(--c-white)',
-                color: colorScheme === 'mode' ? 'var(--c-white)' : 'var(--c-black)',
-                cursor: 'pointer'
-              }}
-              title="Toggle PRED MODES cell overlay (INTRA, INTER, SKIP) ON / OFF"
-            >
-              {colorScheme === 'mode' ? 'OVERLAY: ON' : 'OVERLAY: OFF'}
-            </button>
-          </div>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Pred Modes:</span>
+          <button
+            type="button"
+            className="apple-btn-secondary"
+            onClick={() => setColorScheme(c => c === 'mode' ? 'outline' : 'mode')}
+            title="Toggle PRED MODES cell overlay (INTRA, INTER, SKIP) ON / OFF"
+          >
+            {colorScheme === 'mode' ? 'OVERLAY: ON' : 'OVERLAY: OFF'}
+          </button>
         </div>
       </div>
 
-      {/* Main Visualizer Body */}
-      <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        {/* Interactive 64x64 Quadtree Canvas */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%', maxWidth: '480px', flex: '1 1 360px' }}>
+      {/* Top Section: 2D Spatial Partition & CU Inspector */}
+      {(viewLayout === '2d' || viewLayout === 'dual') && (
+        <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {/* Interactive 64x64 Quadtree Canvas */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            width: '460px',
+            maxWidth: '100%',
+            flex: '0 0 auto'
+          }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase' }}>
-              64×64 CTU Spatial QuadTree Layout
+            <span style={{ fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--apple-label)' }}>
+              CTU (64×64) Coding Quadtree Partition
             </span>
           </div>
 
@@ -308,8 +337,9 @@ export default function QuadTreeVisualizer({
               maxWidth: '480px',
               aspectRatio: '1 / 1',
               background: '#0F172A',
-              border: '3px solid var(--c-black)',
-              boxShadow: '4px 4px 0px rgba(0,0,0,1)',
+              border: '1px solid var(--apple-hairline)',
+              borderRadius: 0,
+              boxShadow: 'none',
               userSelect: 'none',
               boxSizing: 'border-box',
               overflow: 'hidden'
@@ -400,7 +430,7 @@ export default function QuadTreeVisualizer({
                     : (hasImage ? activeColor.bg : activeColor.bgSolid));
 
               const cellBorder = isSelected
-                ? '3px solid var(--c-magenta)'
+                ? '3px solid var(--apple-purple)'
                 : (colorScheme === 'outline'
                     ? (hasImage ? '1.5px solid rgba(255, 255, 255, 0.85)' : '1.5px solid rgba(148, 163, 184, 0.8)')
                     : `1.5px solid ${activeColor.border}`);
@@ -435,7 +465,7 @@ export default function QuadTreeVisualizer({
                     <span style={{
                       fontSize: node.width >= 32 ? '0.85rem' : '0.68rem',
                       fontWeight: 800,
-                      color: hasImage ? '#FFFFFF' : (colorScheme === 'outline' ? '#1E293B' : activeColor.text),
+                      color: hasImage ? '#FFFFFF' : (colorScheme === 'outline' ? 'var(--apple-label)' : activeColor.text),
                       textShadow: hasImage ? '0 1px 2px #000, 0 0 4px #000' : 'none',
                       lineHeight: '1.1',
                       textAlign: 'center'
@@ -447,7 +477,7 @@ export default function QuadTreeVisualizer({
                     <span style={{
                       fontSize: node.width >= 32 ? '0.75rem' : '0.62rem',
                       fontWeight: 800,
-                      color: hasImage ? '#FFD200' : '#1E293B',
+                      color: hasImage ? '#FFD200' : 'var(--apple-label)',
                       textShadow: hasImage ? '0 1px 2px #000, 0 0 4px #000' : 'none',
                       maxWidth: '95%',
                       overflow: 'hidden',
@@ -462,7 +492,7 @@ export default function QuadTreeVisualizer({
                   {node.width === 64 && node.cost !== null && (
                     <span style={{
                       fontSize: '0.7rem',
-                      color: hasImage ? '#E2E8F0' : '#555',
+                      color: hasImage ? '#E2E8F0' : 'var(--apple-label-secondary)',
                       textShadow: hasImage ? '0 1px 2px #000' : 'none',
                       fontFamily: 'monospace',
                       marginTop: '2px'
@@ -479,65 +509,49 @@ export default function QuadTreeVisualizer({
           {colorScheme === 'outline' ? (
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', fontSize: '0.72rem' }}>
-                <span style={{ color: '#555', fontWeight: 800 }}>OVERLAY:</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#1E293B' }}>
+                <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 800 }}>OVERLAY:</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--apple-label)' }}>
                   <span style={{ width: '14px', height: '0px', borderTop: '2px solid rgba(71, 85, 105, 0.95)', display: 'inline-block' }} />
                   <span>CU BOUNDARIES (TRANSPARENT, MODE OVERLAY: OFF)</span>
                 </span>
               </div>
               <button
                 type="button"
+                className="apple-btn-secondary"
                 onClick={() => setColorScheme('mode')}
-                style={{
-                  padding: '0.15rem 0.5rem',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  fontFamily: 'JetBrains Mono',
-                  border: '1px solid var(--c-black)',
-                  background: 'var(--c-white)',
-                  color: 'var(--c-black)',
-                  cursor: 'pointer'
-                }}
+                style={{ fontSize: '0.68rem', padding: '0.2rem 0.5rem' }}
                 title="Turn on PRED MODES cell overlay (INTRA, INTER, SKIP)"
               >
-                + TURN ON MODE OVERLAY
+                + Turn On Mode Overlay
               </button>
             </div>
           ) : colorScheme === 'mode' ? (
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#444' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--apple-label-secondary)' }}>
                   PRED MODES:
                 </span>
                 {Object.entries(modeColors).map(([m, item]) => (
                   <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
-                    <span style={{ width: '12px', height: '12px', background: item.bg, border: `1.5px solid ${item.border}`, display: 'inline-block' }} />
-                    <span style={{ fontWeight: 600 }}>{m}</span>
+                    <span style={{ width: '12px', height: '12px', background: item.bg, border: `1.5px solid ${item.border}`, display: 'inline-block', borderRadius: '2px' }} />
+                    <span style={{ fontWeight: 600, color: 'var(--apple-label)' }}>{m}</span>
                   </div>
                 ))}
               </div>
               <button
                 type="button"
+                className="apple-btn-secondary"
                 onClick={() => setColorScheme('outline')}
-                style={{
-                  padding: '0.15rem 0.5rem',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  fontFamily: 'JetBrains Mono',
-                  border: '1px solid var(--c-black)',
-                  background: 'var(--c-white)',
-                  color: 'var(--c-black)',
-                  cursor: 'pointer'
-                }}
+                style={{ fontSize: '0.68rem', padding: '0.2rem 0.5rem' }}
                 title="Turn off PRED MODES cell overlay"
               >
-                ✕ TURN OFF OVERLAY
+                ✕ Turn Off Overlay
               </button>
             </div>
           ) : (
             <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#444' }}>
+                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--apple-label-secondary)' }}>
                   DEPTH LEVELS:
                 </span>
                 {Object.entries(depthColors).map(([d, item]) => (
@@ -549,48 +563,38 @@ export default function QuadTreeVisualizer({
               </div>
               <button
                 type="button"
+                className="apple-btn-secondary"
                 onClick={() => setColorScheme('outline')}
-                style={{
-                  padding: '0.15rem 0.5rem',
-                  fontSize: '0.68rem',
-                  fontWeight: 700,
-                  fontFamily: 'JetBrains Mono',
-                  border: '1px solid var(--c-black)',
-                  background: 'var(--c-white)',
-                  color: 'var(--c-black)',
-                  cursor: 'pointer'
-                }}
+                style={{ fontSize: '0.68rem', padding: '0.2rem 0.5rem' }}
                 title="Turn off depth overlay"
               >
-                ✕ TURN OFF OVERLAY
+                ✕ Turn Off Overlay
               </button>
             </div>
           )}
         </div>
 
         {/* Selected CU Details Inspector Panel */}
-        <div style={{ flex: 1, minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <div className="card-box" style={{
-            background: 'var(--c-white)',
-            border: '2px solid var(--c-black)',
-            padding: '1.25rem',
-            boxShadow: '3px 3px 0px rgba(0,0,0,1)'
+        <div style={{ flex: '1 1 320px', minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="apple-card" style={{
+            padding: '1.25rem'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid var(--c-black)', paddingBottom: '0.5rem', marginBottom: '0.85rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--apple-hairline)', paddingBottom: '0.65rem', marginBottom: '0.85rem' }}>
               <div>
-                <h3 style={{ fontSize: '1.1rem', textTransform: 'uppercase', margin: 0 }}>CU Inspector</h3>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 800, textTransform: 'uppercase', margin: 0, color: 'var(--apple-label)' }}>CU Inspector</h3>
                 {activeNode && (
-                  <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.25rem', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--apple-label-secondary)', marginTop: '0.25rem', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
                     {activeW}×{activeH} • Cost {activeNode.cost !== null ? Number(activeNode.cost).toFixed(1) : '—'}
                   </div>
                 )}
               </div>
               <span style={{
-                fontSize: '0.75rem',
+                fontSize: '0.72rem',
                 fontWeight: 700,
                 padding: '0.2rem 0.6rem',
+                borderRadius: '6px',
                 background: activeNode ? depthColors[activeNode.depth]?.bg : 'transparent',
-                border: '1.5px solid var(--c-black)'
+                border: '1px solid var(--apple-hairline)'
               }}>
                 Depth {activeNode?.depth}
               </span>
@@ -599,16 +603,15 @@ export default function QuadTreeVisualizer({
             {activeNode ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 {/* CU Block Image Texture Crop */}
-                <div style={{
-                  padding: '0.65rem',
-                  background: 'var(--c-light-gray)',
-                  border: '1.5px solid var(--c-black)',
+                <div className="apple-card" style={{
+                  padding: '0.75rem',
+                  background: 'var(--apple-canvas)',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: '0.4rem'
+                  gap: '0.45rem'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: '#475569' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--apple-label-secondary)' }}>
                       Texture Crop
                     </span>
                   </div>
@@ -618,8 +621,9 @@ export default function QuadTreeVisualizer({
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    background: '#0F172A',
-                    border: '1.5px solid var(--c-black)',
+                    background: 'var(--apple-canvas)',
+                    border: '1px solid var(--apple-hairline)',
+                    borderRadius: 0,
                     position: 'relative',
                     overflow: 'hidden',
                     padding: '0.85rem',
@@ -630,8 +634,8 @@ export default function QuadTreeVisualizer({
                         style={{
                           width: `${cropBoxSize}px`,
                           height: `${cropBoxSize}px`,
-                          border: '2px solid #38BDF8',
-                          boxShadow: 'none',
+                          border: '1.5px solid var(--apple-blue)',
+                          borderRadius: 0,
                           position: 'relative',
                           overflow: 'hidden',
                           backgroundColor: '#000',
@@ -662,21 +666,21 @@ export default function QuadTreeVisualizer({
                         </svg>
                       </div>
                     ) : (
-                      <span style={{ color: '#94A3B8', fontSize: '0.75rem', fontFamily: 'JetBrains Mono', padding: '1rem 0' }}>
+                      <span style={{ color: 'var(--apple-label-tertiary)', fontSize: '0.75rem', fontFamily: 'JetBrains Mono', padding: '1rem 0' }}>
                         No Image Available
                       </span>
                     )}
                   </div>
                 </div>
 
-                <div style={{ padding: '0.65rem 0.75rem', background: 'var(--c-white)', border: '1.5px solid var(--c-black)' }}>
-                  <div style={{ fontSize: '0.7rem', color: '#666', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                <div className="apple-card" style={{ padding: '0.65rem 0.75rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--apple-label-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
                     Prediction Mode & Direction
                   </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--c-blue)' }}>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--apple-blue)' }}>
                     {activeNode.mode || 'INTRA'}
                     {activeNode.mode === 'INTRA' && activeNode.intra_dir !== null && (
-                      <span style={{ marginLeft: '0.5rem', fontSize: '0.85rem', color: 'var(--c-black)', fontWeight: 600 }}>
+                      <span style={{ marginLeft: '0.5rem', fontSize: '0.82rem', color: 'var(--apple-label)', fontWeight: 600 }}>
                         Mode {activeNode.intra_dir}: {getIntraModeInfo(activeNode.intra_dir).name} ({getIntraModeInfo(activeNode.intra_dir).type})
                       </span>
                     )}
@@ -686,6 +690,7 @@ export default function QuadTreeVisualizer({
                 {onNavigateToIntra && (
                   <button
                     type="button"
+                    className="apple-btn-primary"
                     onClick={() => {
                       if (activeNode.width === 8) {
                         onNavigateToIntra(activeNode);
@@ -695,22 +700,11 @@ export default function QuadTreeVisualizer({
                     style={{
                       width: '100%',
                       padding: '0.65rem 1rem',
-                      background: activeNode.width === 8 ? 'var(--c-magenta)' : '#94A3B8',
-                      color: '#FFFFFF',
-                      border: '2px solid var(--c-black)',
-                      fontWeight: 800,
-                      fontSize: '0.82rem',
-                      fontFamily: 'JetBrains Mono',
+                      background: activeNode.width === 8 ? 'var(--apple-purple, #AF52DE)' : '#94A3B8',
                       cursor: activeNode.width === 8 ? 'pointer' : 'not-allowed',
-                      boxShadow: activeNode.width === 8 ? '3px 3px 0px rgba(0,0,0,1)' : 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '0.5rem',
-                      marginTop: '0.25rem',
                       opacity: activeNode.width === 8 ? 1 : 0.7
                     }}
-                    title={activeNode.width === 8 ? "Inspect 8×8 Intra Prediction Flow" : "Intra prediction pipeline chỉ hỗ trợ phân tích ma trận khối 8×8 để dễ quan sát"}
+                    title={activeNode.width === 8 ? "Inspect 8×8 Intra Prediction Flow" : "Intra prediction pipeline only supports 8×8 block matrix inspection"}
                   >
                     {activeNode.width === 8 ? 'Inspect Intra (8×8) →' : `8×8 Only (${activeW}×${activeH})`}
                   </button>
@@ -720,18 +714,72 @@ export default function QuadTreeVisualizer({
               <div style={{
                 padding: '2.5rem 1rem',
                 textAlign: 'center',
-                background: 'var(--c-light-gray)',
-                border: '1.5px dashed #CBD5E1',
-                color: '#64748B',
+                background: 'var(--apple-canvas)',
+                border: '1.5px dashed var(--apple-hairline)',
+                borderRadius: '6px',
+                color: 'var(--apple-label-secondary)',
                 fontFamily: 'JetBrains Mono',
                 fontSize: '0.8rem'
               }}>
-                <div style={{ fontWeight: 700, color: '#94A3B8' }}>No CU selected</div>
+                <div style={{ fontWeight: 700, color: 'var(--apple-label-tertiary)' }}>No CU selected</div>
               </div>
             )}
           </div>
         </div>
       </div>
+      )}
+
+      {/* Bottom Section: Dedicated Full-Width CTU QuadTree Geometric Square Blocks */}
+      {(viewLayout === 'tree' || viewLayout === 'dual') && (
+        <div style={{
+          width: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          marginTop: viewLayout === 'dual' ? '0.75rem' : '0'
+        }}>
+          <QuadtreeHierarchyGraph
+            partitionNodes={partitionData.nodes}
+            ctuPixelX={ctuPixelX}
+            ctuPixelY={ctuPixelY}
+            selectedCU={activeNode}
+            onSelectNode={handleCuClick}
+            showCost={true}
+            showMode={true}
+          />
+        </div>
+      )}
+
+      {/* HM-16.0 Source Code Inspector Modal for xCompressCU */}
+      <HmSourceCodeModal
+        isOpen={showHmModal}
+        onClose={() => setShowHmModal(false)}
+        title={HM_QUADTREE_RDO_SNIPPET.title}
+        sourceFile={HM_QUADTREE_RDO_SNIPPET.sourceFile}
+        functionName={HM_QUADTREE_RDO_SNIPPET.functionName}
+        standardRef={HM_QUADTREE_RDO_SNIPPET.standardRef}
+        description={HM_QUADTREE_RDO_SNIPPET.description}
+        variables={[
+          { name: 'Target CTU', value: `(${targetCtuX}, ${targetCtuY})`, highlight: true },
+          { name: 'Total Leaf CUs', value: leaf_nodes || leafNodes.length },
+          { name: 'Max QuadTree Depth', value: `${max_depth} / 3` },
+          { name: 'Selected CU', value: activeNode ? `${activeW}×${activeH} @ (${activeNode.x}, ${activeNode.y})` : 'None', highlight: true },
+          { name: 'CU Depth', value: activeNode?.depth ?? 0 },
+          { name: 'Best Mode', value: activeNode?.mode ?? 'INTRA' },
+          { name: 'RDO Cost', value: activeNode?.cost !== null && activeNode?.cost !== undefined ? Number(activeNode.cost).toFixed(1) : 'N/A' },
+        ]}
+        codeSnippet={HM_QUADTREE_RDO_SNIPPET.codeSnippet}
+      />
+
+      {/* Draw.io / diagrams.net XML Export Modal */}
+      <DrawioExportModal
+        isOpen={showDrawioModal}
+        onClose={() => setShowDrawioModal(false)}
+        partitionNodes={partitionData.nodes}
+        ctuX={targetCtuX}
+        ctuY={targetCtuY}
+        leafCount={leaf_nodes || leafNodes.length}
+        maxDepth={max_depth}
+      />
     </div>
   );
 }

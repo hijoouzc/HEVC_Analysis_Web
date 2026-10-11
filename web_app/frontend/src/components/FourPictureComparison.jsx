@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getIntraModeInfo } from '../utils/colorUtils';
+import { calculatePsnr } from '../utils/metricsUtils';
+import { Button, SegmentedControl, Badge } from './apple';
 
 /**
  * Diverging Colormap for Residual:
@@ -55,27 +57,41 @@ const FourPictureComparison = ({
   const splitContainerRef = useRef(null);
   const isDraggingSplit = useRef(false);
 
-  const handleSplitMouseDown = () => {
+  const handleSplitMouseDown = (e) => {
+    e.preventDefault();
+    isDraggingSplit.current = true;
+  };
+
+  const handleSplitTouchStart = () => {
     isDraggingSplit.current = true;
   };
 
   useEffect(() => {
-    const handleMouseMove = (e) => {
+    const handleMove = (clientX) => {
       if (!isDraggingSplit.current || !splitContainerRef.current) return;
       const rect = splitContainerRef.current.getBoundingClientRect();
-      const pos = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+      const pos = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
       setSplitPos(pos);
     };
 
-    const handleMouseUp = () => {
+    const handleMouseMove = (e) => handleMove(e.clientX);
+    const handleTouchMove = (e) => {
+      if (e.touches && e.touches[0]) handleMove(e.touches[0].clientX);
+    };
+
+    const handleEnd = () => {
       isDraggingSplit.current = false;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mouseup', handleEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleEnd);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mouseup', handleEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleEnd);
     };
   }, []);
 
@@ -124,7 +140,7 @@ const FourPictureComparison = ({
     }
 
     const mse = sse / numPixels;
-    const psnr = mse > 0 ? (10 * Math.log10((255 * 255) / mse)).toFixed(2) : '∞';
+    const psnr = calculatePsnr(mse);
 
     const meanOrig = sumOrig / numPixels;
     let varOrig = 0;
@@ -135,7 +151,9 @@ const FourPictureComparison = ({
     }
     varOrig /= numPixels;
     varResi /= numPixels;
-    const varReduction = varOrig > 0 ? Math.max(0, ((1 - varResi / varOrig) * 100)).toFixed(1) : '95.0';
+    const varReduction = varOrig > 0 
+      ? Math.max(0, ((1 - varResi / varOrig) * 100)).toFixed(1) 
+      : (varResi === 0 ? '100.0' : '0.0');
 
     return {
       cuSize,
@@ -179,12 +197,10 @@ const FourPictureComparison = ({
 
     return (
       <div
+        className="apple-card"
         style={{
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--c-white)',
-          border: '1.5px solid var(--c-black)',
-          boxShadow: '2px 2px 0px rgba(0, 0, 0, 1)',
           overflow: 'hidden',
         }}
       >
@@ -193,21 +209,24 @@ const FourPictureComparison = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            padding: '0.4rem 0.65rem',
-            background: '#F8FAFC',
-            borderBottom: '1px solid #E2E8F0',
+            padding: '0.45rem 0.65rem',
+            background: 'var(--apple-canvas)',
+            borderBottom: '1px solid var(--apple-hairline)',
             fontSize: '0.78rem',
             fontFamily: 'JetBrains Mono',
             fontWeight: 600,
+            color: 'var(--apple-label)'
           }}
         >
           <span>{title}</span>
           <span
             style={{
-              padding: '0.1rem 0.35rem',
+              padding: '0.1rem 0.45rem',
               fontSize: '0.66rem',
-              background: 'var(--c-black)',
-              color: 'var(--c-white)',
+              background: 'var(--fill-3)',
+              color: 'var(--apple-label)',
+              border: '1px solid var(--apple-hairline)',
+              borderRadius: '4px',
               fontWeight: 700,
             }}
           >
@@ -221,7 +240,7 @@ const FourPictureComparison = ({
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            background: '#0F172A',
+            background: 'var(--apple-canvas)',
           }}
         >
           <div
@@ -229,7 +248,7 @@ const FourPictureComparison = ({
               display: 'grid',
               gridTemplateColumns: `repeat(${size}, 1fr)`,
               gap: '1px',
-              background: '#334155',
+              background: 'var(--apple-border)',
               padding: '1px',
               maxWidth: '340px',
               width: '100%',
@@ -303,12 +322,10 @@ const FourPictureComparison = ({
 
     return (
       <div
+        className="apple-card"
         style={{
           display: 'flex',
           flexDirection: 'column',
-          background: 'var(--c-white)',
-          border: '1.5px solid var(--c-black)',
-          boxShadow: '2px 2px 0px rgba(0, 0, 0, 1)',
           overflow: 'hidden',
         }}
       >
@@ -318,9 +335,9 @@ const FourPictureComparison = ({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '0.4rem 0.65rem',
-            background: '#F8FAFC',
-            borderBottom: '1px solid #E2E8F0',
-            fontSize: '0.78rem',
+            background: 'var(--apple-subtle)',
+            borderBottom: '1px solid var(--apple-hairline)',
+            fontSize: '11.5px',
             fontFamily: 'JetBrains Mono',
             fontWeight: 600,
           }}
@@ -328,10 +345,12 @@ const FourPictureComparison = ({
           <span>{title}</span>
           <span
             style={{
-              padding: '0.1rem 0.35rem',
-              fontSize: '0.66rem',
-              background: 'var(--c-black)',
-              color: 'var(--c-white)',
+              padding: '1px 6px',
+              fontSize: '10px',
+              background: 'var(--apple-surface)',
+              border: '1px solid var(--apple-border)',
+              color: 'var(--apple-label-primary)',
+              borderRadius: '4px',
               fontWeight: 700,
             }}
           >
@@ -344,7 +363,7 @@ const FourPictureComparison = ({
             position: 'relative',
             width: '100%',
             aspectRatio: `${imgWidth} / ${imgHeight}`,
-            background: '#0F172A',
+            background: 'var(--apple-canvas)',
             cursor: onSelectCTU ? 'pointer' : 'default',
           }}
           onClick={(e) => {
@@ -408,11 +427,12 @@ const FourPictureComparison = ({
           maxWidth: '860px',
           margin: '0 auto',
           aspectRatio: isFrame ? `${imgWidth} / ${imgHeight}` : '1 / 1',
-          border: '1.5px solid var(--c-black)',
-          boxShadow: '3px 3px 0px rgba(0, 0, 0, 1)',
+          border: '1px solid var(--apple-hairline)',
+          borderRadius: 0,
+          boxShadow: 'none',
           overflow: 'hidden',
           userSelect: 'none',
-          background: '#0F172A',
+          background: 'var(--apple-canvas)',
         }}
       >
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
@@ -446,36 +466,81 @@ const FourPictureComparison = ({
 
         <div
           onMouseDown={handleSplitMouseDown}
+          onTouchStart={handleSplitTouchStart}
+          tabIndex={0}
+          role="slider"
+          aria-valuenow={Math.round(splitPos)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault();
+              setSplitPos(p => Math.max(0, p - 2));
+            } else if (e.key === 'ArrowRight') {
+              e.preventDefault();
+              setSplitPos(p => Math.min(100, p + 2));
+            }
+          }}
           style={{
             position: 'absolute',
             top: 0,
             bottom: 0,
             left: `${splitPos}%`,
-            width: '3px',
+            width: '1.5px',
             background: '#FFFFFF',
+            filter: 'drop-shadow(0 0 2px rgba(0,0,0,0.4))',
             cursor: 'ew-resize',
             transform: 'translateX(-50%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            zIndex: 10,
+            outline: 'none',
           }}
         >
+          {/* Frosted Glass Handle Knob (Apple Pro / Squoosh / applecn glass) */}
           <div
             style={{
-              width: '22px',
-              height: '22px',
+              width: '28px',
+              height: '28px',
               borderRadius: '50%',
-              background: 'var(--c-black)',
-              border: '2px solid #FFFFFF',
-              color: '#FFFFFF',
+              background: 'var(--apple-surface)',
+              backdropFilter: 'blur(16px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+              border: '0.5px solid var(--separator)',
+              boxShadow: 'var(--shadow-thumb)',
+              color: 'var(--label)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '0.65rem',
-              fontWeight: 700,
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              userSelect: 'none',
+              transition: 'transform 0.1s ease',
             }}
           >
-            ⇄
+            ↔
+          </div>
+
+          {/* Floating Percent Badge */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '12px',
+              background: 'var(--apple-surface)',
+              color: 'var(--label)',
+              border: '0.5px solid var(--separator)',
+              padding: '2px 6px',
+              borderRadius: '4px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '0.65rem',
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+              boxShadow: 'var(--shadow-card-small)'
+            }}
+          >
+            {Math.round(splitPos)}%
           </div>
         </div>
       </div>
@@ -485,7 +550,7 @@ const FourPictureComparison = ({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
       {/* Clean Apple-style Toolbar */}
-      <div className="stage-section-card" style={{ padding: '0.75rem 1rem', background: '#FAFAFA' }}>
+      <div className="stage-section-card" style={{ padding: '0.75rem 1rem' }}>
         <div
           style={{
             display: 'flex',
@@ -504,78 +569,38 @@ const FourPictureComparison = ({
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {ctuX !== null && ctuY !== null && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span
-                  style={{
-                    padding: '0.2rem 0.55rem',
-                    background: 'var(--c-white)',
-                    border: '1px solid #CBD5E1',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                  }}
-                >
+                <Badge variant="tag" color="gray">
                   CTU ({ctuX}, {ctuY})
-                </span>
+                </Badge>
                 {onSelectCTU && (
-                  <button
-                    type="button"
+                  <Button
+                    variant="gray"
+                    size="mini"
                     onClick={() => onSelectCTU(null, null)}
-                    style={{
-                      padding: '0.2rem 0.45rem',
-                      background: 'var(--c-white)',
-                      border: '1px solid #CBD5E1',
-                      fontSize: '0.72rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      color: '#64748B',
-                    }}
                     title="Deselect CTU"
                   >
                     ✕
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
             {onNavigateToIntra && (
-              <button
-                type="button"
+              <Button
+                variant="gray"
+                size="small"
                 onClick={onNavigateToIntra}
-                style={{
-                  padding: '0.2rem 0.55rem',
-                  background: 'var(--c-white)',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
               >
                 Intra →
-              </button>
+              </Button>
             )}
             {modeInfo && (
               <>
-                <span
-                  style={{
-                    padding: '0.2rem 0.55rem',
-                    background: 'var(--c-black)',
-                    color: 'var(--c-white)',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                  }}
-                >
+                <Badge variant="filled" color="blue">
                   Mode {currentMode.mode}: {modeInfo.name}
-                </span>
-                <span
-                  style={{
-                    padding: '0.2rem 0.55rem',
-                    background: '#FEF3C7',
-                    border: '1px solid #FCD34D',
-                    color: '#92400E',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                  }}
-                >
+                </Badge>
+                <Badge variant="tag" color="orange">
                   Cost: {currentMode.cost?.toFixed(1) || '0.0'}
-                </span>
+                </Badge>
               </>
             )}
           </div>
@@ -591,107 +616,69 @@ const FourPictureComparison = ({
             gap: '0.6rem',
             marginTop: '0.65rem',
             paddingTop: '0.65rem',
-            borderTop: '1px solid #E2E8F0',
+            borderTop: '1px solid var(--apple-border)',
           }}
         >
-          {/* Scope */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+          {/* Scope SegmentedControl */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
               Scope:
             </span>
-            {[
-              { id: 'cu', label: 'Block (8×8)' },
-              { id: 'frame', label: 'Full Frame' },
-            ].map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setScope(s.id)}
-                style={{
-                  padding: '0.2rem 0.5rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  border: '1px solid #CBD5E1',
-                  background: scope === s.id ? 'var(--c-black)' : 'var(--c-white)',
-                  color: scope === s.id ? 'var(--c-white)' : 'var(--c-black)',
-                  cursor: 'pointer',
-                }}
-              >
-                {s.label}
-              </button>
-            ))}
+            <SegmentedControl
+              value={scope}
+              onChange={setScope}
+              size="small"
+              items={[
+                { id: 'cu', label: 'Block (8×8)' },
+                { id: 'frame', label: 'Full Frame' },
+              ]}
+            />
           </div>
 
-          {/* Layout */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+          {/* Layout SegmentedControl */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
               Layout:
             </span>
-            {[
-              { id: 'grid', label: 'Grid' },
-              { id: 'split', label: 'Split Wipe' },
-              { id: 'single', label: 'Single' },
-            ].map(l => (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => setLayoutMode(l.id)}
-                style={{
-                  padding: '0.2rem 0.5rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  border: '1px solid #CBD5E1',
-                  background: layoutMode === l.id ? '#0284C7' : 'var(--c-white)',
-                  color: layoutMode === l.id ? '#FFFFFF' : 'var(--c-black)',
-                  cursor: 'pointer',
-                }}
-              >
-                {l.label}
-              </button>
-            ))}
+            <SegmentedControl
+              value={layoutMode}
+              onChange={setLayoutMode}
+              size="small"
+              items={[
+                { id: 'grid', label: 'Grid' },
+                { id: 'split', label: 'Split Wipe' },
+                { id: 'single', label: 'Single' },
+              ]}
+            />
           </div>
 
           {/* Gain and Values */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-              <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
                 Gain:
               </span>
-              {[1, 2, 4, 8].map(g => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setResiGain(g)}
-                  style={{
-                    padding: '0.15rem 0.4rem',
-                    fontSize: '0.68rem',
-                    border: '1px solid #CBD5E1',
-                    background: resiGain === g ? 'var(--c-black)' : 'var(--c-white)',
-                    color: resiGain === g ? 'var(--c-white)' : 'var(--c-black)',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {g}×
-                </button>
-              ))}
+              <SegmentedControl
+                value={resiGain}
+                onChange={setResiGain}
+                size="small"
+                items={[
+                  { id: 1, label: '1×' },
+                  { id: 2, label: '2×' },
+                  { id: 4, label: '4×' },
+                  { id: 8, label: '8×' },
+                ]}
+              />
             </div>
 
             {scope === 'cu' && (
-              <button
-                type="button"
+              <Button
+                variant="gray"
+                size="small"
                 onClick={() => setShowValues(prev => !prev)}
-                style={{
-                  padding: '0.2rem 0.5rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  border: '1px solid #CBD5E1',
-                  background: showValues ? '#FEF08A' : 'var(--c-white)',
-                  color: 'var(--c-black)',
-                  cursor: 'pointer',
-                }}
               >
                 Values: {showValues ? 'On' : 'Off'}
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -705,8 +692,8 @@ const FourPictureComparison = ({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '0.45rem 0.85rem',
-            background: '#F1F5F9',
-            border: '1px solid #CBD5E1',
+            background: 'var(--apple-canvas)',
+            border: '1px solid var(--apple-hairline)',
             fontFamily: 'JetBrains Mono',
             fontSize: '0.75rem',
           }}
@@ -724,7 +711,7 @@ const FourPictureComparison = ({
           <button
             type="button"
             onClick={() => setSelectedCell(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', fontSize: '0.7rem' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--apple-label-secondary)', fontSize: '0.7rem' }}
           >
             ✕
           </button>
@@ -740,7 +727,8 @@ const FourPictureComparison = ({
               <select
                 value={splitLeft}
                 onChange={e => setSplitLeft(e.target.value)}
-                style={{ padding: '0.2rem 0.4rem', border: '1px solid #CBD5E1' }}
+                className="apple-select-control"
+                style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
               >
                 <option value="orig">Original</option>
                 <option value="pred">Prediction</option>
@@ -748,13 +736,14 @@ const FourPictureComparison = ({
                 <option value="recon">Reconstructed</option>
               </select>
             </div>
-            <span style={{ color: '#64748B', fontSize: '0.8rem' }}>vs</span>
+            <span style={{ color: 'var(--apple-label-secondary)', fontSize: '0.8rem' }}>vs</span>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem' }}>
               <span>Right:</span>
               <select
                 value={splitRight}
                 onChange={e => setSplitRight(e.target.value)}
-                style={{ padding: '0.2rem 0.4rem', border: '1px solid #CBD5E1' }}
+                className="apple-select-control"
+                style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
               >
                 <option value="recon">Reconstructed</option>
                 <option value="pred">Prediction</option>
@@ -785,7 +774,7 @@ const FourPictureComparison = ({
         </div>
       ) : (
         <div style={{ maxWidth: '540px', margin: '0 auto', width: '100%' }}>
-          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.65rem', justifyContent: 'center' }}>
+          <div className="apple-segmented" style={{ marginBottom: '0.65rem', justifyContent: 'center' }}>
             {[
               { id: 'orig', label: 'Original' },
               { id: 'pred', label: 'Prediction' },
@@ -795,16 +784,8 @@ const FourPictureComparison = ({
               <button
                 key={f.id}
                 type="button"
+                className={`apple-segmented-item ${singleFocus === f.id ? 'active' : ''}`}
                 onClick={() => setSingleFocus(f.id)}
-                style={{
-                  padding: '0.25rem 0.65rem',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  border: '1px solid #CBD5E1',
-                  background: singleFocus === f.id ? 'var(--c-black)' : 'var(--c-white)',
-                  color: singleFocus === f.id ? 'var(--c-white)' : 'var(--c-black)',
-                  cursor: 'pointer',
-                }}
               >
                 {f.label}
               </button>
@@ -826,64 +807,68 @@ const FourPictureComparison = ({
       >
         <div
           style={{
-            padding: '0.75rem',
-            background: '#F8FAFC',
-            border: '1px solid #E2E8F0',
-            fontFamily: 'JetBrains Mono',
+            padding: '10px 14px',
+            background: 'var(--fill-4)',
+            border: '0.5px solid var(--separator)',
+            borderRadius: '8px',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
+          <div style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             PSNR
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0F172A', marginTop: '0.15rem' }}>
-            {cuData.psnr} <span style={{ fontSize: '0.75rem' }}>dB</span>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--apple-label)', marginTop: '2px' }}>
+            {cuData.psnr} <span style={{ fontSize: '0.75rem', color: 'var(--apple-label-secondary)' }}>dB</span>
           </div>
         </div>
 
         <div
           style={{
-            padding: '0.75rem',
-            background: '#F0FDF4',
-            border: '1px solid #BBF7D0',
-            fontFamily: 'JetBrains Mono',
+            padding: '10px 14px',
+            background: 'var(--fill-4)',
+            border: '0.5px solid var(--separator)',
+            borderRadius: '8px',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ fontSize: '0.68rem', color: '#166534', fontWeight: 600 }}>
+          <div style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Energy Reduction
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803D', marginTop: '0.15rem' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--system-green)', marginTop: '2px' }}>
             {cuData.varReduction}%
           </div>
         </div>
 
         <div
           style={{
-            padding: '0.75rem',
-            background: '#EFF6FF',
-            border: '1px solid #BFDBFE',
-            fontFamily: 'JetBrains Mono',
+            padding: '10px 14px',
+            background: 'var(--fill-4)',
+            border: '0.5px solid var(--separator)',
+            borderRadius: '8px',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ fontSize: '0.68rem', color: '#1E40AF', fontWeight: 600 }}>
+          <div style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Max Error
           </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#1D4ED8', marginTop: '0.15rem' }}>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--system-blue)', marginTop: '2px' }}>
             ±{cuData.maxAbsErr}
           </div>
         </div>
 
         <div
           style={{
-            padding: '0.75rem',
-            background: '#FAF5FF',
-            border: '1px solid #E9D5FF',
-            fontFamily: 'JetBrains Mono',
+            padding: '10px 14px',
+            background: 'var(--fill-4)',
+            border: '0.5px solid var(--separator)',
+            borderRadius: '8px',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <div style={{ fontSize: '0.68rem', color: '#6B21A8', fontWeight: 600 }}>
+          <div style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             Identity
           </div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#7E22CE', marginTop: '0.25rem' }}>
+          <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--system-purple)', marginTop: '4px' }}>
             S' = P + R'
           </div>
         </div>

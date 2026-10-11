@@ -20,3 +20,27 @@ def test_partition_parser_from_fixture(sample_trace_file):
     assert first_leaf.mode == "INTRA"
     assert first_leaf.intra_dir == 0
     assert first_leaf.qp == 32
+    assert first_leaf.abs_x == 0
+    assert first_leaf.abs_y == 0
+    assert first_leaf.rel_x == 0
+    assert first_leaf.rel_y == 0
+
+def test_partition_parser_relative_offset_resolution():
+    raw_event = {
+        "poc": 0,
+        "ctu_x": 2,
+        "ctu_y": 1,
+        "cu_size": 64,
+        "event": "CTU_PARTITION",
+        "nodes": [
+            {"depth": 1, "x": 32, "y": 32, "width": 32, "height": 32, "split": False}
+        ]
+    }
+    checkpoint = partition_parser.parse_event(raw_event)
+    leaf = checkpoint.nodes[0]
+    # ctu_x=2 -> origin_x = 128; leaf relative x=32 -> abs_x = 160
+    assert leaf.abs_x == 160
+    assert leaf.rel_x == 32
+    # ctu_y=1 -> origin_y = 64; leaf relative y=32 -> abs_y = 96
+    assert leaf.abs_y == 96
+    assert leaf.rel_y == 32

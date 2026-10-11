@@ -31,13 +31,14 @@ const ResidualMatrix = ({
         </div>
         <div
           style={{
-            fontSize: '0.75rem',
+            fontSize: '0.74rem',
             fontWeight: 700,
             fontFamily: 'JetBrains Mono',
-            color: 'var(--c-magenta)',
-            padding: '0.2rem 0.5rem',
-            background: '#FFF0F5',
-            border: '1px solid var(--c-magenta)',
+            color: 'var(--apple-purple, #AF52DE)',
+            padding: '0.2rem 0.55rem',
+            background: 'rgba(175, 82, 222, 0.1)',
+            border: '1px solid rgba(175, 82, 222, 0.25)',
+            borderRadius: '4px',
             flexShrink: 0
           }}
         >
@@ -54,8 +55,9 @@ const ResidualMatrix = ({
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#F9F9F9',
-          border: '2px solid var(--c-black)',
+          background: 'var(--apple-canvas)',
+          border: '1px solid var(--apple-hairline)',
+          borderRadius: '6px',
           padding: '8px',
           boxSizing: 'border-box'
         }}
@@ -67,8 +69,10 @@ const ResidualMatrix = ({
             gridTemplateColumns: `repeat(${N}, ${resiCellSize}px)`,
             gridTemplateRows: `repeat(${N}, ${resiCellSize}px)`,
             gap: '1px',
-            background: '#CBD5E1',
-            border: '2px solid #0F172A',
+            background: 'var(--apple-hairline)',
+            border: '1px solid var(--apple-hairline)',
+            borderRadius: '4px',
+            overflow: 'hidden',
             lineHeight: 1
           }}
         >
@@ -123,7 +127,7 @@ const ResidualMatrix = ({
             <span>− Over</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <span style={{ width: 8, height: 8, background: '#F1F5F9', display: 'inline-block', border: '1px solid #CBD5E1' }} />
+            <span style={{ width: 8, height: 8, background: 'var(--apple-canvas)', display: 'inline-block', border: '1px solid var(--apple-hairline)' }} />
             <span>0 Exact</span>
           </div>
         </div>

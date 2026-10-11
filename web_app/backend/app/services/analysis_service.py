@@ -1,4 +1,5 @@
 import json
+import asyncio
 from pathlib import Path
 from typing import Any
 from app.domain.models.roi import ROICoordinates, FrameMetadata
@@ -212,15 +213,19 @@ class AnalysisService:
         job_id = self.storage.create_session()
         input_image = self.storage.get_input_image_path(job_id)
         
-        with open(input_image, "wb") as f:
-            f.write(image_bytes)
+        def _write_bytes(p: Path, data: bytes) -> None:
+            with open(p, "wb") as f:
+                f.write(data)
+        await asyncio.to_thread(_write_bytes, input_image, image_bytes)
             
         roi = ROICoordinates(ctu_x=ctu_x, ctu_y=ctu_y, cu_size=cu_size)
         
-        # Calculate provisional metadata from image
+        # Calculate provisional metadata from image non-blockingly
         from PIL import Image
-        with Image.open(input_image) as img:
-            orig_w, orig_h = img.size
+        def _get_dims(p: Path) -> tuple[int, int]:
+            with Image.open(p) as img:
+                return img.size
+        orig_w, orig_h = await asyncio.to_thread(_get_dims, input_image)
             
         calc_w, calc_h = self.compute_frame_dimensions(orig_w, orig_h, scale_mode)
         num_ctu_w = (calc_w + 63) // 64
@@ -289,7 +294,8 @@ class AnalysisService:
             predicate = self._build_roi_predicate(cu_size=target_cu, ctu_x=target_x, ctu_y=target_y)
 
         raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35, predicate=predicate)
-        if not raw_modes and predicate is not None:
+        explicit_roi_requested = (ctu_x is not None or ctu_y is not None)
+        if not raw_modes and predicate is not None and not explicit_roi_requested:
             raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35)
             
         parsed = [intra_search_parser.parse_event(m) for m in raw_modes]
@@ -385,16 +391,36 @@ class AnalysisService:
             cu_size=m_a.cu_size
         )
 
-    def get_partition_data(self, job_id: str) -> CTUPartitionCheckpoint:
+    def get_partition_data(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> CTUPartitionCheckpoint:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
-            
-        raw_part = self.reader.find_one(trace_path, lambda e: e.get("event") == "CTU_PARTITION")
+
+        target_cu, target_x, target_y = self._resolve_target_roi(job_id, None, ctu_x, ctu_y)
+        raw_part = None
+        if target_x is not None and target_y is not None:
+            raw_part = self.reader.find_one(
+                trace_path,
+                lambda e: e.get("event") == "CTU_PARTITION" and e.get("ctu_x") == target_x and e.get("ctu_y") == target_y
+            )
+
         if not raw_part:
-            return CTUPartitionCheckpoint(cu_size=64, nodes=[])
-            
-        return partition_parser.parse_event(raw_part)
+            raw_part = self.reader.find_one(trace_path, lambda e: e.get("event") == "CTU_PARTITION")
+
+        if not raw_part:
+            return CTUPartitionCheckpoint(cu_size=64, nodes=[], ctu_x=target_x or 0, ctu_y=target_y or 0)
+
+        parsed = partition_parser.parse_event(raw_part)
+        if target_x is not None and (parsed.ctu_x is None or parsed.ctu_x == 0):
+            parsed.ctu_x = target_x
+        if target_y is not None and (parsed.ctu_y is None or parsed.ctu_y == 0):
+            parsed.ctu_y = target_y
+        return parsed
 
     def get_all_partitions(self, job_id: str) -> list[CTUPartitionCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
@@ -404,13 +430,23 @@ class AnalysisService:
         raw_parts = self.reader.read_all(trace_path, event_filter="CTU_PARTITION")
         return [partition_parser.parse_event(p) for p in raw_parts]
 
-    def get_transform_quant_data(self, job_id: str, comp: str | None = None) -> list[TransformQuantCheckpoint]:
+    def get_transform_quant_data(
+        self,
+        job_id: str,
+        comp: str | None = None,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> list[TransformQuantCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
             
         raw_events = self.reader.read_all(trace_path, event_filter="TRANSFORM_QUANT")
         parsed = [transform_quant_parser.parse_event(e) for e in raw_events]
+        if ctu_x is not None:
+            parsed = [t for t in parsed if t.ctu_x == ctu_x]
+        if ctu_y is not None:
+            parsed = [t for t in parsed if t.ctu_y == ctu_y]
         if comp and comp.strip():
             target_comp = comp.strip().upper()
             return [t for t in parsed if t.component.upper() == target_comp]

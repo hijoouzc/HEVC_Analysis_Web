@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, SELECTION_HIGHLIGHT_COLOR } from '../utils/colorUtils';
+import { calculatePsnr } from '../utils/metricsUtils';
+import { Button, SegmentedControl } from './apple';
 
 /**
  * Synchronized4WayViewport
@@ -81,7 +83,7 @@ export default function Synchronized4WayViewport({
 
     const meanOrg = Math.round(orgData.reduce((a, b) => a + b, 0) / totalPixels);
     const meanPred = Math.round(predData.reduce((a, b) => a + b, 0) / totalPixels);
-    const psnr = sse > 0 ? (10 * Math.log10((255 * 255 * totalPixels) / sse)).toFixed(2) : '∞';
+    const psnr = calculatePsnr(sse / totalPixels);
 
     return { sad, sse, maxAbsResi, zeroCount, meanOrg, meanPred, psnr };
   }, [orgData, predData, resiData, totalPixels]);
@@ -111,13 +113,11 @@ export default function Synchronized4WayViewport({
   // Helper to render an individual matrix grid
   const renderMatrix = (type, dataArray, title, subtitle, badgeColor) => {
     return (
-      <div style={{
-        background: 'var(--c-white)',
-        border: '2px solid var(--c-black)',
-        boxShadow: '3px 3px 0px rgba(0,0,0,0.08)',
+      <div className="apple-card" style={{
         display: 'flex',
         flexDirection: 'column',
-        minWidth: `${N * cellSize + 32}px`
+        minWidth: `${N * cellSize + 32}px`,
+        overflow: 'hidden'
       }}>
         {/* Sub-card Header */}
         <div style={{
@@ -125,16 +125,17 @@ export default function Synchronized4WayViewport({
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '0.45rem 0.75rem',
-          borderBottom: '2px solid var(--c-black)',
-          background: 'var(--c-light-gray)'
+          borderBottom: '1px solid var(--apple-hairline)',
+          background: 'var(--apple-canvas)'
         }}>
           <div>
             <span style={{
               background: badgeColor,
               color: '#FFFFFF',
-              fontSize: '0.75rem',
+              fontSize: '0.74rem',
               fontWeight: 800,
-              padding: '0.2rem 0.5rem',
+              padding: '0.15rem 0.5rem',
+              borderRadius: '4px',
               fontFamily: 'JetBrains Mono'
             }}>
               {title}
@@ -143,7 +144,7 @@ export default function Synchronized4WayViewport({
           {subtitle && (
             <span style={{
               fontSize: '0.72rem',
-              color: '#444',
+              color: 'var(--apple-label-secondary)',
               fontFamily: 'JetBrains Mono',
               fontWeight: 600
             }}>
@@ -158,8 +159,7 @@ export default function Synchronized4WayViewport({
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          background: '#F8FAFC',
-          border: '1px solid #CBD5E1',
+          background: 'var(--apple-canvas)',
           overflow: 'auto'
         }}>
           <div style={{
@@ -167,8 +167,10 @@ export default function Synchronized4WayViewport({
             gridTemplateColumns: `repeat(${N}, ${cellSize}px)`,
             gridTemplateRows: `repeat(${N}, ${cellSize}px)`,
             gap: '1px',
-            background: '#CBD5E1',
-            border: '2px solid var(--c-black)',
+            background: 'var(--apple-hairline)',
+            border: '1px solid var(--apple-hairline)',
+            borderRadius: 0,
+            overflow: 'hidden',
             position: 'relative'
           }}>
             {dataArray.map((val, idx) => {
@@ -255,12 +257,9 @@ export default function Synchronized4WayViewport({
   const activeRecon = selectedPixel ? reconData[activeR * N + activeC] : null;
 
   return (
-    <div className="synchronized-4way-card" style={{
-      background: 'var(--c-white)',
-      border: '2px solid var(--c-black)',
+    <div className="apple-card" style={{
       padding: '1.25rem',
-      marginBottom: '1.5rem',
-      boxShadow: '4px 4px 0px rgba(0,0,0,0.1)'
+      marginBottom: '1.5rem'
     }}>
       {/* Top Banner & Control Toolbar */}
       <div style={{
@@ -271,15 +270,15 @@ export default function Synchronized4WayViewport({
         gap: '0.75rem',
         marginBottom: '1rem',
         paddingBottom: '0.75rem',
-        borderBottom: '2px solid var(--c-light-gray)'
+        borderBottom: '1px solid var(--apple-hairline)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <span style={{ fontWeight: 700, fontSize: '1.05rem' }}>
+          <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--apple-label)' }}>
             Synchronized 4-Way Viewport
           </span>
           <span style={{
-            fontSize: '0.8rem',
-            color: '#64748B',
+            fontSize: '0.75rem',
+            color: 'var(--apple-label-secondary)',
             fontFamily: 'JetBrains Mono',
             fontWeight: 600
           }}>
@@ -290,143 +289,66 @@ export default function Synchronized4WayViewport({
         {/* Viewport Control Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           {onBackToIntra && (
-            <button
-              type="button"
+            <Button
+              variant="gray"
+              size="small"
               onClick={onBackToIntra}
-              style={{
-                padding: '0.35rem 0.75rem',
-                fontSize: '0.75rem',
-                fontWeight: 700,
-                fontFamily: 'JetBrains Mono',
-                border: '1.5px solid var(--c-black)',
-                background: 'var(--c-white)',
-                cursor: 'pointer'
-              }}
               title="Return to Intra Prediction Pipeline"
             >
               ← INTRA PIPELINE
-            </button>
+            </Button>
           )}
 
           {/* Channel Selector Toggle */}
-          <div style={{ display: 'flex', border: '1.5px solid var(--c-black)', background: '#F1F5F9', padding: '2px' }}>
-            <button
-              type="button"
-              onClick={() => handleChannelChange('Y')}
-              style={{
-                padding: '0.25rem 0.55rem',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                fontFamily: 'JetBrains Mono',
-                border: 'none',
-                background: channel === 'Y' ? 'var(--c-black)' : 'transparent',
-                color: channel === 'Y' ? '#FFFFFF' : 'var(--c-black)',
-                cursor: 'pointer'
-              }}
-            >
-              Y
-            </button>
-            <button
-              type="button"
-              onClick={() => handleChannelChange('U')}
-              style={{
-                padding: '0.25rem 0.55rem',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                fontFamily: 'JetBrains Mono',
-                border: 'none',
-                background: channel === 'U' ? '#0284C7' : 'transparent',
-                color: channel === 'U' ? '#FFFFFF' : '#0284C7',
-                cursor: 'pointer'
-              }}
-            >
-              Cb
-            </button>
-            <button
-              type="button"
-              onClick={() => handleChannelChange('V')}
-              style={{
-                padding: '0.25rem 0.55rem',
-                fontSize: '0.72rem',
-                fontWeight: 800,
-                fontFamily: 'JetBrains Mono',
-                border: 'none',
-                background: channel === 'V' ? '#E11D48' : 'transparent',
-                color: channel === 'V' ? '#FFFFFF' : '#E11D48',
-                cursor: 'pointer'
-              }}
-            >
-              Cr
-            </button>
-          </div>
+          <SegmentedControl
+            value={channel}
+            onChange={handleChannelChange}
+            size="small"
+            items={[
+              { id: 'Y', label: 'Y' },
+              { id: 'U', label: 'Cb' },
+              { id: 'V', label: 'Cr' },
+            ]}
+          />
 
           {/* Layout Toggle */}
-          <button
-            type="button"
+          <Button
+            variant="gray"
+            size="small"
             onClick={() => setLayoutMode(prev => prev === '2x2' ? 'side-by-side' : '2x2')}
-            style={{
-              padding: '0.35rem 0.75rem',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              fontFamily: 'JetBrains Mono',
-              border: '2px solid var(--c-black)',
-              background: 'var(--c-white)',
-              cursor: 'pointer'
-            }}
             title="Toggle between 2×2 Grid and 4-Column Side-by-Side layout"
           >
-            {layoutMode === '2x2' ? '2×2' : '4-Column'}
-          </button>
+            {layoutMode === '2x2' ? '2×2 Grid' : '4-Column'}
+          </Button>
 
           {/* Show Numbers Toggle */}
-          <button
-            type="button"
+          <Button
+            variant={showValues ? 'tinted' : 'gray'}
+            size="small"
             onClick={() => setShowValues(prev => !prev)}
-            style={{
-              padding: '0.35rem 0.75rem',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              fontFamily: 'JetBrains Mono',
-              border: '2px solid var(--c-black)',
-              background: showValues ? 'var(--c-black)' : 'var(--c-white)',
-              color: showValues ? 'var(--c-white)' : 'var(--c-black)',
-              cursor: 'pointer'
-            }}
             title="Toggle pixel numerical text overlay"
           >
             Values: {showValues ? 'On' : 'Off'}
-          </button>
+          </Button>
 
           {/* Zoom Buttons */}
-          <div style={{ display: 'flex', border: '2px solid var(--c-black)' }}>
-            {['fit', '1.5x', '2x'].map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setZoomPreset(mode)}
-                style={{
-                  padding: '0.35rem 0.6rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 700,
-                  fontFamily: 'JetBrains Mono',
-                  border: 'none',
-                  borderRight: mode !== '2x' ? '1px solid var(--c-black)' : 'none',
-                  background: zoomPreset === mode ? 'var(--c-blue)' : 'var(--c-white)',
-                  color: zoomPreset === mode ? '#FFFFFF' : '#000000',
-                  cursor: 'pointer'
-                }}
-              >
-                {mode.toUpperCase()}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            value={zoomPreset}
+            onChange={setZoomPreset}
+            size="small"
+            items={[
+              { id: 'fit', label: 'FIT' },
+              { id: '1.5x', label: '1.5×' },
+              { id: '2x', label: '2×' },
+            ]}
+          />
         </div>
       </div>
 
       {/* Selected Pixel Synchronized Readout Banner */}
       <div style={{
-        background: selectedPixel ? '#FFFBEB' : '#F8FAFC',
-        border: selectedPixel ? '2px solid #F59E0B' : '1px solid #E2E8F0',
+        background: selectedPixel ? 'var(--apple-orange-subtle)' : 'var(--apple-canvas)',
+        border: selectedPixel ? '1px solid var(--system-orange)' : '1px solid var(--apple-hairline)',
         padding: '0.65rem 1rem',
         marginBottom: '1rem',
         display: 'flex',
@@ -436,22 +358,23 @@ export default function Synchronized4WayViewport({
         gap: '0.75rem',
         fontFamily: 'JetBrains Mono',
         fontSize: '0.82rem',
+        color: 'var(--apple-label)',
         transition: 'none'
       }}>
         {selectedPixel ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, color: '#B45309' }}>
+            <span style={{ fontWeight: 800, color: 'var(--system-orange)' }}>
               Pixel ({activeR}, {activeC}):
             </span>
             <span>Original: <strong>{activeOrg}</strong></span>
-            <span>Prediction: <strong style={{ color: 'var(--c-blue)' }}>{activePred}</strong></span>
-            <span>Residual: <strong style={{ color: activeResi > 0 ? '#E11D48' : activeResi < 0 ? '#0284C7' : '#475569' }}>
+            <span>Prediction: <strong style={{ color: 'var(--apple-blue)' }}>{activePred}</strong></span>
+            <span>Residual: <strong style={{ color: activeResi > 0 ? '#E11D48' : activeResi < 0 ? '#0284C7' : 'var(--apple-label-secondary)' }}>
               {activeResi > 0 ? `+${activeResi}` : activeResi}
             </strong></span>
-            <span>Reconstructed: <strong style={{ color: '#16A34A' }}>{activeRecon}</strong></span>
+            <span>Reconstructed: <strong style={{ color: 'var(--system-green)' }}>{activeRecon}</strong></span>
           </div>
         ) : (
-          <div style={{ color: '#64748B', fontSize: '0.78rem' }}>
+          <div style={{ color: 'var(--apple-label-secondary)', fontSize: '0.78rem' }}>
             Click any pixel to inspect synchronized values across all 4 views
           </div>
         )}
@@ -503,39 +426,40 @@ export default function Synchronized4WayViewport({
       </div>
 
       {/* Block Statistics & Metric Summary Footer */}
-      <div style={{
+      <div className="apple-card" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
         gap: '0.75rem',
         padding: '0.85rem 1rem',
-        background: 'var(--c-light-gray)',
-        border: '1.5px solid var(--c-black)',
-        fontFamily: 'JetBrains Mono',
+        background: 'var(--fill-4)',
+        border: '0.5px solid var(--separator)',
+        borderRadius: '8px',
+        fontFamily: 'var(--font-mono)',
         fontSize: '0.78rem'
       }}>
         <div>
-          <span style={{ color: '#666', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>Dimension</span>
-          <strong>{channel} {N}×{N}</strong>
+          <span style={{ color: 'var(--apple-label-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Dimension</span>
+          <strong style={{ color: 'var(--apple-label)' }}>{channel} {N}×{N}</strong>
         </div>
         <div>
-          <span style={{ color: '#666', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>SAD</span>
-          <strong style={{ color: 'var(--c-magenta)' }}>{stats.sad}</strong>
+          <span style={{ color: 'var(--apple-label-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>SAD</span>
+          <strong style={{ color: 'var(--system-purple)' }}>{stats.sad}</strong>
         </div>
         <div>
-          <span style={{ color: '#666', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>SSE</span>
-          <strong style={{ color: 'var(--c-orange)' }}>{stats.sse}</strong>
+          <span style={{ color: 'var(--apple-label-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>SSE</span>
+          <strong style={{ color: 'var(--system-orange)' }}>{stats.sse}</strong>
         </div>
         <div>
-          <span style={{ color: '#666', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>PSNR</span>
-          <strong style={{ color: '#10B981' }}>{stats.psnr} dB</strong>
+          <span style={{ color: 'var(--apple-label-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>PSNR</span>
+          <strong style={{ color: 'var(--system-green)' }}>{stats.psnr} dB</strong>
         </div>
         <div>
-          <span style={{ color: '#666', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>Max Residual</span>
-          <strong style={{ color: '#E11D48' }}>±{stats.maxAbsResi}</strong>
+          <span style={{ color: 'var(--apple-label-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Max Residual</span>
+          <strong style={{ color: 'var(--system-red)' }}>±{stats.maxAbsResi}</strong>
         </div>
         <div>
-          <span style={{ color: '#666', display: 'block', fontSize: '0.68rem', textTransform: 'uppercase' }}>Zero Residuals</span>
-          <strong>{stats.zeroCount} / {totalPixels}</strong>
+          <span style={{ color: 'var(--apple-label-secondary)', display: 'block', fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Zero Residuals</span>
+          <strong style={{ color: 'var(--apple-label)' }}>{stats.zeroCount} / {totalPixels}</strong>
         </div>
       </div>
     </div>

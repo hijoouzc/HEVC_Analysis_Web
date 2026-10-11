@@ -36,10 +36,14 @@ async def get_job_stages(job_id: str):
 # CP_01_PARTITION Endpoints
 # ==========================================
 @router.get("/{job_id}/CP_01_PARTITION", response_model=CTUPartitionCheckpoint)
-async def get_partition_tree(job_id: str):
+async def get_partition_tree(
+    job_id: str,
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+):
     """CP_01_PARTITION: Retrieves the complete CTU QuadTree partition tree (depths 0-3)"""
     try:
-        return analysis_service.get_partition_data(job_id)
+        return analysis_service.get_partition_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -61,11 +65,13 @@ async def get_all_partitions(job_id: str):
 @router.get("/{job_id}/CP_02_INTRA_REF", response_model=IntraRefCheckpoint)
 async def get_intra_ref_checkpoint(
     job_id: str,
-    cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)")
+    cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)"),
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
 ):
     """CP_02_INTRA_REF: Retrieves raw and filtered reference samples (4N+1)"""
     try:
-        return analysis_service.get_intra_ref_data(job_id, cu_size=cu_size)
+        return analysis_service.get_intra_ref_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -105,11 +111,13 @@ async def compare_intra_candidates(
 async def get_intra_search_modes(
     job_id: str,
     mode: int | None = Query(None, ge=0, le=34, description="Optional filter for a specific mode index (0-34)"),
-    cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)")
+    cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)"),
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
 ):
     """Lazy-load full matrix and reference sample data for tested Intra modes"""
     try:
-        return analysis_service.get_intra_search_data(job_id, mode=mode, cu_size=cu_size)
+        return analysis_service.get_intra_search_data(job_id, mode=mode, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -122,12 +130,14 @@ async def get_intra_search_modes(
 async def get_transform_checkpoints(
     job_id: str,
     comp: str | None = Query(None, description="Color component ('Y', 'Cb', 'Cr')"),
-    component: str | None = Query(None, description="Alias for comp")
+    component: str | None = Query(None, description="Alias for comp"),
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
 ):
     """CP_06_TRANSFORM: Retrieves 2D DCT/DST transform coefficients and residual matrix"""
     try:
         active_comp = component or comp
-        return analysis_service.get_transform_quant_data(job_id, comp=active_comp)
+        return analysis_service.get_transform_quant_data(job_id, comp=active_comp, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -137,12 +147,14 @@ async def get_transform_checkpoints(
 async def get_quant_checkpoints(
     job_id: str,
     comp: str | None = Query(None, description="Color component ('Y', 'Cb', 'Cr')"),
-    component: str | None = Query(None, description="Alias for comp")
+    component: str | None = Query(None, description="Alias for comp"),
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
 ):
     """CP_07_QUANT: Retrieves quantized transform coefficients and sparsity statistics"""
     try:
         active_comp = component or comp
-        return analysis_service.get_transform_quant_data(job_id, comp=active_comp)
+        return analysis_service.get_transform_quant_data(job_id, comp=active_comp, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:

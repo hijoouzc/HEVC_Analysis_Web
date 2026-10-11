@@ -14,6 +14,11 @@ class SessionManager:
         job_id = job_id or uuid.uuid4().hex[:12]
         session_dir = self.base_dir / job_id
         session_dir.mkdir(parents=True, exist_ok=True)
+        # Safely prune stale sessions to avoid disk leaks
+        try:
+            self.cleanup_old_sessions(max_age_hours=24, max_keep=30)
+        except Exception:
+            pass
         return job_id
         
     def get_session_dir(self, job_id: str) -> Path:
@@ -44,5 +49,41 @@ class SessionManager:
         session_dir = self.base_dir / job_id
         if session_dir.exists():
             shutil.rmtree(session_dir, ignore_errors=True)
+
+    def cleanup_old_sessions(self, max_age_hours: int = 24, max_keep: int = 50) -> int:
+        """
+        Prunes session directories older than max_age_hours or exceeding max_keep limit.
+        Safely ignores files currently in use or deletion errors.
+        Returns the number of deleted sessions.
+        """
+        import time
+        if not self.base_dir.exists():
+            return 0
+
+        now = time.time()
+        max_age_seconds = max_age_hours * 3600
+
+        dirs = []
+        for p in self.base_dir.iterdir():
+            if p.is_dir():
+                try:
+                    dirs.append((p.stat().st_mtime, p))
+                except OSError:
+                    continue
+
+        # Sort newest to oldest
+        dirs.sort(key=lambda x: x[0], reverse=True)
+
+        deleted = 0
+        for idx, (mtime, p) in enumerate(dirs):
+            age = now - mtime
+            if idx >= max_keep or age > max_age_seconds:
+                try:
+                    shutil.rmtree(p, ignore_errors=True)
+                    deleted += 1
+                except OSError:
+                    pass
+
+        return deleted
 
 session_manager = SessionManager()

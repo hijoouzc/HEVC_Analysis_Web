@@ -7,14 +7,27 @@ from app.domain.exceptions import JobNotFoundError
 from app.storage.session_manager import session_manager
 
 class JobManager:
-    """Manages life-cycle, status, and metadata of analysis jobs"""
+    """Manages life-cycle, status, and metadata of analysis jobs with bounded memory footprint"""
     
+    _MAX_JOBS: int = 100
+    _PRUNE_TARGET: int = 50
+
     def __init__(self):
         self._jobs: dict[str, JobInfo] = {}
         self._lock = asyncio.Lock()
         
     async def create_job(self, roi: ROICoordinates, frame: FrameMetadata, job_id: str | None = None) -> JobInfo:
         async with self._lock:
+            # Memory guard: Auto-prune oldest completed/failed jobs if limit is reached
+            if len(self._jobs) >= self._MAX_JOBS:
+                removable = [
+                    jid for jid, j in self._jobs.items() 
+                    if j.status in (JobStatus.COMPLETED, JobStatus.FAILED)
+                ]
+                to_delete = removable[:(len(self._jobs) - self._PRUNE_TARGET)]
+                for jid in to_delete:
+                    del self._jobs[jid]
+
             job_id = session_manager.create_session(job_id)
             job = JobInfo(
                 job_id=job_id,

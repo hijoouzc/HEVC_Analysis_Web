@@ -22,6 +22,10 @@ class CUPartitionNode(BaseModel):
     intra_dir: int | None = None     # Mode index 0-34 if INTRA
     qp: int | None = None
     cost: float | None = None
+    abs_x: int | None = None
+    abs_y: int | None = None
+    rel_x: int | None = None
+    rel_y: int | None = None
 
 class CTUPartitionCheckpoint(BaseModel):
     """CP_01_PARTITION: Quadtree partition of the CTU into CUs"""

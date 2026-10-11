@@ -33,16 +33,15 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
 
   return (
     <div 
-      className="compass-container" 
+      className="apple-card" 
       title={`HEVC Angular Compass (Current Mode: ${currentMode})`}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--c-white)',
-        border: '2px solid var(--c-black)',
         width: `${size}px`,
         height: `${size}px`,
+        padding: 0,
         boxSizing: 'border-box',
         cursor: 'pointer',
         userSelect: 'none'
@@ -54,9 +53,9 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
           cx={center} 
           cy={center} 
           r={radius} 
-          fill="#FFF" 
-          stroke="#000" 
-          strokeWidth="1.5" 
+          fill="var(--background-1)" 
+          stroke="var(--separator)" 
+          strokeWidth="1" 
         />
 
         {/* 33 Angular mode ticks */}
@@ -83,8 +82,8 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
               y1={y1}
               x2={x2}
               y2={y2}
-              stroke={isSelected ? 'var(--c-magenta)' : (isMajor ? '#000' : '#888')}
-              strokeWidth={isSelected ? 2.5 : (isMajor ? 1.5 : 1)}
+              stroke={isSelected ? 'var(--system-blue)' : (isMajor ? 'var(--label-2)' : 'var(--separator)')}
+              strokeWidth={isSelected ? 2 : (isMajor ? 1.2 : 0.8)}
               style={{ cursor: 'pointer' }}
               onClick={(e) => {
                 e.stopPropagation();
@@ -104,11 +103,11 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
               y1={center}
               x2={center + Math.cos(currentAngleRad) * (radius - 5)}
               y2={center + Math.sin(currentAngleRad) * (radius - 5)}
-              stroke="var(--c-magenta)"
-              strokeWidth="2.5"
+              stroke="var(--system-blue)"
+              strokeWidth="2"
               strokeLinecap="round"
             />
-            <circle cx={center} cy={center} r="3" fill="var(--c-magenta)" />
+            <circle cx={center} cy={center} r="2.5" fill="var(--system-blue)" />
           </g>
         ) : (
           /* Non-angular indicator: Mode 0 (P) or Mode 1 (DC) */
@@ -117,9 +116,9 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
               cx={center} 
               cy={center} 
               r="10" 
-              fill={currentMode === 0 ? '#EAF8D6' : '#E6F6FD'} 
-              stroke="#000" 
-              strokeWidth="1.5" 
+              fill="var(--fill-3)" 
+              stroke="var(--separator)" 
+              strokeWidth="1" 
             />
             <text 
               x={center} 
@@ -127,8 +126,8 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
               textAnchor="middle" 
               fontSize="8" 
               fontWeight="700" 
-              fontFamily="JetBrains Mono"
-              fill="#000"
+              fontFamily="var(--font-mono)"
+              fill="var(--apple-label)"
             >
               {currentMode === 0 ? 'P' : 'DC'}
             </text>

@@ -1,4 +1,5 @@
 import os
+import time
 import asyncio
 import shutil
 from pathlib import Path
@@ -7,11 +8,12 @@ from app.domain.exceptions import EncoderExecutionError
 from app.core.config import settings
 
 class HMEncoderRunner:
-    """Executes the reference HM C++ encoder with isolated ROI environment and output paths"""
+    """Executes the reference HM C++ encoder with isolated ROI environment, concurrency guards, and output paths"""
     
-    def __init__(self, encoder_bin: Path | None = None, cfg_path: Path | None = None):
+    def __init__(self, encoder_bin: Path | None = None, cfg_path: Path | None = None, max_concurrent: int = 2):
         self.encoder_bin = encoder_bin or settings.ENCODER_BIN
         self.cfg_path = cfg_path or settings.DEFAULT_CFG
+        self._semaphore = asyncio.Semaphore(max_concurrent)
         
     async def run_encode(
         self,
@@ -50,25 +52,32 @@ class HMEncoderRunner:
             "-f", str(settings.DEFAULT_FRAMES)
         ]
         
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=str(settings.PROJECT_ROOT),
-            env=env
-        )
+        start_time = time.time()
         
-        try:
-            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
-        except asyncio.TimeoutError:
+        async with self._semaphore:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=str(settings.PROJECT_ROOT),
+                env=env
+            )
+            
             try:
-                proc.kill()
-                await proc.wait()
-            except Exception:
-                pass
-            raise EncoderExecutionError("HM reference encoder process timed out after 120 seconds.", -1)
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120.0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+                raise EncoderExecutionError("HM reference encoder process timed out after 120 seconds.", -1)
         
-        # Also copy trace to legacy dump_data/trace.jsonl for compatibility with direct file observers
+        if proc.returncode != 0:
+            err_msg = stderr.decode(errors="replace") if stderr else f"HM Encoder process exited with code {proc.returncode}."
+            raise EncoderExecutionError(err_msg, proc.returncode)
+
+        # Copy trace to legacy dump_data/trace.jsonl for direct external file observers
         if trace_output.exists() and trace_output.stat().st_size > 0:
             try:
                 settings.LEGACY_DUMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,11 +86,15 @@ class HMEncoderRunner:
                 pass
             return trace_output
             
-        # Check if legacy file was written instead (e.g. if custom output dir fell back)
+        # Only fallback to legacy trace if written during THIS current job execution
         legacy_trace = settings.LEGACY_DUMP_DIR / "trace.jsonl"
         if legacy_trace.exists() and legacy_trace.stat().st_size > 0:
-            shutil.copyfile(legacy_trace, trace_output)
-            return trace_output
+            try:
+                if legacy_trace.stat().st_mtime >= (start_time - 1.0):
+                    shutil.copyfile(legacy_trace, trace_output)
+                    return trace_output
+            except OSError:
+                pass
             
         err_msg = stderr.decode(errors="replace") if stderr else "HM Encoder did not generate trace data."
         raise EncoderExecutionError(err_msg, proc.returncode or -1)

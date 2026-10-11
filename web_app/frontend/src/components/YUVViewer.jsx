@@ -54,13 +54,12 @@ const CanvasCard = ({
   overlay,
 }) => (
   <div
+    className="apple-card"
     style={{
       display: 'flex',
       flexDirection: 'column',
-      background: 'var(--c-white)',
-      border: '1.5px solid var(--c-black)',
-      boxShadow: '2px 2px 0px rgba(0, 0, 0, 1)',
       overflow: 'hidden',
+      borderRadius: 0,
     }}
   >
     <div
@@ -68,21 +67,24 @@ const CanvasCard = ({
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '0.4rem 0.75rem',
-        background: '#F8FAFC',
-        borderBottom: '1px solid #E2E8F0',
+        padding: '0.45rem 0.75rem',
+        background: 'var(--apple-canvas)',
+        borderBottom: '1px solid var(--apple-hairline)',
         fontSize: '0.78rem',
         fontFamily: 'JetBrains Mono',
         fontWeight: 600,
+        color: 'var(--apple-label)'
       }}
     >
       <span>{title}</span>
       <span
         style={{
-          padding: '0.1rem 0.4rem',
+          padding: '0.1rem 0.45rem',
           fontSize: '0.68rem',
-          background: 'var(--c-black)',
-          color: 'var(--c-white)',
+          background: 'var(--fill-3)',
+          color: 'var(--apple-label)',
+          border: '1px solid var(--apple-hairline)',
+          borderRadius: '4px',
           fontWeight: 700,
         }}
       >
@@ -95,7 +97,7 @@ const CanvasCard = ({
         position: 'relative',
         width: '100%',
         aspectRatio: `${imgWidth} / ${imgHeight}`,
-        background: '#0F172A',
+        background: 'var(--apple-canvas)',
         cursor: 'pointer',
       }}
       onClick={onClick}
@@ -335,7 +337,7 @@ const YUVViewer = ({
       {/* Clean Apple-style Toolbar */}
       <div
         className="stage-section-card"
-        style={{ padding: '0.75rem 1rem', background: '#FAFAFA' }}
+        style={{ padding: '0.75rem 1rem' }}
       >
         <div
           style={{
@@ -359,18 +361,10 @@ const YUVViewer = ({
               </span>
               <button
                 type="button"
+                className="apple-btn-secondary"
                 onClick={() => {
                   setSelectedPixel(null);
                   if (onSelectCTU) onSelectCTU(null, null);
-                }}
-                style={{
-                  padding: '0.25rem 0.55rem',
-                  background: 'var(--c-white)',
-                  border: '1px solid #CBD5E1',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#64748B',
                 }}
                 title="Deselect CTU"
               >
@@ -379,15 +373,8 @@ const YUVViewer = ({
               {onNavigateToQuadTree && (
                 <button
                   type="button"
+                  className="apple-btn-secondary"
                   onClick={() => onNavigateToQuadTree(ctuX, ctuY)}
-                  style={{
-                    padding: '0.25rem 0.55rem',
-                    background: 'var(--c-white)',
-                    border: '1px solid #CBD5E1',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
                 >
                   QuadTree →
                 </button>
@@ -395,16 +382,8 @@ const YUVViewer = ({
               {onNavigateToIntra && (
                 <button
                   type="button"
+                  className="apple-btn-primary"
                   onClick={() => onNavigateToIntra(ctuX, ctuY)}
-                  style={{
-                    padding: '0.25rem 0.55rem',
-                    background: 'var(--c-black)',
-                    color: 'var(--c-white)',
-                    border: '1px solid var(--c-black)',
-                    fontSize: '0.72rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
                 >
                   Intra →
                 </button>
@@ -420,84 +399,69 @@ const YUVViewer = ({
             justifyContent: 'space-between',
             alignItems: 'center',
             flexWrap: 'wrap',
-            gap: '0.6rem',
+            gap: '0.65rem',
             marginTop: '0.65rem',
             paddingTop: '0.65rem',
-            borderTop: '1px solid #E2E8F0',
+            borderTop: '1px solid var(--apple-hairline)',
           }}
         >
           {/* Layout Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
               View:
             </span>
-            {[
-              { id: 'grid', label: 'Grid' },
-              { id: 'composite', label: 'Composite' },
-              { id: 'y', label: 'Y (Luma)' },
-              { id: 'u', label: 'U (Cb)' },
-              { id: 'v', label: 'V (Cr)' },
-            ].map(m => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setViewMode(m.id)}
-                style={{
-                  padding: '0.2rem 0.5rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  border: '1px solid #CBD5E1',
-                  background: viewMode === m.id ? 'var(--c-black)' : 'var(--c-white)',
-                  color: viewMode === m.id ? 'var(--c-white)' : 'var(--c-black)',
-                  cursor: 'pointer',
-                }}
-              >
-                {m.label}
-              </button>
-            ))}
+            <div className="apple-segmented">
+              {[
+                { id: 'grid', label: 'Grid' },
+                { id: 'composite', label: 'Composite' },
+                { id: 'y', label: 'Y (Luma)' },
+                { id: 'u', label: 'U (Cb)' },
+                { id: 'v', label: 'V (Cr)' },
+              ].map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`apple-segmented-item ${viewMode === m.id ? 'active' : ''}`}
+                  onClick={() => setViewMode(m.id)}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Color Mode Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+            <span style={{ fontSize: '0.7rem', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
               Color:
             </span>
-            {[
-              { id: 'tint', label: 'Color Tint' },
-              { id: 'monochrome', label: 'Grayscale' },
-              { id: 'heatmap', label: 'Heatmap' },
-            ].map(c => (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setColorMode(c.id)}
-                style={{
-                  padding: '0.2rem 0.5rem',
-                  fontSize: '0.72rem',
-                  fontWeight: 600,
-                  border: '1px solid #CBD5E1',
-                  background: colorMode === c.id ? '#0284C7' : 'var(--c-white)',
-                  color: colorMode === c.id ? '#FFFFFF' : 'var(--c-black)',
-                  cursor: 'pointer',
-                }}
-              >
-                {c.label}
-              </button>
-            ))}
+            <div className="apple-segmented">
+              {[
+                { id: 'tint', label: 'Color Tint' },
+                { id: 'monochrome', label: 'Grayscale' },
+                { id: 'heatmap', label: 'Heatmap' },
+              ].map(c => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`apple-segmented-item ${colorMode === c.id ? 'active' : ''}`}
+                  onClick={() => setColorMode(c.id)}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Grid Toggle */}
           <button
             type="button"
+            className={`apple-btn-tool ${showCtuGrid ? 'active' : ''}`}
             onClick={() => setShowCtuGrid(prev => !prev)}
             style={{
-              padding: '0.2rem 0.5rem',
-              fontSize: '0.72rem',
-              fontWeight: 600,
-              border: '1px solid #CBD5E1',
-              background: showCtuGrid ? '#FEF08A' : 'var(--c-white)',
-              color: 'var(--c-black)',
-              cursor: 'pointer',
+              background: showCtuGrid ? 'rgba(0, 122, 255, 0.12)' : 'transparent',
+              color: showCtuGrid ? 'var(--apple-blue)' : 'var(--apple-label)',
+              border: '1px solid var(--apple-hairline)'
             }}
           >
             CTU Grid: {showCtuGrid ? 'On' : 'Off'}
@@ -513,8 +477,8 @@ const YUVViewer = ({
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '0.45rem 0.85rem',
-            background: '#F1F5F9',
-            border: '1px solid #CBD5E1',
+            background: 'var(--apple-canvas)',
+            border: '1px solid var(--apple-hairline)',
             fontSize: '0.75rem',
             fontFamily: 'JetBrains Mono',
           }}
@@ -529,7 +493,7 @@ const YUVViewer = ({
                   width: '12px',
                   height: '12px',
                   background: `rgb(${activePixel.r}, ${activePixel.g}, ${activePixel.b})`,
-                  border: '1px solid #64748B',
+                  border: '1px solid var(--apple-hairline)',
                   display: 'inline-block',
                 }}
               />
@@ -545,7 +509,7 @@ const YUVViewer = ({
               setSelectedPixel(null);
               if (onSelectCTU) onSelectCTU(null, null);
             }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B', fontSize: '0.7rem' }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--apple-label-secondary)', fontSize: '0.7rem' }}
             title="Deselect CTU"
           >
             ✕

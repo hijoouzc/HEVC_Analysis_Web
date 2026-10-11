@@ -18,9 +18,11 @@ class FFmpegAdapter:
         if not input_image.exists():
             raise InvalidInputError(f"Input image not found: {input_image}")
             
+        def _get_dims(p: Path) -> tuple[int, int]:
+            with Image.open(p) as img:
+                return img.size
         try:
-            with Image.open(input_image) as img:
-                orig_w, orig_h = img.size
+            orig_w, orig_h = await asyncio.to_thread(_get_dims, input_image)
         except Exception as e:
             raise InvalidInputError(f"Failed to parse input image: {e}")
             
@@ -70,7 +72,15 @@ class FFmpegAdapter:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await proc.communicate()
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            raise EncoderExecutionError("FFmpeg YUV conversion timed out after 30 seconds.")
         
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace") if stderr else "Unknown ffmpeg error"
@@ -88,7 +98,7 @@ class FFmpegAdapter:
         )
 
     async def convert_yuv_to_png(self, yuv_file: Path, png_output: Path, width: int, height: int) -> Path:
-        """Converts raw YUV420p video frame to PNG image"""
+        """Converts raw YUV420p video frame to PNG image with timeout and error guard"""
         if not yuv_file.exists():
             return png_output
         png_output.parent.mkdir(parents=True, exist_ok=True)
@@ -106,11 +116,25 @@ class FFmpegAdapter:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE
         )
-        await proc.communicate()
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            return png_output
+            
+        if proc.returncode != 0 and png_output.exists():
+            try:
+                png_output.unlink()
+            except OSError:
+                pass
         return png_output
 
     async def extract_yuv_planes(self, yuv_file: Path, output_dir: Path, width: int, height: int) -> dict[str, Path]:
-        """Extracts Y (Luma), U (Cb), V (Cr) planes into individual PNG images"""
+        """Extracts Y (Luma), U (Cb), V (Cr) planes into individual PNG images with timeout guard"""
         output_dir.mkdir(parents=True, exist_ok=True)
         y_out = output_dir / "plane_y.png"
         u_out = output_dir / "plane_u.png"
@@ -133,7 +157,14 @@ class FFmpegAdapter:
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE
         )
-        await proc.communicate()
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=30.0)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
         return {"y": y_out, "u": u_out, "v": v_out}
 
 ffmpeg_adapter = FFmpegAdapter()
