@@ -25,8 +25,9 @@ export default function MacroMicroPixelViewer({
   activeWindow = { wx: 0, wy: 0 }, // 8x8 sub-block window index (0, 1, ...)
   onSelectWindow = null,
   showMacro = true,
-  macroCanvasSize = 224, // px
+  macroCanvasSize = 160, // px
   microCellSize = 36, // px - large and comfortable for tabular digits
+  showValues = true, // boolean toggle for pixel value text overlay
 }) {
   const canvasRef = useRef(null);
 
@@ -154,50 +155,62 @@ export default function MacroMicroPixelViewer({
     return (
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${N}, ${cellSize}px)`,
-          gridTemplateRows: `repeat(${N}, ${cellSize}px)`,
-          gap: '1px',
-          background: 'var(--apple-hairline, rgba(0, 0, 0, 0.15))',
-          border: '1px solid var(--apple-hairline, rgba(0, 0, 0, 0.15))',
-          borderRadius: '4px',
-          overflow: 'hidden',
-          width: 'fit-content',
-          margin: '0 auto',
+          width: '100%',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '2px 0'
         }}
       >
-        {microSamples.map(({ gx, gy, val }) => {
-          const isSelected = selectedPixel && selectedPixel.x === gx && selectedPixel.y === gy;
-          const { bg, color } = getCellStyle(val);
-          const text = type === 'residual' ? (val > 0 ? `+${val}` : `${val}`) : `${val}`;
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${N}, ${cellSize}px)`,
+            gridTemplateRows: `repeat(${N}, ${cellSize}px)`,
+            gap: '1px',
+            background: 'var(--apple-hairline, rgba(0, 0, 0, 0.15))',
+            border: '1px solid var(--apple-hairline, rgba(0, 0, 0, 0.15))',
+            borderRadius: '4px',
+            overflow: 'hidden',
+            width: 'fit-content',
+            margin: '0 auto',
+            flexShrink: 0
+          }}
+        >
+          {microSamples.map(({ gx, gy, val }) => {
+            const isSelected = selectedPixel && selectedPixel.x === gx && selectedPixel.y === gy;
+            const { bg, color } = getCellStyle(val);
+            const text = showValues ? (type === 'residual' ? (val > 0 ? `+${val}` : `${val}`) : `${val}`) : '';
 
-          return (
-            <div
-              key={`cell-${gx}-${gy}`}
-              onClick={() => onSelectPixel && onSelectPixel({ x: gx, y: gy, val })}
-              style={{
-                width: `${cellSize}px`,
-                height: `${cellSize}px`,
-                backgroundColor: bg,
-                color: color,
-                fontFamily: 'JetBrains Mono, monospace',
-                fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
-                fontWeight: 700,
-                letterSpacing: '-0.4px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                cursor: 'pointer',
-                userSelect: 'none',
-                boxSizing: 'border-box',
-                border: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
-                zIndex: isSelected ? 10 : 1,
-              }}
-            >
-              {text}
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={`cell-${gx}-${gy}`}
+                onClick={() => onSelectPixel && onSelectPixel({ x: gx, y: gy, val })}
+                style={{
+                  width: `${cellSize}px`,
+                  height: `${cellSize}px`,
+                  backgroundColor: bg,
+                  color: color,
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
+                  fontWeight: 700,
+                  letterSpacing: '-0.4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  boxSizing: 'border-box',
+                  border: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
+                  zIndex: isSelected ? 10 : 1,
+                }}
+              >
+                {text}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -210,10 +223,14 @@ export default function MacroMicroPixelViewer({
       style={{
         display: 'flex',
         flexWrap: 'wrap',
-        gap: '1rem',
+        gap: '0.85rem',
         alignItems: 'flex-start',
         justifyContent: 'center',
         width: '100%',
+        maxWidth: '100%',
+        overflowX: 'auto',
+        boxSizing: 'border-box',
+        padding: '2px 0'
       }}
     >
       {/* Pane 1: Macro Texture Canvas (Full N x N block) */}
@@ -447,7 +464,7 @@ export default function MacroMicroPixelViewer({
           {microSamples.map(({ gx, gy, val }) => {
             const isSelected = selectedPixel && selectedPixel.x === gx && selectedPixel.y === gy;
             const { bg, color } = getCellStyle(val);
-            const text = type === 'residual' ? (val > 0 ? `+${val}` : `${val}`) : `${val}`;
+            const text = showValues ? (type === 'residual' ? (val > 0 ? `+${val}` : `${val}`) : `${val}`) : '';
 
             return (
               <div

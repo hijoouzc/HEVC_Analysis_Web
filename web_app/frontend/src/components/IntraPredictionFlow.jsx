@@ -114,6 +114,7 @@ const IntraPredictionFlow = ({
 }) => {
   const [channel, setChannel] = useState('Y'); // 'Y' (Luma), 'U' (Chroma Cb), 'V' (Chroma Cr)
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
+  const [showValues, setShowValues] = useState(true); // pixel values on/off overlay toggle
   const [layoutMode, setLayoutMode] = useState('dual'); // 'dual' (Master-Detail Dual View) or 'trio' (Equation Trio: S - P = R)
   const [card1View, setCard1View] = useState('pred'); // 'pred' or 'org'
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'step1', 'step2', 'step3', 'step4'
@@ -245,15 +246,15 @@ const IntraPredictionFlow = ({
   const S = 2 * N + 1;
   const isDual = layoutMode === 'dual';
   const stageGridCellSize = isDual
-    ? (zoomLevel === 'zoom' ? Math.max(8, Math.floor(520 / S)) : Math.max(6, Math.floor(400 / S)))
-    : (zoomLevel === 'zoom' ? Math.max(7, Math.floor(460 / S)) : Math.max(4, Math.floor(300 / S)));
+    ? (zoomLevel === 'zoom' ? Math.max(12, Math.floor(480 / S)) : Math.max(8, Math.floor(340 / S)))
+    : (zoomLevel === 'zoom' ? Math.max(10, Math.floor(380 / S)) : Math.max(6, Math.floor(250 / S)));
   const stageGridSize = stageGridCellSize * S;
-  const showCellText = stageGridCellSize >= 13;
+  const showCellText = showValues && stageGridCellSize >= 10;
 
   const resiCellSize = isDual
     ? Math.max(6, Math.floor((stageGridSize - 20) / N))
     : Math.max(4, Math.floor((stageGridSize - 50) / N));
-  const showResiText = resiCellSize >= 13;
+  const showResiText = showValues && resiCellSize >= 10;
 
   const getRefStyle = useCallback((val, isActive, isCorner = false, isExtended = false) => {
     const { bg, color } = getSampleColor(val);
@@ -328,9 +329,19 @@ const IntraPredictionFlow = ({
             &lt;&gt; Show HM Code
           </Button>
 
+          {/* Values Toggle */}
+          <Button
+            variant={showValues ? 'tinted' : 'gray'}
+            size="small"
+            onClick={() => setShowValues(prev => !prev)}
+            title="Toggle pixel numerical text overlay"
+          >
+            Values: {showValues ? 'On' : 'Off'}
+          </Button>
+
           {/* Zoom Toggle */}
           <Button
-            variant="gray"
+            variant={zoomLevel === 'zoom' ? 'tinted' : 'gray'}
             size="small"
             onClick={() => setZoomLevel(prev => prev === 'fit' ? 'zoom' : 'fit')}
             title="Toggle between fit-to-card and enlarged zoom mode"
@@ -544,7 +555,7 @@ const IntraPredictionFlow = ({
         const renderOriginalGrid = () => {
           if (N >= 16) {
             return (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '0.85rem' }}>
+              <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center', padding: '0.5rem 0' }}>
                 <MacroMicroPixelViewer
                   data={orgData}
                   N={N}
@@ -554,91 +565,96 @@ const IntraPredictionFlow = ({
                   onSelectPixel={(p) => handleCellClick({ x: p.x, y: p.y, val: p.val })}
                   activeWindow={activeWindow}
                   onSelectWindow={setActiveWindow}
-                  macroCanvasSize={160}
-                  microCellSize={36}
+                  macroCanvasSize={zoomLevel === 'zoom' ? 180 : 130}
+                  microCellSize={zoomLevel === 'zoom' ? 40 : 30}
+                  showValues={showValues}
                 />
               </div>
             );
           }
           return (
-            <div 
-              className="grid-container pred-grid" 
-              style={{ 
-                width: `${stageGridSize}px`, 
-                height: `${stageGridSize}px`, 
-                display: 'grid',
-                gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
-                gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
-                position: 'relative',
-                margin: '0 auto'
-              }}
-            >
-              {/* Frame around Original Block */}
+            <div style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', display: 'flex', justifyContent: 'center', padding: '0.25rem 0' }}>
               <div 
-                style={{
-                  position: 'absolute',
-                  top: stageGridCellSize,
-                  left: stageGridCellSize,
-                  width: N * stageGridCellSize,
-                  height: N * stageGridCellSize,
-                  border: '2px solid var(--apple-label)',
-                  boxSizing: 'border-box',
-                  pointerEvents: 'none',
-                  zIndex: 10
-                }} 
-              />
+                className="grid-container pred-grid" 
+                style={{ 
+                  width: `${stageGridSize}px`, 
+                  height: `${stageGridSize}px`, 
+                  minWidth: `${stageGridSize}px`,
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
+                  gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
+                  position: 'relative',
+                  margin: '0 auto',
+                  flexShrink: 0
+                }}
+              >
+                {/* Frame around Original Block */}
+                <div 
+                  style={{
+                    position: 'absolute',
+                    top: stageGridCellSize,
+                    left: stageGridCellSize,
+                    width: N * stageGridCellSize,
+                    height: N * stageGridCellSize,
+                    border: '2px solid var(--apple-label)',
+                    boxSizing: 'border-box',
+                    pointerEvents: 'none',
+                    zIndex: 10
+                  }} 
+                />
 
-              {/* Boundary Reference Samples */}
-              <ReferencePerimeter
-                refTop={refTopRaw}
-                refLeft={refLeftRaw}
-                N={N}
-                activeTopIndices={activeTopIndices}
-                activeLeftIndices={activeLeftIndices}
-                showCellText={showCellText}
-                getRefStyle={getRefStyle}
-                prefix="org"
-              />
+                {/* Boundary Reference Samples */}
+                <ReferencePerimeter
+                  refTop={refTopRaw}
+                  refLeft={refLeftRaw}
+                  N={N}
+                  activeTopIndices={activeTopIndices}
+                  activeLeftIndices={activeLeftIndices}
+                  showCellText={showCellText}
+                  getRefStyle={getRefStyle}
+                  prefix="org"
+                />
 
-              {/* Original block cells */}
-              {orgData.map((val, idx) => {
-                const x = idx % N;
-                const y = Math.floor(idx / N);
-                const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
-                const { bg: cBg, color: cColor } = getSampleColor(val);
+                {/* Original block cells */}
+                {orgData.map((val, idx) => {
+                  const x = idx % N;
+                  const y = Math.floor(idx / N);
+                  const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
+                  const { bg: cBg, color: cColor } = getSampleColor(val);
 
-                return (
-                  <div 
-                    key={`org-cell-${idx}`}
-                    className="cell"
-                    onClick={() => handleCellClick({ x, y, val })}
-                    style={{
-                      gridColumn: x + 2,
-                      gridRow: y + 2,
-                      backgroundColor: cBg,
-                      color: cColor,
-                      fontWeight: 700,
-                      fontSize: stageGridCellSize >= 26 ? '0.72rem' : stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
-                      letterSpacing: '-0.5px',
-                      lineHeight: 1,
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxSizing: 'border-box',
-                      cursor: 'pointer',
-                      border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
-                      boxShadow: 'none',
-                      zIndex: isSelected ? 12 : 1,
-                      transform: 'none',
-                      transition: 'none'
-                    }}
-                  >
-                    {showCellText ? val : ''}
-                  </div>
-                );
-              })}
+                  return (
+                    <div 
+                      key={`org-cell-${idx}`}
+                      className="cell"
+                      onClick={() => handleCellClick({ x, y, val })}
+                      style={{
+                        gridColumn: x + 2,
+                        gridRow: y + 2,
+                        backgroundColor: cBg,
+                        color: cColor,
+                        fontWeight: 700,
+                        fontSize: stageGridCellSize >= 26 ? '0.72rem' : stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
+                        letterSpacing: '-0.5px',
+                        lineHeight: 1,
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxSizing: 'border-box',
+                        cursor: 'pointer',
+                        border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
+                        boxShadow: 'none',
+                        zIndex: isSelected ? 12 : 1,
+                        transform: 'none',
+                        transition: 'none'
+                      }}
+                    >
+                      {showCellText ? val : ''}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         };
@@ -646,7 +662,7 @@ const IntraPredictionFlow = ({
         const renderPredictionGrid = () => {
           if (N >= 16) {
             return (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '0.85rem' }}>
+              <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center', padding: '0.5rem 0' }}>
                 <MacroMicroPixelViewer
                   data={predData}
                   N={N}
@@ -656,123 +672,128 @@ const IntraPredictionFlow = ({
                   onSelectPixel={(p) => handleCellClick({ x: p.x, y: p.y, val: p.val })}
                   activeWindow={activeWindow}
                   onSelectWindow={setActiveWindow}
-                  macroCanvasSize={160}
-                  microCellSize={36}
+                  macroCanvasSize={zoomLevel === 'zoom' ? 180 : 130}
+                  microCellSize={zoomLevel === 'zoom' ? 40 : 30}
+                  showValues={showValues}
                 />
               </div>
             );
           }
           return (
-            <div 
-              className="grid-container pred-grid" 
-              style={{ 
-                width: `${stageGridSize}px`, 
-                height: `${stageGridSize}px`, 
-                display: 'grid',
-                gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
-                gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
-                position: 'relative',
-                margin: '0 auto'
-              }}
-            >
-              {/* SVG Ray Tracing Layer (Connected strictly to cell borders) */}
-              {activeCoord && trace && (
-                <svg 
-                  style={{ 
-                    position: 'absolute', 
-                    top: 0, 
-                    left: 0, 
-                    width: stageGridSize, 
-                    height: stageGridSize, 
-                    pointerEvents: 'none', 
-                    zIndex: 14 
-                  }}
-                >
-                  {trace.refs.map((ref, idx) => {
-                    const { x1, y1, x2, y2 } = getRayBorderEndpoints(ref, activeCoord, stageGridCellSize);
-                    if (Math.hypot(x2 - x1, y2 - y1) < 1.0) return null;
-                    return (
-                      <line 
-                        key={idx}
-                        x1={x1} 
-                        y1={y1} 
-                        x2={x2} 
-                        y2={y2} 
-                        stroke={SELECTION_HIGHLIGHT_COLOR} 
-                        strokeWidth="2" 
-                        strokeDasharray="4 2" 
-                      />
-                    );
-                  })}
-                </svg>
-              )}
-
-              {/* Frame around Prediction Block */}
+            <div style={{ width: '100%', overflowX: 'auto', overflowY: 'hidden', display: 'flex', justifyContent: 'center', padding: '0.25rem 0' }}>
               <div 
-                style={{
-                  position: 'absolute',
-                  top: stageGridCellSize,
-                  left: stageGridCellSize,
-                  width: N * stageGridCellSize,
-                  height: N * stageGridCellSize,
-                  border: '2px solid var(--apple-label)',
-                  boxSizing: 'border-box',
-                  pointerEvents: 'none',
-                  zIndex: 10
-                }} 
-              />
-
-              {/* Active Reference Perimeter */}
-              <ReferencePerimeter
-                refTop={refTopActive}
-                refLeft={refLeftActive}
-                N={N}
-                activeTopIndices={activeTopIndices}
-                activeLeftIndices={activeLeftIndices}
-                showCellText={showCellText}
-                getRefStyle={getRefStyle}
-                prefix="pred"
-              />
-
-              {/* Prediction block cells */}
-              {predData.map((val, idx) => {
-                const x = idx % N;
-                const y = Math.floor(idx / N);
-                const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
-                const { bg: cBg, color: cColor } = getSampleColor(val);
-
-                return (
-                  <div 
-                    key={`pred-live-${selectedMode}-${idx}`} 
-                    className="cell pred-cell" 
-                    onClick={() => handleCellClick({ x, y, val })}
+                className="grid-container pred-grid" 
+                style={{ 
+                  width: `${stageGridSize}px`, 
+                  height: `${stageGridSize}px`, 
+                  minWidth: `${stageGridSize}px`,
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
+                  gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
+                  position: 'relative',
+                  margin: '0 auto',
+                  flexShrink: 0
+                }}
+              >
+                {/* SVG Ray Tracing Layer (Connected strictly to cell borders) */}
+                {activeCoord && trace && (
+                  <svg 
                     style={{ 
-                      gridColumn: x + 2, 
-                      gridRow: y + 2, 
-                      backgroundColor: cBg, 
-                      color: cColor, 
-                      cursor: 'pointer',
-                      border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
-                      boxShadow: 'none',
-                      zIndex: isSelected ? 12 : 1,
-                      transform: 'none',
-                      transition: 'none',
-                      fontSize: stageGridCellSize >= 26 ? '0.72rem' : stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
-                      fontWeight: 700,
-                      letterSpacing: '-0.5px',
-                      lineHeight: 1,
-                      overflow: 'hidden',
-                      whiteSpace: 'nowrap',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxSizing: 'border-box'
+                      position: 'absolute', 
+                      top: 0, 
+                      left: 0, 
+                      width: stageGridSize, 
+                      height: stageGridSize, 
+                      pointerEvents: 'none', 
+                      zIndex: 14 
                     }}
                   >
-                    {showCellText ? val : ''}
-                  </div>
-                );
-              })}
+                    {trace.refs.map((ref, idx) => {
+                      const { x1, y1, x2, y2 } = getRayBorderEndpoints(ref, activeCoord, stageGridCellSize);
+                      if (Math.hypot(x2 - x1, y2 - y1) < 1.0) return null;
+                      return (
+                        <line 
+                          key={idx}
+                          x1={x1} 
+                          y1={y1} 
+                          x2={x2} 
+                          y2={y2} 
+                          stroke={SELECTION_HIGHLIGHT_COLOR} 
+                          strokeWidth="2" 
+                          strokeDasharray="4 2" 
+                        />
+                      );
+                    })}
+                  </svg>
+                )}
+
+                {/* Frame around Prediction Block */}
+                <div 
+                  style={{
+                    position: 'absolute',
+                    top: stageGridCellSize,
+                    left: stageGridCellSize,
+                    width: N * stageGridCellSize,
+                    height: N * stageGridCellSize,
+                    border: '2px solid var(--apple-label)',
+                    boxSizing: 'border-box',
+                    pointerEvents: 'none',
+                    zIndex: 10
+                  }} 
+                />
+
+                {/* Active Reference Perimeter */}
+                <ReferencePerimeter
+                  refTop={refTopActive}
+                  refLeft={refLeftActive}
+                  N={N}
+                  activeTopIndices={activeTopIndices}
+                  activeLeftIndices={activeLeftIndices}
+                  showCellText={showCellText}
+                  getRefStyle={getRefStyle}
+                  prefix="pred"
+                />
+
+                {/* Prediction block cells */}
+                {predData.map((val, idx) => {
+                  const x = idx % N;
+                  const y = Math.floor(idx / N);
+                  const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
+                  const { bg: cBg, color: cColor } = getSampleColor(val);
+
+                  return (
+                    <div 
+                      key={`pred-live-${selectedMode}-${idx}`} 
+                      className="cell pred-cell" 
+                      onClick={() => handleCellClick({ x, y, val })}
+                      style={{ 
+                        gridColumn: x + 2, 
+                        gridRow: y + 2, 
+                        backgroundColor: cBg, 
+                        color: cColor, 
+                        cursor: 'pointer',
+                        border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
+                        boxShadow: 'none',
+                        zIndex: isSelected ? 12 : 1,
+                        transform: 'none',
+                        transition: 'none',
+                        fontSize: stageGridCellSize >= 26 ? '0.72rem' : stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
+                        fontWeight: 700,
+                        letterSpacing: '-0.5px',
+                        lineHeight: 1,
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxSizing: 'border-box'
+                      }}
+                    >
+                      {showCellText ? val : ''}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         };
@@ -819,6 +840,7 @@ const IntraPredictionFlow = ({
                   onCellClick={handleCellClick}
                   activeWindow={activeWindow}
                   onSelectWindow={setActiveWindow}
+                  showValues={showValues}
                 />
               </div>
             ) : (
@@ -872,6 +894,7 @@ const IntraPredictionFlow = ({
                   onCellClick={handleCellClick}
                   activeWindow={activeWindow}
                   onSelectWindow={setActiveWindow}
+                  showValues={showValues}
                 />
               </div>
             )}

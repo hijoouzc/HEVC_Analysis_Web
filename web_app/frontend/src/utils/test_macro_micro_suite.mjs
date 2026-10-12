@@ -140,6 +140,59 @@ it('ResidualMatrix cells have zero title hover tooltip attributes', () => {
   assert(!code.includes('title='), 'No title attribute found in ResidualMatrix');
 });
 
+it('Synchronized4WayViewport has zero onMouseEnter or onMouseOver listeners', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/Synchronized4WayViewport.jsx'), 'utf-8');
+  assert(!code.includes('onMouseEnter'), 'No onMouseEnter found in Synchronized4WayViewport');
+  assert(!code.includes('onMouseOver'), 'No onMouseOver found in Synchronized4WayViewport');
+});
+
+it('TransformQuantVisualizer has zero onMouseEnter or onMouseOver listeners', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/TransformQuantVisualizer.jsx'), 'utf-8');
+  assert(!code.includes('onMouseEnter'), 'No onMouseEnter found in TransformQuantVisualizer');
+  assert(!code.includes('onMouseOver'), 'No onMouseOver found in TransformQuantVisualizer');
+});
+
+// =============================================================================
+// Test Suite 4: Value Overlay Toggle & Zero Layout Overflow Verification
+// =============================================================================
+console.log('\nTest Suite 4: Value Overlay Toggle & Zero Layout Overflow Verification');
+
+it('MacroMicroPixelViewer supports showValues prop and omits text when showValues=false', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/common/MacroMicroPixelViewer.jsx'), 'utf-8');
+  assert(code.includes('showValues = true'), 'MacroMicroPixelViewer has showValues prop defaulting to true');
+  assert(code.includes('showValues ?'), 'MacroMicroPixelViewer conditionally renders text based on showValues');
+});
+
+it('BlockMatrixGrid supports showValues prop and omits text when showValues=false', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/common/BlockMatrixGrid.jsx'), 'utf-8');
+  assert(code.includes('showValues = true'), 'BlockMatrixGrid has showValues prop defaulting to true');
+  assert(code.includes('showValues ?'), 'BlockMatrixGrid conditionally renders text based on showValues');
+});
+
+it('Synchronized4WayViewport provides Values and Zoom toolbar controls', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/Synchronized4WayViewport.jsx'), 'utf-8');
+  assert(code.includes('showValues'), 'Synchronized4WayViewport manages showValues state');
+  assert(code.includes('zoomPreset'), 'Synchronized4WayViewport manages zoomPreset state');
+  assert(code.includes('showValues={showValues}'), 'Synchronized4WayViewport passes showValues to viewer');
+});
+
+it('TransformQuantVisualizer provides Values and Zoom toolbar controls', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/TransformQuantVisualizer.jsx'), 'utf-8');
+  assert(code.includes('showValues'), 'TransformQuantVisualizer manages showValues state');
+  assert(code.includes('zoomLevel'), 'TransformQuantVisualizer manages zoomLevel state');
+  assert(code.includes('showValues={showValues}'), 'TransformQuantVisualizer passes showValues to BlockMatrixGrid');
+});
+
+it('All visualizer matrix containers enforce safe horizontal scroll and max-width bounds', () => {
+  const flowCode = fs.readFileSync(path.join(__dirname, '../components/IntraPredictionFlow.jsx'), 'utf-8');
+  const syncCode = fs.readFileSync(path.join(__dirname, '../components/Synchronized4WayViewport.jsx'), 'utf-8');
+  const tqCode = fs.readFileSync(path.join(__dirname, '../components/TransformQuantVisualizer.jsx'), 'utf-8');
+
+  assert(flowCode.includes('overflowX: \'auto\''), 'IntraPredictionFlow wraps grids with overflowX auto');
+  assert(syncCode.includes('overflowX: \'auto\''), 'Synchronized4WayViewport wraps grids with overflowX auto');
+  assert(tqCode.includes('overflowX: \'auto\''), 'TransformQuantVisualizer wraps grids with overflowX auto');
+});
+
 // =============================================================================
 // SUMMARY
 // =============================================================================

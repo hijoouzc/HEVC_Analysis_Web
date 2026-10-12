@@ -83,7 +83,8 @@ function BlockMatrixGrid({
   activeWindow = null,
   onSelectWindow = null,
   macroCanvasSize = 160,
-  microCellSize = 36
+  microCellSize = 36,
+  showValues = true
 }) {
   const canvasRef = useRef(null);
   const [internalWindow, setInternalWindow] = useState({ wx: 0, wy: 0 });
@@ -173,41 +174,53 @@ function BlockMatrixGrid({
     return (
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: `repeat(${width}, ${cellSize}px)`,
-          gridTemplateRows: `repeat(${width}, ${cellSize}px)`,
-          gap: '1px',
-          background: 'var(--apple-hairline)',
-          padding: '1px',
-          border: '1px solid var(--apple-hairline)',
-          borderRadius: 0,
-          overflow: 'hidden',
-          width: 'fit-content',
-          margin: '0 auto'
+          width: '100%',
+          overflowX: 'auto',
+          overflowY: 'hidden',
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '2px 0'
         }}
       >
-        {data.map((val, idx) => {
-          const x = idx % width;
-          const y = Math.floor(idx / width);
-          const isSelected = selectedCell && selectedCell.x === x && selectedCell.y === y;
-          const isDC = (x === 0 && y === 0);
-          const style = getColor ? getColor(val, isDC, x, y) : { bg: 'var(--apple-surface)', color: 'var(--apple-label)' };
-          const displayVal = formatValue ? formatValue(val, x, y, isDC) : val;
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${width}, ${cellSize}px)`,
+            gridTemplateRows: `repeat(${width}, ${cellSize}px)`,
+            gap: '1px',
+            background: 'var(--apple-hairline)',
+            padding: '1px',
+            border: '1px solid var(--apple-hairline)',
+            borderRadius: 0,
+            overflow: 'hidden',
+            width: 'fit-content',
+            margin: '0 auto',
+            flexShrink: 0
+          }}
+        >
+          {data.map((val, idx) => {
+            const x = idx % width;
+            const y = Math.floor(idx / width);
+            const isSelected = selectedCell && selectedCell.x === x && selectedCell.y === y;
+            const isDC = (x === 0 && y === 0);
+            const style = getColor ? getColor(val, isDC, x, y) : { bg: 'var(--apple-surface)', color: 'var(--apple-label)' };
+            const displayVal = showValues ? (formatValue ? formatValue(val, x, y, isDC) : val) : '';
 
-          return (
-            <MatrixCell
-              key={`${x}-${y}`}
-              x={x}
-              y={y}
-              cellSize={cellSize}
-              isSelected={isSelected}
-              isDC={isDC}
-              style={style}
-              displayVal={displayVal}
-              onSelect={handleCellClick}
-            />
-          );
-        })}
+            return (
+              <MatrixCell
+                key={`${x}-${y}`}
+                x={x}
+                y={y}
+                cellSize={cellSize}
+                isSelected={isSelected}
+                isDC={isDC}
+                style={style}
+                displayVal={displayVal}
+                onSelect={handleCellClick}
+              />
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -223,7 +236,11 @@ function BlockMatrixGrid({
         gap: '0.85rem',
         alignItems: 'flex-start',
         justifyContent: 'center',
-        width: '100%'
+        width: '100%',
+        maxWidth: '100%',
+        overflowX: 'auto',
+        boxSizing: 'border-box',
+        padding: '2px 0'
       }}
     >
       {/* Pane 1: Macro Energy Canvas */}
@@ -447,7 +464,7 @@ function BlockMatrixGrid({
             const isSelected = selectedCell && selectedCell.x === gx && selectedCell.y === gy;
             const isDC = (gx === 0 && gy === 0);
             const style = getColor ? getColor(val, isDC, gx, gy) : { bg: 'var(--apple-surface)', color: 'var(--apple-label)' };
-            const displayVal = formatValue ? formatValue(val, gx, gy, isDC) : val;
+            const displayVal = showValues ? (formatValue ? formatValue(val, gx, gy, isDC) : val) : '';
 
             return (
               <MatrixCell

@@ -27,6 +27,8 @@ export default function Synchronized4WayViewport({
   const [selectedPixel, setSelectedPixel] = useState(null); // { x, y } - click-only inspection
   const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 }); // 8x8 window index
   const [layoutMode, setLayoutMode] = useState('2x2'); // '2x2' or 'side-by-side'
+  const [zoomPreset, setZoomPreset] = useState('fit'); // 'fit' or 'zoom'
+  const [showValues, setShowValues] = useState(true);
 
   const handleChannelChange = useCallback((newCh) => {
     setChannel(newCh);
@@ -91,13 +93,20 @@ export default function Synchronized4WayViewport({
   // Dynamic max scale for residual heatmap
   const heatmapScale = Math.max(16, stats.maxAbsResi);
 
+  const isZoom = zoomPreset === 'zoom';
+  const microCellSize = isZoom ? 40 : 32;
+  const macroCanvasSize = isZoom ? (N >= 32 ? 220 : 170) : (N >= 32 ? 170 : 130);
+
   // Helper to render an individual matrix grid using MacroMicroPixelViewer
   const renderMatrix = (type, dataArray, title, subtitle, badgeColor) => {
     return (
       <div className="apple-card" style={{
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden'
+        overflow: 'hidden',
+        maxWidth: '100%',
+        width: '100%',
+        boxSizing: 'border-box'
       }}>
         {/* Sub-card Header */}
         <div style={{
@@ -140,7 +149,10 @@ export default function Synchronized4WayViewport({
           justifyContent: 'center',
           alignItems: 'center',
           background: 'var(--apple-canvas)',
-          overflow: 'auto'
+          overflowX: 'auto',
+          maxWidth: '100%',
+          width: '100%',
+          boxSizing: 'border-box'
         }}>
           <MacroMicroPixelViewer
             data={dataArray}
@@ -152,8 +164,9 @@ export default function Synchronized4WayViewport({
             onSelectPixel={setSelectedPixel}
             activeWindow={activeWindow}
             onSelectWindow={setActiveWindow}
-            macroCanvasSize={N >= 32 ? 200 : 160}
-            microCellSize={36}
+            macroCanvasSize={macroCanvasSize}
+            microCellSize={microCellSize}
+            showValues={showValues}
           />
         </div>
       </div>
@@ -222,6 +235,27 @@ export default function Synchronized4WayViewport({
             ]}
           />
 
+          {/* Zoom Preset Toggle */}
+          <SegmentedControl
+            value={zoomPreset}
+            onChange={setZoomPreset}
+            size="small"
+            items={[
+              { id: 'fit', label: 'Fit' },
+              { id: 'zoom', label: '1.5×' },
+            ]}
+          />
+
+          {/* Values Overlay Toggle */}
+          <Button
+            variant={showValues ? 'tinted' : 'gray'}
+            size="small"
+            onClick={() => setShowValues(prev => !prev)}
+            title="Toggle numerical values overlay on matrix cells"
+          >
+            Values: {showValues ? 'ON' : 'OFF'}
+          </Button>
+
           {/* Layout Toggle */}
           <Button
             variant="gray"
@@ -282,11 +316,13 @@ export default function Synchronized4WayViewport({
       {/* Viewport Matrices Container */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: layoutMode === '2x2' ? 'repeat(auto-fit, minmax(360px, 1fr))' : 'repeat(4, minmax(360px, 1fr))',
-        minWidth: layoutMode === 'side-by-side' ? '1480px' : 'auto',
+        gridTemplateColumns: layoutMode === '2x2' ? 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))' : 'repeat(4, minmax(320px, 1fr))',
+        minWidth: layoutMode === 'side-by-side' ? '1360px' : 'auto',
         gap: '1.25rem',
         marginBottom: '1.25rem',
-        overflowX: 'auto'
+        overflowX: 'auto',
+        maxWidth: '100%',
+        width: '100%'
       }}>
         {/* Viewport 1: Original */}
         {renderMatrix(

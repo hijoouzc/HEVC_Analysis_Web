@@ -24,6 +24,8 @@ export default function TransformQuantVisualizer({
   const [selectedCell, setSelectedCell] = useState(null); // { x, y }
   const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 });
   const [showHmModal, setShowHmModal] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
+  const [showValues, setShowValues] = useState(true);
 
   const handleCellClick = useCallback((coord) => {
     setSelectedCell(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
@@ -121,6 +123,10 @@ export default function TransformQuantVisualizer({
   const sparsityPercent = typeof sparsity_ratio === 'number' ? (sparsity_ratio * 100).toFixed(1) : '—';
   const energyPercent = typeof energy_compaction_ratio === 'number' ? (energy_compaction_ratio * 100).toFixed(1) : '—';
 
+  const isZoom = zoomLevel === 'zoom';
+  const microCellSize = isZoom ? 40 : 32;
+  const macroCanvasSize = isZoom ? 180 : 140;
+
   return (
     <div className="transform-quant-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {/* Component & TU Selector Bar */}
@@ -154,7 +160,7 @@ export default function TransformQuantVisualizer({
           />
         </div>
 
-        {/* TU Block Selector & Code Trigger */}
+        {/* TU Block Selector & Controls */}
         <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
             <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--apple-label-secondary)' }}>
@@ -177,6 +183,27 @@ export default function TransformQuantVisualizer({
               ))}
             </select>
           </div>
+
+          {/* Zoom Preset Toggle */}
+          <SegmentedControl
+            value={zoomLevel}
+            onChange={setZoomLevel}
+            size="small"
+            items={[
+              { id: 'fit', label: 'Fit' },
+              { id: 'zoom', label: '1.5×' },
+            ]}
+          />
+
+          {/* Values Overlay Toggle */}
+          <Button
+            variant={showValues ? 'tinted' : 'gray'}
+            size="small"
+            onClick={() => setShowValues(prev => !prev)}
+            title="Toggle numerical values on transform matrices"
+          >
+            Values: {showValues ? 'ON' : 'OFF'}
+          </Button>
 
           <Button
             variant="gray"
@@ -224,13 +251,17 @@ export default function TransformQuantVisualizer({
       {/* Tri-Matrix Pipeline Comparison View */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
         gap: '1.5rem',
-        alignItems: 'flex-start'
+        alignItems: 'flex-start',
+        maxWidth: '100%',
+        width: '100%'
       }}>
         {/* Matrix 1: Spatial Residual R(x, y) */}
         <div className="apple-card" style={{
-          padding: '1.25rem'
+          padding: '1.25rem',
+          maxWidth: '100%',
+          overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
             <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)' }}>
@@ -238,16 +269,21 @@ export default function TransformQuantVisualizer({
             </h4>
           </div>
 
-          <BlockMatrixGrid
-            data={resi_matrix}
-            width={width}
-            selectedCell={selectedCell}
-            onSelectCell={handleCellClick}
-            activeWindow={activeWindow}
-            onSelectWindow={setActiveWindow}
-            getColor={(val) => getResiColor(val)}
-            formatValue={(val) => (val > 0 ? `+${val}` : val)}
-          />
+          <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+            <BlockMatrixGrid
+              data={resi_matrix}
+              width={width}
+              selectedCell={selectedCell}
+              onSelectCell={handleCellClick}
+              activeWindow={activeWindow}
+              onSelectWindow={setActiveWindow}
+              getColor={(val) => getResiColor(val)}
+              formatValue={(val) => (val > 0 ? `+${val}` : val)}
+              microCellSize={microCellSize}
+              macroCanvasSize={macroCanvasSize}
+              showValues={showValues}
+            />
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--apple-label-secondary)', marginTop: '0.5rem' }}>
             <span>Negative (Blue)</span>
@@ -258,7 +294,9 @@ export default function TransformQuantVisualizer({
 
         {/* Matrix 2: 2D DCT Frequency Spectrum */}
         <div className="apple-card" style={{
-          padding: '1.25rem'
+          padding: '1.25rem',
+          maxWidth: '100%',
+          overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
             <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)' }}>
@@ -269,16 +307,21 @@ export default function TransformQuantVisualizer({
             </span>
           </div>
 
-          <BlockMatrixGrid
-            data={dct_coeff}
-            width={width}
-            selectedCell={selectedCell}
-            onSelectCell={handleCellClick}
-            activeWindow={activeWindow}
-            onSelectWindow={setActiveWindow}
-            getColor={(val, isDC) => getDctColor(val, isDC)}
-            formatValue={(val) => val}
-          />
+          <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+            <BlockMatrixGrid
+              data={dct_coeff}
+              width={width}
+              selectedCell={selectedCell}
+              onSelectCell={handleCellClick}
+              activeWindow={activeWindow}
+              onSelectWindow={setActiveWindow}
+              getColor={(val, isDC) => getDctColor(val, isDC)}
+              formatValue={(val) => val}
+              microCellSize={microCellSize}
+              macroCanvasSize={macroCanvasSize}
+              showValues={showValues}
+            />
+          </div>
 
           {/* Energy bar */}
           <div style={{ marginTop: '0.5rem' }}>
@@ -294,7 +337,9 @@ export default function TransformQuantVisualizer({
 
         {/* Matrix 3: Quantized Coefficients QCoeff */}
         <div className="apple-card" style={{
-          padding: '1.25rem'
+          padding: '1.25rem',
+          maxWidth: '100%',
+          overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
             <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)' }}>
@@ -305,19 +350,24 @@ export default function TransformQuantVisualizer({
             </span>
           </div>
 
-          <BlockMatrixGrid
-            data={quant_coeff}
-            width={width}
-            selectedCell={selectedCell}
-            onSelectCell={handleCellClick}
-            activeWindow={activeWindow}
-            onSelectWindow={setActiveWindow}
-            getColor={(val) => {
-              const res = getQuantColor(val);
-              return { bg: res.bg, color: res.color, fontWeight: res.isZero ? 400 : 800 };
-            }}
-            formatValue={(val) => val}
-          />
+          <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+            <BlockMatrixGrid
+              data={quant_coeff}
+              width={width}
+              selectedCell={selectedCell}
+              onSelectCell={handleCellClick}
+              activeWindow={activeWindow}
+              onSelectWindow={setActiveWindow}
+              getColor={(val) => {
+                const res = getQuantColor(val);
+                return { bg: res.bg, color: res.color, fontWeight: res.isZero ? 400 : 800 };
+              }}
+              formatValue={(val) => val}
+              microCellSize={microCellSize}
+              macroCanvasSize={macroCanvasSize}
+              showValues={showValues}
+            />
+          </div>
 
           {/* Sparsity bar */}
           <div style={{ marginTop: '0.5rem' }}>

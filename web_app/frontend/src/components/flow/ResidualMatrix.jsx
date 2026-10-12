@@ -24,7 +24,8 @@ const ResidualMatrix = ({
   activeCoord,
   onCellClick,
   activeWindow = null,
-  onSelectWindow = null
+  onSelectWindow = null,
+  showValues = true
 }) => {
   const cellSize = N === 4 ? 48 : Math.max(36, resiCellSize);
 
@@ -80,58 +81,73 @@ const ResidualMatrix = ({
             onSelectWindow={onSelectWindow}
             macroCanvasSize={160}
             microCellSize={36}
+            showValues={showValues}
           />
         ) : (
-          /* N <= 8 Residual Matrix Grid */
+          /* N <= 8 Residual Matrix Grid with zero-overflow wrapper */
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${N}, ${cellSize}px)`,
-              gridTemplateRows: `repeat(${N}, ${cellSize}px)`,
-              gap: '1px',
-              background: 'var(--apple-hairline)',
-              border: '1px solid var(--apple-hairline)',
-              borderRadius: '4px',
-              overflow: 'hidden',
-              lineHeight: 1
+              width: '100%',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              display: 'flex',
+              justifyContent: 'center',
+              padding: '2px 0'
             }}
           >
-            {resiData.map((val, idx) => {
-              const x = idx % N;
-              const y = Math.floor(idx / N);
-              const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
-              const { bg, color } = getResidualColorAndTextColor(val, 64);
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${N}, ${cellSize}px)`,
+                gridTemplateRows: `repeat(${N}, ${cellSize}px)`,
+                gap: '1px',
+                background: 'var(--apple-hairline)',
+                border: '1px solid var(--apple-hairline)',
+                borderRadius: '4px',
+                overflow: 'hidden',
+                lineHeight: 1,
+                width: 'fit-content',
+                margin: '0 auto',
+                flexShrink: 0
+              }}
+            >
+              {resiData.map((val, idx) => {
+                const x = idx % N;
+                const y = Math.floor(idx / N);
+                const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
+                const { bg, color } = getResidualColorAndTextColor(val, 64);
 
-              return (
-                <div
-                  key={`resi-live-${idx}`}
-                  className="cell"
-                  onClick={() => onCellClick && onCellClick({ x, y, val })}
-                  style={{
-                    backgroundColor: bg,
-                    color: color,
-                    fontWeight: 700,
-                    fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
-                    fontFamily: 'JetBrains Mono',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    border: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
-                    boxShadow: 'none',
-                    zIndex: isSelected ? 12 : 1,
-                    letterSpacing: '-0.5px',
-                    lineHeight: 1,
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxSizing: 'border-box'
-                  }}
-                >
-                  {val > 0 ? `+${val}` : val}
-                </div>
-              );
-            })}
+                return (
+                  <div
+                    key={`resi-live-${idx}`}
+                    className="cell"
+                    onClick={() => onCellClick && onCellClick({ x, y, val })}
+                    style={{
+                      backgroundColor: bg,
+                      color: color,
+                      fontWeight: 700,
+                      fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
+                      fontFamily: 'JetBrains Mono',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      border: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
+                      boxShadow: 'none',
+                      zIndex: isSelected ? 12 : 1,
+                      letterSpacing: '-0.5px',
+                      lineHeight: 1,
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {showValues ? (val > 0 ? `+${val}` : val) : ''}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

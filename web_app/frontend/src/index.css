@@ -2467,7 +2467,8 @@ h1 {
 .live-matrix-card {
   flex: 1 1 0;
   min-width: 280px;
-  max-width: 440px;
+  max-width: 100%;
+  width: 100%;
   background: var(--apple-surface);
   border: 1px solid var(--apple-hairline);
   border-radius: var(--apple-radius-card);
@@ -2478,6 +2479,18 @@ h1 {
   box-shadow: var(--apple-shadow-card);
   box-sizing: border-box;
   overflow: hidden;
+}
+
+.dual-stage-row .live-matrix-card {
+  flex: 1 1 340px;
+  min-width: 300px;
+  max-width: 100%;
+}
+
+.equation-trio-row .live-matrix-card {
+  flex: 1 1 260px;
+  min-width: 240px;
+  max-width: 460px;
 }
 
 .live-matrix-header {
