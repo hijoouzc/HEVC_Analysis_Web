@@ -239,3 +239,117 @@ Void TComTrQuant::xQuant( TComDataCU* pcCU, TCoeff* pSrc, TCoeff* pDes,
   }
 }`
 };
+
+export const HM_EST_INTRAPRED_LUMA_SNIPPET = {
+  title: 'TEncSearch::estIntraPredLumaQT — Rough Mode Decision (RMD)',
+  sourceFile: 'source/Lib/TLibEncoder/TEncSearch.cpp (Lines 2260-2440)',
+  functionName: 'estIntraPredLumaQT',
+  standardRef: 'ITU-T H.265 Section 8.4.2 / HEVC Book Chapter 4',
+  description: 'HM evaluates all 35 intra modes using fast Hadamard SATD cost: J_RMD = SATD + λ_Had · R_mode. It sorts modes and selects Top K candidates (K=8 for 4x4/8x8; K=3 for 16x16/32x32). Then, it derives 3 Most Probable Modes (MPM) from Left & Above neighbors via pcCU->getIntraDirPredictor and merges them into the candidate list for Full RDO.',
+  codeSnippet: `// source/Lib/TLibEncoder/TEncSearch.cpp
+
+Void TEncSearch::estIntraPredLumaQT( TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv* pcPredYuv, ... )
+{
+  // 1. Prepare reference boundary samples:
+  initIntraPatternChType( tuRecurseWithPU, COMPONENT_Y, true );
+
+  // 2. RMD Phase: Fast evaluation of all 35 Intra modes:
+  for( UInt uiMode = 0; uiMode < 35; uiMode++ )
+  {
+    // Directional prediction with 1/32-pel precision:
+    predIntraAng( COMPONENT_Y, uiMode, piOrg, uiStride, piPred, uiStride, tuRecurseWithPU, bUseFilter );
+
+    // Fast Hadamard SATD distortion:
+    Distortion uiSad = m_cRdCost.getDistPart( piPred, uiStride, piOrg, uiStride, uiWidth, uiHeight, ... );
+    UInt uiBits = xModeBitsIntra( pcCU, uiMode, uiPartOffset, uiDepth );
+    Double dCost = m_cRdCost.calcRdCost( uiBits, uiSad );
+
+    // Maintain sorted candidate list (Top K: 8 for 4x4/8x8, 3 for 16x16/32x32):
+    xOrderCandidateList( CandCostList, CandModeList, numModesForFullRD, dCost, uiMode );
+  }
+
+  // 3. Derive 3 MPMs from Left & Above spatial neighbors:
+  Int uiPreds[NUM_MOST_PROBABLE_MODES];
+  Int iMode = -1;
+  pcCU->getIntraDirPredictor( uiPartOffset, uiPreds, COMPONENT_Y, &iMode );
+
+  // Add MPMs to candidate list if not already present:
+  for( Int j = 0; j < NUM_MOST_PROBABLE_MODES; j++ )
+  {
+    Bool bIncluded = false;
+    for( Int i = 0; i < numModesForFullRD; i++ )
+    {
+      if( CandModeList[i] == uiPreds[j] ) { bIncluded = true; break; }
+    }
+    if( !bIncluded ) { CandModeList[numModesForFullRD++] = uiPreds[j]; }
+  }
+}`
+};
+
+export const HM_RECUR_INTRA_CODING_SNIPPET = {
+  title: 'TEncSearch::xRecurIntraCodingLumaQT — Full RDO & TU Quadtree',
+  sourceFile: 'source/Lib/TLibEncoder/TEncSearch.cpp (Lines 370-520)',
+  functionName: 'xRecurIntraCodingLumaQT',
+  standardRef: 'ITU-T H.265 Section 8.4.4 / 8.7 (RDO & TU Recursion)',
+  description: 'Evaluates full Rate-Distortion Optimization (RDO) for candidate modes. Performs forward Transform (DST-VII / DCT-II) and Quantization, followed by Inverse Quantization and Inverse Transform. Reconstructed samples S = Clip3(0, 255, P + R) immediately serve as spatial reference samples for subsequent sub-TUs. True RD Cost is calculated as J = SSE + λ · R_CABAC.',
+  codeSnippet: `// source/Lib/TLibEncoder/TEncSearch.cpp
+
+Void TEncSearch::xRecurIntraCodingLumaQT( TComYuv* pcOrgYuv, TComYuv* pcPredYuv, TComYuv* pcResiYuv, ... )
+{
+  // 1. Spatial Intra Prediction:
+  predIntraAng( COMPONENT_Y, uiInitMode, piOrg, uiStride, piPred, uiStride, tuRecurse, bUseFilter );
+
+  // 2. Subtraction: Spatial Residual R = S - P
+  for( Int y = 0; y < uiHeight; y++ )
+    for( Int x = 0; x < uiWidth; x++ )
+      piResi[x] = piOrg[x] - piPred[x];
+
+  // 3. Core Transform & Quantization:
+  m_pcTrQuant->transformNxN( pcCU, piResi, uiStride, pcCoeff, uiWidth, uiHeight, ... );
+  m_pcTrQuant->quant( pcCU, pcCoeff, uiWidth, uiHeight, uiAbsSum, COMPONENT_Y, ... );
+
+  // 4. Inverse Quantization & Inverse Transform (Reconstructed Residual R'):
+  m_pcTrQuant->invTransformNxN( tuRecurse, COMPONENT_Y, piResi, uiStride, pcCoeff, ... );
+
+  // 5. Local Reconstruction: S' = Clip3(0, 255, P + R')
+  for( Int y = 0; y < uiHeight; y++ )
+    for( Int x = 0; x < uiWidth; x++ )
+      piReco[x] = Clip3( 0, 255, piPred[x] + piResi[x] );
+
+  // 6. True Rate-Distortion Cost Calculation:
+  Distortion uiDist = m_cRdCost.getDistPart( piReco, uiStride, piOrg, uiStride, uiWidth, uiHeight );
+  UInt uiBits = xGetIntraBitsQT( tuRecurse, true, false, false );
+  Double dCost = m_cRdCost.calcRdCost( uiBits, uiDist );
+}`
+};
+
+export const HM_CHROMA_INTRA_SNIPPET = {
+  title: 'TEncSearch::estIntraPredChromaQT & getAllowedChromaDir',
+  sourceFile: 'source/Lib/TLibEncoder/TEncSearch.cpp (Lines 2690-2780) & TComDataCU.cpp (Lines 1334-1353)',
+  functionName: 'estIntraPredChromaQT / getAllowedChromaDir',
+  standardRef: 'ITU-T H.265 Section 8.4.3 (Chroma Intra Prediction)',
+  description: 'HEVC derives 5 candidate intra modes for Chroma: [Planar (0), Vertical (26), Horizontal (10), DC (1), DM_CHROMA (36)]. If the Best Luma Mode is identical to one of the 4 base modes, HM substitutes mode 34 (Angular 45° Top-Right) for the duplicated entry. The encoder runs RDO over all 5 candidates and selects the mode yielding the minimal RD cost.',
+  codeSnippet: `// source/Lib/TLibCommon/TComDataCU.cpp
+
+Void TComDataCU::getAllowedChromaDir( UInt uiAbsPartIdx, UInt uiModeList[NUM_CHROMA_MODE] ) const
+{
+  uiModeList[0] = PLANAR_IDX;    // Mode 0
+  uiModeList[1] = VER_IDX;       // Mode 26
+  uiModeList[2] = HOR_IDX;       // Mode 10
+  uiModeList[3] = DC_IDX;        // Mode 1
+  uiModeList[4] = DM_CHROMA_IDX; // Mode 36 (Inherits Best Luma Mode)
+
+  UInt uiLumaMode = getIntraDir( CHANNEL_TYPE_LUMA, uiAbsPartIdx );
+
+  // Eliminate duplicate: If Luma Mode matches a base mode, replace duplicate with Mode 34:
+  for( Int i = 0; i < NUM_CHROMA_MODE - 1; i++ )
+  {
+    if( uiLumaMode == uiModeList[i] )
+    {
+      uiModeList[i] = 34; // Diagonal Top-Right (VER+8)
+      break;
+    }
+  }
+}`
+};
+

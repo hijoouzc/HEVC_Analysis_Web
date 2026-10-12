@@ -236,6 +236,8 @@ const ActiveStageViewport = ({
             setReconMode('synchronized');
             setActiveStageTab('RECON_VIEW');
           }}
+          jobId={jobId}
+          API_BASE_URL={API_BASE_URL}
         />
       )}
 
