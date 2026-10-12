@@ -17,6 +17,8 @@ import HmSourceCodeModal from './common/HmSourceCodeModal';
 import MacroMicroPixelViewer from './common/MacroMicroPixelViewer';
 import IntraPipelineStepper from './flow/IntraPipelineStepper';
 import IntraPipelineInspector from './flow/IntraPipelineInspector';
+import Step1BoundaryInitView from './flow/Step1BoundaryInitView';
+import Step2RmdFunnelView from './flow/Step2RmdFunnelView';
 import { Button, SegmentedControl, Badge, Card } from './apple';
 
 /**
@@ -684,158 +686,33 @@ const IntraPredictionFlow = ({
             border: '1px solid var(--apple-hairline)'
           }}>
             {activePipelineStep === 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--apple-label)' }}>
-                      Stage 1: Reference Boundary Initialization & MDIS Filter
-                    </h3>
-                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: 'var(--apple-label-secondary)' }}>
-                      Extracts 2N+1 Top and 2N+1 Left reconstructed reference samples; applies 3-tap lowpass filter [1, 2, 1]/4 if threshold met.
-                    </p>
-                  </div>
-                  <Badge variant="blue" style={{ fontFamily: 'JetBrains Mono', fontSize: '0.70rem' }}>
-                    initIntraPatternChType()
-                  </Badge>
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: '0.85rem'
-                }}>
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      TOP REFERENCE ARRAY (2N + 1)
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--apple-label)', fontFamily: 'JetBrains Mono' }}>
-                      {2 * N + 1} Samples
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Covers X from -1 to 2N-1 relative to CU top-left
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      LEFT REFERENCE ARRAY (2N + 1)
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--apple-label)', fontFamily: 'JetBrains Mono' }}>
-                      {2 * N + 1} Samples
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Covers Y from -1 to 2N-1 relative to CU top-left
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      MDIS 3-TAP FILTER STATUS
-                    </div>
-                    <div style={{
-                      fontSize: '0.92rem',
-                      fontWeight: 800,
-                      color: isMDISSmoothed ? 'var(--apple-blue)' : 'var(--apple-label-secondary)',
-                      fontFamily: 'JetBrains Mono'
-                    }}>
-                      {isMDISSmoothed ? 'ACTIVE [1, 2, 1]/4' : 'BYPASSED'}
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      {isMDISSmoothed ? 'High directional energy detected; smoothing applied' : 'Flat or sharp gradient; using raw reference pixels'}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Step1BoundaryInitView
+                refTopRaw={refTopRaw}
+                refLeftRaw={refLeftRaw}
+                refTopFilt={refTopFilt}
+                refLeftFilt={refLeftFilt}
+                N={N}
+                channel={channel}
+                isMDISSmoothed={isMDISSmoothed}
+                showValues={showValues}
+                getSampleColor={getSampleColor}
+              />
             )}
 
             {activePipelineStep === 2 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--apple-label)' }}>
-                      Stage 2: Rough Mode Decision (RMD) 35-Mode Funnel
-                    </h3>
-                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: 'var(--apple-label-secondary)' }}>
-                      Evaluates all 35 HEVC Intra directions using fast Hadamard transform (SATD) to prune unlikely modes.
-                    </p>
-                  </div>
-                  <Badge variant="blue" style={{ fontFamily: 'JetBrains Mono', fontSize: '0.70rem' }}>
-                    TEncSearch::estIntraPredLumaQT
-                  </Badge>
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: '0.85rem'
-                }}>
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      TOTAL CANDIDATES TESTED
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--apple-blue)', fontFamily: 'JetBrains Mono' }}>
-                      35 Intra Modes
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Planar (0), DC (1), Angular (2..34)
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      PRUNING SELECTION (TOP K)
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--system-orange, #FF9500)', fontFamily: 'JetBrains Mono' }}>
-                      Top {effectivePipelineData?.step3_candidates?.k_threshold || (blockSize <= 8 ? 8 : 3)} Selected
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      {blockSize <= 8 ? 'K=8 candidates for 4×4 / 8×8 blocks' : 'K=3 candidates for 16×16 / 32×32 / 64×64 blocks'}
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      RMD EVALUATION FORMULA
-                    </div>
-                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: 'var(--apple-label)', fontFamily: 'JetBrains Mono' }}>
-                      J_RMD = SATD + λ_Had · R_mode
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      4×4 Hadamard butterfly matrix calculation
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Step2RmdFunnelView
+                rmdModes={effectivePipelineData?.step2_rmd || modesData}
+                kThreshold={effectivePipelineData?.step3_candidates?.k_threshold ?? (blockSize <= 8 ? 8 : 3)}
+                selectedMode={selectedMode}
+                onSelectMode={(targetMode) => {
+                  if (modesData && onSelectModeIndex) {
+                    const targetIdx = modesData.findIndex(d => d.mode === targetMode);
+                    if (targetIdx !== -1) onSelectModeIndex(targetIdx);
+                  }
+                }}
+                N={N}
+                mpmModes={effectivePipelineData?.step3_candidates?.mpm_modes || [0, 1, 26]}
+              />
             )}
 
             {activePipelineStep === 3 && (
