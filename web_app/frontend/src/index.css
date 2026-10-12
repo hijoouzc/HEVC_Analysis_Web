@@ -1846,6 +1846,161 @@ h1 {
   box-sizing: border-box;
 }
 
+/* Master-Detail Dual Stage Layout */
+.dual-stage-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: start;
+}
+
+/* Candidate Ribbon (Top 5 RDO Leaders) */
+.candidate-ribbon {
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-hairline);
+  border-radius: var(--apple-radius-card, 8px);
+  padding: 0.5rem 0.85rem;
+  margin-bottom: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.candidate-ribbon-title {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.candidate-ribbon-title span:first-child {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--apple-label);
+  letter-spacing: 0.04em;
+}
+
+.candidate-ribbon-sub {
+  font-size: 0.64rem;
+  color: var(--apple-label-secondary);
+}
+
+.candidate-chips-list {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.candidate-ribbon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--apple-canvas);
+  border: 1px solid var(--apple-hairline);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.70rem;
+  color: var(--apple-label);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+  user-select: none;
+}
+
+.candidate-ribbon-chip:hover {
+  border-color: var(--apple-label-tertiary);
+  background: var(--apple-fill-quaternary, rgba(0, 0, 0, 0.04));
+}
+
+.candidate-ribbon-chip.active {
+  border-color: var(--apple-blue);
+  background: rgba(0, 122, 255, 0.10);
+  color: var(--apple-blue);
+  font-weight: 700;
+}
+
+.candidate-ribbon-chip.winner {
+  border-color: rgba(52, 199, 89, 0.4);
+}
+
+.candidate-ribbon-chip.winner.active {
+  border-color: var(--system-green);
+  background: rgba(52, 199, 89, 0.12);
+  color: var(--system-green);
+}
+
+.candidate-ribbon-rank {
+  font-weight: 800;
+  font-size: 0.66rem;
+  color: var(--apple-label-secondary);
+}
+
+.candidate-ribbon-chip.winner .candidate-ribbon-rank {
+  color: var(--system-green);
+}
+
+.candidate-ribbon-mode {
+  font-weight: 700;
+}
+
+.candidate-ribbon-name {
+  color: var(--apple-label-secondary);
+  font-size: 0.66rem;
+}
+
+.candidate-ribbon-chip.active .candidate-ribbon-name {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.candidate-ribbon-cost {
+  color: #D97706;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.candidate-ribbon-delta {
+  font-size: 0.64rem;
+  color: var(--apple-label-tertiary);
+}
+
+.candidate-ribbon-chip.winner .candidate-ribbon-delta {
+  color: var(--system-green);
+  font-weight: 700;
+}
+
+.badge-exact {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(52, 199, 89, 0.12);
+  color: var(--system-green);
+  border: 0.5px solid rgba(52, 199, 89, 0.35);
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.5rem;
+  letter-spacing: 0.02em;
+}
+
+.badge-approx {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(142, 142, 147, 0.12);
+  color: var(--apple-label-secondary);
+  border: 0.5px solid var(--apple-hairline);
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.68rem;
+  padding: 0.2rem 0.5rem;
+}
+
 .equation-operator {
   display: flex;
   align-items: center;

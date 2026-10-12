@@ -113,6 +113,8 @@ const IntraPredictionFlow = ({
 }) => {
   const [channel, setChannel] = useState('Y'); // 'Y' (Luma), 'U' (Chroma Cb), 'V' (Chroma Cr)
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
+  const [layoutMode, setLayoutMode] = useState('dual'); // 'dual' (Master-Detail Dual View) or 'trio' (Equation Trio: S - P = R)
+  const [card1View, setCard1View] = useState('pred'); // 'pred' or 'org'
   const [activeTab, setActiveTab] = useState('all'); // 'all', 'step1', 'step2', 'step3', 'step4'
   const [showHmModal, setShowHmModal] = useState(false);
 
@@ -232,14 +234,23 @@ const IntraPredictionFlow = ({
     return getSampleColorAndTextColor(val, channel);
   }, [channel]);
 
+  // Top 5 Candidate Modes from HM RDO Search
+  const sortedCandidates = useMemo(() => {
+    if (!modesData || modesData.length <= 1) return [];
+    return [...modesData].sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity)).slice(0, 5);
+  }, [modesData]);
+
   const S = 2 * N + 1;
-  const stageGridCellSize = zoomLevel === 'zoom'
-    ? Math.max(7, Math.floor(460 / S))
-    : Math.max(4, Math.floor(300 / S));
+  const isDual = layoutMode === 'dual';
+  const stageGridCellSize = isDual
+    ? (zoomLevel === 'zoom' ? Math.max(8, Math.floor(520 / S)) : Math.max(6, Math.floor(400 / S)))
+    : (zoomLevel === 'zoom' ? Math.max(7, Math.floor(460 / S)) : Math.max(4, Math.floor(300 / S)));
   const stageGridSize = stageGridCellSize * S;
   const showCellText = stageGridCellSize >= 13;
 
-  const resiCellSize = Math.max(4, Math.floor((stageGridSize - 50) / N));
+  const resiCellSize = isDual
+    ? Math.max(6, Math.floor((stageGridSize - 20) / N))
+    : Math.max(4, Math.floor((stageGridSize - 50) / N));
   const showResiText = resiCellSize >= 13;
 
   const getRefStyle = useCallback((val, isActive, isCorner = false, isExtended = false) => {
@@ -456,8 +467,46 @@ const IntraPredictionFlow = ({
         </div>
       </Card>
 
+      {/* 2b. CANDIDATE LEADERBOARD RIBBON (HM-16.0 RDO Top Candidates) */}
+      {sortedCandidates.length > 1 && (
+        <div className="candidate-ribbon">
+          <div className="candidate-ribbon-title">
+            <span>TOP CANDIDATES</span>
+            <span className="candidate-ribbon-sub">HM-16.0 RDO Search</span>
+          </div>
+          <div className="candidate-chips-list">
+            {sortedCandidates.map((item, idx) => {
+              const info = getIntraModeInfo(item.mode);
+              const isWinner = idx === 0;
+              const isCurrent = item.mode === selectedMode;
+              const deltaCost = isWinner ? 'Best' : `+${(item.cost - sortedCandidates[0].cost).toFixed(1)}`;
+              return (
+                <button
+                  key={`cand-${item.mode}`}
+                  type="button"
+                  className={`candidate-ribbon-chip ${isCurrent ? 'active' : ''} ${isWinner ? 'winner' : ''}`}
+                  onClick={() => {
+                    const targetIdx = modesData.findIndex(d => d.mode === item.mode);
+                    if (targetIdx !== -1 && onSelectModeIndex) {
+                      onSelectModeIndex(targetIdx);
+                    }
+                  }}
+                  title={`Mode ${item.mode} (${info.name}) — Cost: ${typeof item.cost === 'number' ? item.cost.toFixed(2) : item.cost}`}
+                >
+                  <span className="candidate-ribbon-rank">{isWinner ? '#1' : `#${idx + 1}`}</span>
+                  <span className="candidate-ribbon-mode">M{item.mode}</span>
+                  <span className="candidate-ribbon-name">{info.name}</span>
+                  <span className="candidate-ribbon-cost">J: {typeof item.cost === 'number' ? item.cost.toFixed(1) : item.cost}</span>
+                  <span className="candidate-ribbon-delta">{deltaCost}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* 3. STAGE STEPPER NAVIGATION (Apple Segmented Control) */}
-      <div style={{ marginBottom: '0.85rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
         <SegmentedControl
           value={activeTab}
           onChange={setActiveTab}
@@ -470,281 +519,363 @@ const IntraPredictionFlow = ({
             { id: 'step4', label: '4. Post-Filter' },
           ]}
         />
-      </div>
-
-      {/* 3. VIEW 1: THE LIVE EQUATION TRIO (Original - Prediction = Residual) */}
-      {activeTab === 'all' && (
-        <>
-          <div className="equation-trio-row">
-            {/* CARD 1: Original CU & Boundary Refs */}
-            <div className="live-matrix-card">
-              <div className="live-matrix-header">
-                <div className="live-matrix-header-info">
-                  <div className="live-matrix-title-wrap">
-                    <h3 className="live-matrix-title">ORIGINAL ({channel})</h3>
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                className="grid-container pred-grid" 
-                style={{ 
-                  width: `${stageGridSize}px`, 
-                  height: `${stageGridSize}px`, 
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
-                  gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
-                  position: 'relative' 
-                }}
-              >
-                {/* Frame around Original Block */}
-                <div 
-                  style={{
-                    position: 'absolute',
-                    top: stageGridCellSize,
-                    left: stageGridCellSize,
-                    width: N * stageGridCellSize,
-                    height: N * stageGridCellSize,
-                    border: '2px solid var(--apple-label)',
-                    boxSizing: 'border-box',
-                    pointerEvents: 'none',
-                    zIndex: 10
-                  }} 
-                />
-
-                {/* Boundary Reference Samples */}
-                <ReferencePerimeter
-                  refTop={refTopRaw}
-                  refLeft={refLeftRaw}
-                  N={N}
-                  activeTopIndices={activeTopIndices}
-                  activeLeftIndices={activeLeftIndices}
-                  showCellText={showCellText}
-                  getRefStyle={getRefStyle}
-                  prefix="org"
-                />
-
-                {/* Original block cells */}
-                {orgData.map((val, idx) => {
-                  const x = idx % N;
-                  const y = Math.floor(idx / N);
-                  const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
-                  const { bg: cBg, color: cColor } = getSampleColor(val);
-
-                  return (
-                    <div 
-                      key={`org-cell-${idx}`}
-                      className="cell"
-                      onClick={() => handleCellClick({ x, y, val })}
-                      style={{
-                        gridColumn: x + 2,
-                        gridRow: y + 2,
-                        backgroundColor: cBg,
-                        color: cColor,
-                        fontWeight: 700,
-                        fontSize: stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
-                        letterSpacing: '-0.5px',
-                        lineHeight: 1,
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxSizing: 'border-box',
-                        cursor: 'pointer',
-                        border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
-                        boxShadow: 'none',
-                        zIndex: isSelected ? 12 : 1,
-                        transform: 'none',
-                        transition: 'none'
-                      }}
-                      title={`Original [${x}, ${y}] = ${val}`}
-                    >
-                      {showCellText ? val : ''}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* OPERATOR MINUS (−) */}
-            <div className="equation-operator" title="Subtraction: Original minus Prediction">
-              <span>−</span>
-            </div>
-
-            {/* CARD 2: Sample Prediction Block */}
-            <div className="live-matrix-card">
-              <div className="live-matrix-header">
-                <div className="live-matrix-header-info">
-                  <div className="live-matrix-title-wrap">
-                    <h3 className="live-matrix-title">PREDICTION ({channel})</h3>
-                  </div>
-                </div>
-              </div>
-
-              <div 
-                className="grid-container pred-grid" 
-                style={{ 
-                  width: `${stageGridSize}px`, 
-                  height: `${stageGridSize}px`, 
-                  display: 'grid',
-                  gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
-                  gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
-                  position: 'relative' 
-                }}
-              >
-                {/* SVG Ray Tracing Layer (Connected strictly to cell borders) */}
-                {activeCoord && trace && (
-                  <svg 
-                    style={{ 
-                      position: 'absolute', 
-                      top: 0, 
-                      left: 0, 
-                      width: stageGridSize, 
-                      height: stageGridSize, 
-                      pointerEvents: 'none', 
-                      zIndex: 14 
-                    }}
-                  >
-                    {trace.refs.map((ref, idx) => {
-                      const { x1, y1, x2, y2 } = getRayBorderEndpoints(ref, activeCoord, stageGridCellSize);
-                      if (Math.hypot(x2 - x1, y2 - y1) < 1.0) return null;
-                      return (
-                        <line 
-                          key={idx}
-                          x1={x1} 
-                          y1={y1} 
-                          x2={x2} 
-                          y2={y2} 
-                          stroke={SELECTION_HIGHLIGHT_COLOR} 
-                          strokeWidth="2" 
-                          strokeDasharray="4 2" 
-                        />
-                      );
-                    })}
-                  </svg>
-                )}
-
-                {/* Frame around Prediction Block */}
-                <div 
-                  style={{
-                    position: 'absolute',
-                    top: stageGridCellSize,
-                    left: stageGridCellSize,
-                    width: N * stageGridCellSize,
-                    height: N * stageGridCellSize,
-                    border: '2px solid var(--apple-label)',
-                    boxSizing: 'border-box',
-                    pointerEvents: 'none',
-                    zIndex: 10
-                  }} 
-                />
-
-                {/* Active Reference Perimeter */}
-                <ReferencePerimeter
-                  refTop={refTopActive}
-                  refLeft={refLeftActive}
-                  N={N}
-                  activeTopIndices={activeTopIndices}
-                  activeLeftIndices={activeLeftIndices}
-                  showCellText={showCellText}
-                  getRefStyle={getRefStyle}
-                  prefix="pred"
-                />
-
-                {/* Prediction block cells */}
-                {predData.map((val, idx) => {
-                  const x = idx % N;
-                  const y = Math.floor(idx / N);
-                  const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
-                  const { bg: cBg, color: cColor } = getSampleColor(val);
-
-                  return (
-                    <div 
-                      key={`pred-live-${selectedMode}-${idx}`} 
-                      className="cell pred-cell" 
-                      onClick={() => handleCellClick({ x, y, val })}
-                      style={{ 
-                        gridColumn: x + 2, 
-                        gridRow: y + 2, 
-                        backgroundColor: cBg, 
-                        color: cColor, 
-                        cursor: 'pointer',
-                        border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
-                        boxShadow: 'none',
-                        zIndex: isSelected ? 12 : 1,
-                        transform: 'none',
-                        transition: 'none',
-                        fontSize: stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
-                        fontWeight: 700,
-                        letterSpacing: '-0.5px',
-                        lineHeight: 1,
-                        overflow: 'hidden',
-                        whiteSpace: 'nowrap',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxSizing: 'border-box'
-                      }}
-                      title={`Pred [${x}, ${y}] = ${val}`}
-                    >
-                      {showCellText ? val : ''}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* OPERATOR EQUALS (=) */}
-            <div className="equation-operator" title="Equals: Yields Residual Error Matrix">
-              <span>=</span>
-            </div>
-
-            {/* CARD 3: STAGE 04 Residual Matrix */}
-            <ResidualMatrix
-              resiData={resiData}
-              orgData={orgData}
-              predData={predData}
-              N={N}
-              cost={modeData?.cost}
-              channel={channel}
-              stageGridSize={stageGridSize}
-              resiCellSize={resiCellSize}
-              showResiText={showResiText}
-              activeCoord={activeCoord}
-              onCellClick={handleCellClick}
+        {activeTab === 'all' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono' }}>
+              LAYOUT:
+            </span>
+            <SegmentedControl
+              value={layoutMode}
+              onChange={setLayoutMode}
+              size="small"
+              items={[
+                { id: 'dual', label: 'Dual View (Large)' },
+                { id: 'trio', label: 'Equation (S − P = R)' },
+              ]}
             />
           </div>
+        )}
+      </div>
 
-          {/* 4. DYNAMIC PIXEL INSPECTOR HUD (Replaces static 50px empty banner) */}
-          <div className="pixel-inspector-hud">
-            {activeCoord && trace ? (
-              <div className="hud-content-active">
-                <div className="hud-target-badge">
-                  PIXEL [{activeCoord.x}, {activeCoord.y}]
+      {/* 4. VIEW 1: OVERVIEW MATRICES (Dual Stage or Equation Trio) */}
+      {activeTab === 'all' && (() => {
+        const renderOriginalGrid = () => (
+          <div 
+            className="grid-container pred-grid" 
+            style={{ 
+              width: `${stageGridSize}px`, 
+              height: `${stageGridSize}px`, 
+              display: 'grid',
+              gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
+              gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
+              position: 'relative',
+              margin: '0 auto'
+            }}
+          >
+            {/* Frame around Original Block */}
+            <div 
+              style={{
+                position: 'absolute',
+                top: stageGridCellSize,
+                left: stageGridCellSize,
+                width: N * stageGridCellSize,
+                height: N * stageGridCellSize,
+                border: '2px solid var(--apple-label)',
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 10
+              }} 
+            />
+
+            {/* Boundary Reference Samples */}
+            <ReferencePerimeter
+              refTop={refTopRaw}
+              refLeft={refLeftRaw}
+              N={N}
+              activeTopIndices={activeTopIndices}
+              activeLeftIndices={activeLeftIndices}
+              showCellText={showCellText}
+              getRefStyle={getRefStyle}
+              prefix="org"
+            />
+
+            {/* Original block cells */}
+            {orgData.map((val, idx) => {
+              const x = idx % N;
+              const y = Math.floor(idx / N);
+              const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
+              const { bg: cBg, color: cColor } = getSampleColor(val);
+
+              return (
+                <div 
+                  key={`org-cell-${idx}`}
+                  className="cell"
+                  onClick={() => handleCellClick({ x, y, val })}
+                  style={{
+                    gridColumn: x + 2,
+                    gridRow: y + 2,
+                    backgroundColor: cBg,
+                    color: cColor,
+                    fontWeight: 700,
+                    fontSize: stageGridCellSize >= 26 ? '0.72rem' : stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
+                    letterSpacing: '-0.5px',
+                    lineHeight: 1,
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box',
+                    cursor: 'pointer',
+                    border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
+                    boxShadow: 'none',
+                    zIndex: isSelected ? 12 : 1,
+                    transform: 'none',
+                    transition: 'none'
+                  }}
+                  title={`Original [${x}, ${y}] = ${val}`}
+                >
+                  {showCellText ? val : ''}
                 </div>
-                <div className="hud-calc-line">
-                  <span className="hud-val org">Org: {orgData[activeCoord.y * N + activeCoord.x]}</span>
-                  <span className="hud-op">−</span>
-                  <span className="hud-val pred">Pred: {predData[activeCoord.y * N + activeCoord.x]}</span>
-                  <span className="hud-op">=</span>
-                  <span className="hud-val resi">
-                    Resi: {resiData[activeCoord.y * N + activeCoord.x] > 0 ? `+${resiData[activeCoord.y * N + activeCoord.x]}` : resiData[activeCoord.y * N + activeCoord.x]}
-                  </span>
+              );
+            })}
+          </div>
+        );
+
+        const renderPredictionGrid = () => (
+          <div 
+            className="grid-container pred-grid" 
+            style={{ 
+              width: `${stageGridSize}px`, 
+              height: `${stageGridSize}px`, 
+              display: 'grid',
+              gridTemplateColumns: `repeat(${S}, ${stageGridCellSize}px)`,
+              gridTemplateRows: `repeat(${S}, ${stageGridCellSize}px)`,
+              position: 'relative',
+              margin: '0 auto'
+            }}
+          >
+            {/* SVG Ray Tracing Layer (Connected strictly to cell borders) */}
+            {activeCoord && trace && (
+              <svg 
+                style={{ 
+                  position: 'absolute', 
+                  top: 0, 
+                  left: 0, 
+                  width: stageGridSize, 
+                  height: stageGridSize, 
+                  pointerEvents: 'none', 
+                  zIndex: 14 
+                }}
+              >
+                {trace.refs.map((ref, idx) => {
+                  const { x1, y1, x2, y2 } = getRayBorderEndpoints(ref, activeCoord, stageGridCellSize);
+                  if (Math.hypot(x2 - x1, y2 - y1) < 1.0) return null;
+                  return (
+                    <line 
+                      key={idx}
+                      x1={x1} 
+                      y1={y1} 
+                      x2={x2} 
+                      y2={y2} 
+                      stroke={SELECTION_HIGHLIGHT_COLOR} 
+                      strokeWidth="2" 
+                      strokeDasharray="4 2" 
+                    />
+                  );
+                })}
+              </svg>
+            )}
+
+            {/* Frame around Prediction Block */}
+            <div 
+              style={{
+                position: 'absolute',
+                top: stageGridCellSize,
+                left: stageGridCellSize,
+                width: N * stageGridCellSize,
+                height: N * stageGridCellSize,
+                border: '2px solid var(--apple-label)',
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 10
+              }} 
+            />
+
+            {/* Active Reference Perimeter */}
+            <ReferencePerimeter
+              refTop={refTopActive}
+              refLeft={refLeftActive}
+              N={N}
+              activeTopIndices={activeTopIndices}
+              activeLeftIndices={activeLeftIndices}
+              showCellText={showCellText}
+              getRefStyle={getRefStyle}
+              prefix="pred"
+            />
+
+            {/* Prediction block cells */}
+            {predData.map((val, idx) => {
+              const x = idx % N;
+              const y = Math.floor(idx / N);
+              const isSelected = activeCoord && activeCoord.x === x && activeCoord.y === y;
+              const { bg: cBg, color: cColor } = getSampleColor(val);
+
+              return (
+                <div 
+                  key={`pred-live-${selectedMode}-${idx}`} 
+                  className="cell pred-cell" 
+                  onClick={() => handleCellClick({ x, y, val })}
+                  style={{ 
+                    gridColumn: x + 2, 
+                    gridRow: y + 2, 
+                    backgroundColor: cBg, 
+                    color: cColor, 
+                    cursor: 'pointer',
+                    border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : '1px solid rgba(0, 0, 0, 0.18)',
+                    boxShadow: 'none',
+                    zIndex: isSelected ? 12 : 1,
+                    transform: 'none',
+                    transition: 'none',
+                    fontSize: stageGridCellSize >= 26 ? '0.72rem' : stageGridCellSize >= 20 ? '0.62rem' : stageGridCellSize >= 15 ? '0.50rem' : '0.40rem',
+                    fontWeight: 700,
+                    letterSpacing: '-0.5px',
+                    lineHeight: 1,
+                    overflow: 'hidden',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxSizing: 'border-box'
+                  }}
+                  title={`Pred [${x}, ${y}] = ${val}`}
+                >
+                  {showCellText ? val : ''}
                 </div>
-                <div className="hud-formula-line">
-                  <span className="hud-formula-tag">RAY TRACE:</span>
-                  <span className="hud-formula-text">{trace.text}</span>
+              );
+            })}
+          </div>
+        );
+
+        return (
+          <>
+            {isDual ? (
+              <div className="dual-stage-row">
+                {/* CARD 1: Master Prediction Block with Perimeter & Ray Trace */}
+                <div className="live-matrix-card">
+                  <div className="live-matrix-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="live-matrix-header-info">
+                      <div className="live-matrix-title-wrap">
+                        <h3 className="live-matrix-title">
+                          {card1View === 'pred' ? `PREDICTION P[x, y] (${channel})` : `ORIGINAL S[x, y] (${channel})`}
+                        </h3>
+                      </div>
+                    </div>
+                    <SegmentedControl
+                      value={card1View}
+                      onChange={setCard1View}
+                      size="small"
+                      items={[
+                        { id: 'pred', label: 'Prediction (P)' },
+                        { id: 'org', label: 'Original (S)' },
+                      ]}
+                    />
+                  </div>
+                  {card1View === 'pred' ? renderPredictionGrid() : renderOriginalGrid()}
                 </div>
+
+                {/* CARD 2: Residual Matrix */}
+                <ResidualMatrix
+                  resiData={resiData}
+                  orgData={orgData}
+                  predData={predData}
+                  N={N}
+                  cost={modeData?.cost}
+                  channel={channel}
+                  stageGridSize={stageGridSize}
+                  resiCellSize={resiCellSize}
+                  showResiText={showResiText}
+                  activeCoord={activeCoord}
+                  onCellClick={handleCellClick}
+                />
               </div>
             ) : (
-              <div className="hud-content-idle">
-                <span className="hud-idle-hint">[PIXEL INSPECTION: NONE SELECTED]</span>
+              <div className="equation-trio-row">
+                {/* CARD 1: Original CU & Boundary Refs */}
+                <div className="live-matrix-card">
+                  <div className="live-matrix-header">
+                    <div className="live-matrix-header-info">
+                      <div className="live-matrix-title-wrap">
+                        <h3 className="live-matrix-title">ORIGINAL ({channel})</h3>
+                      </div>
+                    </div>
+                  </div>
+                  {renderOriginalGrid()}
+                </div>
+
+                {/* OPERATOR MINUS (−) */}
+                <div className="equation-operator" title="Subtraction: Original minus Prediction">
+                  <span>−</span>
+                </div>
+
+                {/* CARD 2: Sample Prediction Block */}
+                <div className="live-matrix-card">
+                  <div className="live-matrix-header">
+                    <div className="live-matrix-header-info">
+                      <div className="live-matrix-title-wrap">
+                        <h3 className="live-matrix-title">PREDICTION ({channel})</h3>
+                      </div>
+                    </div>
+                  </div>
+                  {renderPredictionGrid()}
+                </div>
+
+                {/* OPERATOR EQUALS (=) */}
+                <div className="equation-operator" title="Equals: Yields Residual Error Matrix">
+                  <span>=</span>
+                </div>
+
+                {/* CARD 3: Residual Matrix */}
+                <ResidualMatrix
+                  resiData={resiData}
+                  orgData={orgData}
+                  predData={predData}
+                  N={N}
+                  cost={modeData?.cost}
+                  channel={channel}
+                  stageGridSize={stageGridSize}
+                  resiCellSize={resiCellSize}
+                  showResiText={showResiText}
+                  activeCoord={activeCoord}
+                  onCellClick={handleCellClick}
+                />
               </div>
             )}
-          </div>
-        </>
-      )}
+
+            {/* 4. DYNAMIC PIXEL INSPECTOR HUD (HM Groundtruth Conformance) */}
+            <div className="pixel-inspector-hud">
+              {activeCoord && trace ? (
+                <div className="hud-content-active">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                    <div className="hud-target-badge">
+                      PIXEL [{activeCoord.x}, {activeCoord.y}]
+                    </div>
+                    {trace.predictedVal !== undefined && trace.predictedVal === predData[activeCoord.y * N + activeCoord.x] ? (
+                      <span className="badge-exact" title="The mathematical prediction formula matches the HM-16.0 reference software trace with 100% bit-exact precision">
+                        ✓ 100% BIT-EXACT MATCH
+                      </span>
+                    ) : (
+                      <span className="badge-approx">HM TRACE VALUE</span>
+                    )}
+                    {orgData[activeCoord.y * N + activeCoord.x] - predData[activeCoord.y * N + activeCoord.x] === resiData[activeCoord.y * N + activeCoord.x] && (
+                      <span className="badge-exact" title="S - P = R satisfied bit-exactly">
+                        ✓ S − P ≡ R
+                      </span>
+                    )}
+                  </div>
+                  <div className="hud-calc-line">
+                    <span className="hud-val org">Org: {orgData[activeCoord.y * N + activeCoord.x]}</span>
+                    <span className="hud-op">−</span>
+                    <span className="hud-val pred">Pred: {predData[activeCoord.y * N + activeCoord.x]}</span>
+                    <span className="hud-op">=</span>
+                    <span className="hud-val resi">
+                      Resi: {resiData[activeCoord.y * N + activeCoord.x] > 0 ? `+${resiData[activeCoord.y * N + activeCoord.x]}` : resiData[activeCoord.y * N + activeCoord.x]}
+                    </span>
+                  </div>
+                  <div className="hud-formula-line">
+                    <span className="hud-formula-tag">RAY TRACE / FORMULA:</span>
+                    <span className="hud-formula-text">{trace.text}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="hud-content-idle">
+                  <span className="hud-idle-hint">[CLICK ANY PIXEL IN THE GRID TO INSPECT SAMPLE DERIVATION & HM GROUNDTRUTH CONFORMANCE]</span>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* 5. VIEWS 2-5: STAGES 01-04 DETAIL BREAKDOWNS */}
       <StageDetailSection
@@ -753,21 +884,19 @@ const IntraPredictionFlow = ({
         selectedMode={selectedMode}
         modeInfo={modeInfo}
         N={N}
-        totalPixels={totalPixels}
         ctuX={ctuX}
         ctuY={ctuY}
         imagePreview={imagePreview}
         refTopRaw={refTopRaw}
         refLeftRaw={refLeftRaw}
+        refTopFilt={refTopFilt}
+        refLeftFilt={refLeftFilt}
         refTopActive={refTopActive}
         isMDISSmoothed={isMDISSmoothed}
         hasEdgeFilter={hasEdgeFilter}
         angle={angle}
-        invAngle={invAngle}
-        orgData={orgData}
-        predData={predData}
-        resiData={resiData}
-        modeData={modeData}
+        modesData={modesData}
+        onSelectModeIndex={onSelectModeIndex}
         getSampleColor={getSampleColor}
       />
 

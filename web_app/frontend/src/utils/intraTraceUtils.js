@@ -50,6 +50,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
 
     return {
       modeType: 'planar',
+      predictedVal: planarVal,
       refs: [
         { type: 'top', index: x + 1, weight: wTop },
         { type: 'left', index: y + 1, weight: wLeft },
@@ -80,6 +81,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       const dcFilt = (left0 + 2 * valDC + top0 + 2) >> 2;
       return {
         modeType: 'dc',
+        predictedVal: dcFilt,
         refs: [
           { type: 'top', index: 1, weight: 0.25 },
           { type: 'left', index: 1, weight: 0.25 }
@@ -91,6 +93,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       const dcFilt = (topX + 3 * valDC + 2) >> 2;
       return {
         modeType: 'dc',
+        predictedVal: dcFilt,
         refs: [{ type: 'top', index: x + 1, weight: 0.25 }],
         text: `Mode 1 (DC Filter Row 0): (${topX} + 3×${valDC} + 2) >> 2 = ${dcFilt}`
       };
@@ -99,6 +102,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       const dcFilt = (leftY + 3 * valDC + 2) >> 2;
       return {
         modeType: 'dc',
+        predictedVal: dcFilt,
         refs: [{ type: 'left', index: y + 1, weight: 0.25 }],
         text: `Mode 1 (DC Filter Col 0): (${leftY} + 3×${valDC} + 2) >> 2 = ${dcFilt}`
       };
@@ -106,6 +110,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
 
     return {
       modeType: 'dc-interior',
+      predictedVal: valDC,
       refs: [
         { type: 'top', index: x + 1, weight: 0.5 },
         { type: 'left', index: y + 1, weight: 0.5 }
@@ -124,6 +129,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
         const val = Math.max(0, Math.min(255, pTop + grad));
         return {
           modeType: 'angular-exact',
+          predictedVal: val,
           refs: [
             { type: 'top', index: 1, weight: 1.0 },
             { type: 'left', index: y + 1, weight: 0.5 },
@@ -134,6 +140,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       }
       return {
         modeType: 'angular-exact',
+        predictedVal: pTop,
         refs: [{ type: 'top', index: x + 1, weight: 1.0 }],
         text: `Mode 26 (Vertical): p[${x}][-1] = ${pTop}`
       };
@@ -150,6 +157,10 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
         const val = refTop[refIndex] ?? 128;
         return {
           modeType: 'angular-exact',
+          predictedVal: val,
+          angle,
+          deltaInt,
+          deltaFract,
           refs: [{ type: 'top', index: refIndex, weight: 1.0 }],
           text: `Mode ${mode}: Top[${refIndex - 1}] = ${val}`
         };
@@ -158,9 +169,15 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
         const w2 = deltaFract / 32;
         const val1 = refTop[refIndex] ?? 128;
         const val2 = refTop[refIndex + 1] ?? 128;
-        const interpVal = Math.round(w1 * val1 + w2 * val2);
+        const interpVal = ((32 - deltaFract) * val1 + deltaFract * val2 + 16) >> 5;
         return {
           modeType: 'angular-fractional',
+          predictedVal: interpVal,
+          angle,
+          deltaInt,
+          deltaFract,
+          val1,
+          val2,
           refs: [
             { type: 'top', index: refIndex, weight: w1 },
             { type: 'top', index: refIndex + 1, weight: w2 }
@@ -174,6 +191,10 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       const val = refLeft[leftIdx] ?? 128;
       return {
         modeType: 'angular-left-ext',
+        predictedVal: val,
+        angle,
+        deltaInt,
+        deltaFract,
         refs: [{ type: 'left', index: leftIdx, weight: 1.0 }],
         text: `Mode ${mode}: Ray → Left[${Math.max(0, leftIdx - 1)}] = ${val}`
       };
@@ -190,6 +211,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
         const val = Math.max(0, Math.min(255, pLeft + grad));
         return {
           modeType: 'angular-exact',
+          predictedVal: val,
           refs: [
             { type: 'left', index: 1, weight: 1.0 },
             { type: 'top', index: x + 1, weight: 0.5 },
@@ -200,6 +222,7 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       }
       return {
         modeType: 'angular-exact',
+        predictedVal: pLeft,
         refs: [{ type: 'left', index: y + 1, weight: 1.0 }],
         text: `Mode 10 (Horizontal): p[-1][${y}] = ${pLeft}`
       };
@@ -216,6 +239,10 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
         const val = refLeft[refIndex] ?? 128;
         return {
           modeType: 'angular-exact',
+          predictedVal: val,
+          angle,
+          deltaInt,
+          deltaFract,
           refs: [{ type: 'left', index: refIndex, weight: 1.0 }],
           text: `Mode ${mode}: Left[${refIndex - 1}] = ${val}`
         };
@@ -224,9 +251,15 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
         const w2 = deltaFract / 32;
         const val1 = refLeft[refIndex] ?? 128;
         const val2 = refLeft[refIndex + 1] ?? 128;
-        const interpVal = Math.round(w1 * val1 + w2 * val2);
+        const interpVal = ((32 - deltaFract) * val1 + deltaFract * val2 + 16) >> 5;
         return {
           modeType: 'angular-fractional',
+          predictedVal: interpVal,
+          angle,
+          deltaInt,
+          deltaFract,
+          val1,
+          val2,
           refs: [
             { type: 'left', index: refIndex, weight: w1 },
             { type: 'left', index: refIndex + 1, weight: w2 }
@@ -240,13 +273,17 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
       const val = refTop[topIdx] ?? 128;
       return {
         modeType: 'angular-top-ext',
+        predictedVal: val,
+        angle,
+        deltaInt,
+        deltaFract,
         refs: [{ type: 'top', index: topIdx, weight: 1.0 }],
         text: `Mode ${mode}: Ray → Top[${Math.max(0, topIdx - 1)}] = ${val}`
       };
     }
   }
 
-  return { refs: [], text: '' };
+  return { refs: [], text: '', predictedVal: 128 };
 }
 
 /**
