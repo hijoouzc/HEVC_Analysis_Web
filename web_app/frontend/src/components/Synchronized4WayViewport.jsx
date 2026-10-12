@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, SELECTION_HIGHLIGHT_COLOR } from '../utils/colorUtils';
+import { getIntraModeInfo } from '../utils/colorUtils';
 import { calculatePsnr } from '../utils/metricsUtils';
 import { Button, SegmentedControl } from './apple';
+import MacroMicroPixelViewer from './common/MacroMicroPixelViewer';
 
 /**
  * Synchronized4WayViewport
@@ -11,21 +12,21 @@ import { Button, SegmentedControl } from './apple';
  * [3] Residual Heatmap: Signed error matrix (0 = Neutral, + = Red/Warm, - = Blue/Cool)
  * [4] Reconstruction: Restored block (Clip3[0, 255, Pred + Resi])
  *
- * Fully dynamic block sizing (8×8, 16×16, 32×32) and channel selection (Y, Cb, Cr).
+ * Fully dynamic block sizing (4x4, 8x8, 16x16, 32x32, 64x64) and channel selection (Y, Cb, Cr).
+ * Powered by MacroMicroPixelViewer (36px fixed cells + discrete Macro canvas).
  */
 export default function Synchronized4WayViewport({
   modeData = null,
   currentMode = 0,
-  _blockSize = 8,
+  blockSize = 8,
   ctuX = 0,
   ctuY = 0,
   onBackToIntra = null
 }) {
   const [channel, setChannel] = useState('Y'); // 'Y', 'U', 'V'
-  const [selectedPixel, setSelectedPixel] = useState({ r: 0, c: 0 }); // click-only inspection
+  const [selectedPixel, setSelectedPixel] = useState(null); // { x, y } - click-only inspection
+  const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 }); // 8x8 window index
   const [layoutMode, setLayoutMode] = useState('2x2'); // '2x2' or 'side-by-side'
-  const [showValues, setShowValues] = useState(true);
-  const [zoomPreset, setZoomPreset] = useState('fit'); // 'fit', '1.5x', '2x'
 
   const handleChannelChange = useCallback((newCh) => {
     setChannel(newCh);
@@ -33,8 +34,7 @@ export default function Synchronized4WayViewport({
   }, []);
 
   // Target block size based on selected channel (ITU-T H.265 4:2:0 subsampling)
-  // Strictly enforce 8x8 for Luma and 4x4 for Chroma
-  const targetN = (channel === 'Y') ? 8 : 4;
+  const targetN = (channel === 'Y') ? blockSize : Math.max(4, Math.floor(blockSize / 2));
   const N = targetN;
   const totalPixels = N * N;
 
@@ -88,35 +88,15 @@ export default function Synchronized4WayViewport({
     return { sad, sse, maxAbsResi, zeroCount, meanOrg, meanPred, psnr };
   }, [orgData, predData, resiData, totalPixels]);
 
-  // Dynamic cell sizing based on N to prevent viewport overflow
-  const cellSize = useMemo(() => {
-    let base = Math.max(9, Math.floor(320 / N));
-    if (zoomPreset === '1.5x') base = Math.round(base * 1.4);
-    if (zoomPreset === '2x') base = Math.round(base * 1.8);
-    return Math.max(8, base);
-  }, [N, zoomPreset]);
-
-  const showCellText = showValues && cellSize >= 15;
-
   // Dynamic max scale for residual heatmap
   const heatmapScale = Math.max(16, stats.maxAbsResi);
 
-  // Residual Heatmap color generator
-  const getResidualStyle = (val) => {
-    return getResidualColorAndTextColor(val, heatmapScale);
-  };
-
-  const getSampleStyle = (val) => {
-    return getSampleColorAndTextColor(val, channel);
-  };
-
-  // Helper to render an individual matrix grid
+  // Helper to render an individual matrix grid using MacroMicroPixelViewer
   const renderMatrix = (type, dataArray, title, subtitle, badgeColor) => {
     return (
       <div className="apple-card" style={{
         display: 'flex',
         flexDirection: 'column',
-        minWidth: `${N * cellSize + 32}px`,
         overflow: 'hidden'
       }}>
         {/* Sub-card Header */}
@@ -153,7 +133,7 @@ export default function Synchronized4WayViewport({
           )}
         </div>
 
-        {/* Matrix Grid Container */}
+        {/* Matrix Grid Container using MacroMicroPixelViewer */}
         <div style={{
           padding: '0.85rem',
           display: 'flex',
@@ -162,99 +142,30 @@ export default function Synchronized4WayViewport({
           background: 'var(--apple-canvas)',
           overflow: 'auto'
         }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${N}, ${cellSize}px)`,
-            gridTemplateRows: `repeat(${N}, ${cellSize}px)`,
-            gap: '1px',
-            background: 'var(--apple-hairline)',
-            border: '1px solid var(--apple-hairline)',
-            borderRadius: 0,
-            overflow: 'hidden',
-            position: 'relative'
-          }}>
-            {dataArray.map((val, idx) => {
-              const c = idx % N;
-              const r = Math.floor(idx / N);
-              const validR = selectedPixel ? Math.min(Math.max(0, selectedPixel.r), N - 1) : null;
-              const validC = selectedPixel ? Math.min(Math.max(0, selectedPixel.c), N - 1) : null;
-              const isSelected = selectedPixel !== null && validR === r && validC === c;
-
-              let cellBg = '';
-              let cellColor = '';
-              let cellBorder = 'none';
-              let cellShadow = 'none';
-
-              if (type === 'resi') {
-                const resiStyle = getResidualStyle(val);
-                cellBg = resiStyle.bg;
-                cellColor = resiStyle.color;
-                cellBorder = resiStyle.border;
-                cellShadow = resiStyle.textShadow;
-              } else {
-                const sStyle = getSampleStyle(val);
-                cellBg = sStyle.bg;
-                cellColor = sStyle.color;
-                cellBorder = sStyle.border;
-                cellShadow = sStyle.textShadow;
-              }
-
-              return (
-                <div
-                  key={`cell-${type}-${r}-${c}`}
-                  onClick={() => {
-                    setSelectedPixel(prev => {
-                      if (prev && prev.r === r && prev.c === c) {
-                        return null;
-                      }
-                      return { r, c };
-                    });
-                  }}
-                  style={{
-                    width: `${cellSize}px`,
-                    height: `${cellSize}px`,
-                    backgroundColor: cellBg,
-                    color: cellColor,
-                    textShadow: cellShadow,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: cellSize >= 36 ? '0.74rem' : cellSize >= 22 ? '0.60rem' : '0.45rem',
-                    fontFamily: 'JetBrains Mono',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    border: isSelected ? `2px solid ${SELECTION_HIGHLIGHT_COLOR}` : cellBorder,
-                    boxShadow: 'none',
-                    transform: 'none',
-                    zIndex: isSelected ? 20 : 1,
-                    transition: 'none',
-                    overflow: 'hidden',
-                    whiteSpace: 'nowrap',
-                    boxSizing: 'border-box'
-                  }}
-                  title={`[${type.toUpperCase()}] Row ${r}, Col ${c} = ${val}`}
-                >
-                  {(showCellText || (isSelected && cellSize >= 12)) && (
-                    <span>
-                      {type === 'resi' && val > 0 ? `+${val}` : val}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <MacroMicroPixelViewer
+            data={dataArray}
+            N={N}
+            channel={channel}
+            type={type === 'resi' ? 'residual' : 'sample'}
+            maxResidualScale={heatmapScale}
+            selectedPixel={selectedPixel}
+            onSelectPixel={setSelectedPixel}
+            activeWindow={activeWindow}
+            onSelectWindow={setActiveWindow}
+            macroCanvasSize={N >= 32 ? 200 : 160}
+            microCellSize={36}
+          />
         </div>
       </div>
     );
   };
 
-  const activeR = selectedPixel ? Math.min(Math.max(0, selectedPixel.r), N - 1) : null;
-  const activeC = selectedPixel ? Math.min(Math.max(0, selectedPixel.c), N - 1) : null;
-  const activeOrg = selectedPixel ? orgData[activeR * N + activeC] : null;
-  const activePred = selectedPixel ? predData[activeR * N + activeC] : null;
-  const activeResi = selectedPixel ? resiData[activeR * N + activeC] : null;
-  const activeRecon = selectedPixel ? reconData[activeR * N + activeC] : null;
+  const activeX = selectedPixel ? Math.min(Math.max(0, selectedPixel.x), N - 1) : null;
+  const activeY = selectedPixel ? Math.min(Math.max(0, selectedPixel.y), N - 1) : null;
+  const activeOrg = selectedPixel ? orgData[activeY * N + activeX] : null;
+  const activePred = selectedPixel ? predData[activeY * N + activeX] : null;
+  const activeResi = selectedPixel ? resiData[activeY * N + activeX] : null;
+  const activeRecon = selectedPixel ? reconData[activeY * N + activeX] : null;
 
   return (
     <div className="apple-card" style={{
@@ -320,28 +231,6 @@ export default function Synchronized4WayViewport({
           >
             {layoutMode === '2x2' ? '2×2 Grid' : '4-Column'}
           </Button>
-
-          {/* Show Numbers Toggle */}
-          <Button
-            variant={showValues ? 'tinted' : 'gray'}
-            size="small"
-            onClick={() => setShowValues(prev => !prev)}
-            title="Toggle pixel numerical text overlay"
-          >
-            Values: {showValues ? 'On' : 'Off'}
-          </Button>
-
-          {/* Zoom Buttons */}
-          <SegmentedControl
-            value={zoomPreset}
-            onChange={setZoomPreset}
-            size="small"
-            items={[
-              { id: 'fit', label: 'FIT' },
-              { id: '1.5x', label: '1.5×' },
-              { id: '2x', label: '2×' },
-            ]}
-          />
         </div>
       </div>
 
@@ -362,20 +251,30 @@ export default function Synchronized4WayViewport({
         transition: 'none'
       }}>
         {selectedPixel ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, color: 'var(--system-orange)' }}>
-              Pixel ({activeR}, {activeC}):
-            </span>
-            <span>Original: <strong>{activeOrg}</strong></span>
-            <span>Prediction: <strong style={{ color: 'var(--apple-blue)' }}>{activePred}</strong></span>
-            <span>Residual: <strong style={{ color: activeResi > 0 ? '#E11D48' : activeResi < 0 ? '#0284C7' : 'var(--apple-label-secondary)' }}>
-              {activeResi > 0 ? `+${activeResi}` : activeResi}
-            </strong></span>
-            <span>Reconstructed: <strong style={{ color: 'var(--system-green)' }}>{activeRecon}</strong></span>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 800, color: 'var(--system-orange)' }}>
+                Sample (x: {activeX}, y: {activeY}):
+              </span>
+              <span>Original: <strong style={{ color: 'var(--apple-label)' }}>{activeOrg}</strong></span>
+              <span>Prediction: <strong style={{ color: 'var(--apple-blue)' }}>{activePred}</strong></span>
+              <span>Residual: <strong style={{ color: activeResi > 0 ? '#E11D48' : activeResi < 0 ? '#0284C7' : 'var(--apple-label-secondary)' }}>
+                {activeResi > 0 ? `+${activeResi}` : activeResi}
+              </strong></span>
+              <span>Reconstructed: <strong style={{ color: 'var(--system-green)' }}>{activeRecon}</strong></span>
+            </div>
+            <Button
+              variant="gray"
+              size="small"
+              onClick={() => setSelectedPixel(null)}
+              title="Deselect active pixel"
+            >
+              Clear Selection
+            </Button>
           </div>
         ) : (
           <div style={{ color: 'var(--apple-label-secondary)', fontSize: '0.78rem' }}>
-            Click any pixel to inspect synchronized values across all 4 views
+            Click any cell in Micro Matrix or pixel in Macro Canvas to inspect synchronized values across all 4 views
           </div>
         )}
       </div>
@@ -383,7 +282,8 @@ export default function Synchronized4WayViewport({
       {/* Viewport Matrices Container */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: layoutMode === '2x2' ? 'repeat(auto-fit, minmax(320px, 1fr))' : `repeat(4, minmax(${N * cellSize + 40}px, 1fr))`,
+        gridTemplateColumns: layoutMode === '2x2' ? 'repeat(auto-fit, minmax(360px, 1fr))' : 'repeat(4, minmax(360px, 1fr))',
+        minWidth: layoutMode === 'side-by-side' ? '1480px' : 'auto',
         gap: '1.25rem',
         marginBottom: '1.25rem',
         overflowX: 'auto'

@@ -226,7 +226,7 @@ const ActiveStageViewport = ({
           onTogglePlay={() => setIsPlaying((p) => !p)}
           refSamples={refSamples}
           currentMode={currentMode?.mode ?? 0}
-          blockSize={8}
+          blockSize={selectedCu?.width || cuSize || 8}
           imagePreview={imagePreview}
           imageDims={imageDims}
           ctuX={ctuX}
@@ -307,7 +307,7 @@ const ActiveStageViewport = ({
             <Synchronized4WayViewport
               modeData={currentMode}
               currentMode={currentMode?.mode ?? 0}
-              blockSize={8}
+              blockSize={selectedCu?.width || cuSize || 8}
               ctuX={ctuX}
               ctuY={ctuY}
               onBackToIntra={() => setActiveStageTab('INTRA_PIPE')}

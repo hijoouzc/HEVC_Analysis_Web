@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "test": "node src/utils/test_intra_prediction_suite.mjs && node src/utils/test_quadtree_suite.mjs",
+    "test": "node src/utils/test_intra_prediction_suite.mjs && node src/utils/test_quadtree_suite.mjs && node src/utils/test_macro_micro_suite.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

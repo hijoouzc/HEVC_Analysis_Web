@@ -22,6 +22,7 @@ export default function TransformQuantVisualizer({
   const [activeComp, setActiveComp] = useState('Y'); // 'Y', 'Cb', 'Cr'
   const [userSelectedTuIdx, setUserSelectedTuIdx] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null); // { x, y }
+  const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 });
   const [showHmModal, setShowHmModal] = useState(false);
 
   const handleCellClick = useCallback((coord) => {
@@ -142,6 +143,7 @@ export default function TransformQuantVisualizer({
               setActiveComp(comp);
               setUserSelectedTuIdx(0);
               setSelectedCell(null);
+              setActiveWindow({ wx: 0, wy: 0 });
             }}
             items={[
               { id: 'Y', label: 'Luma (Y)' },
@@ -160,7 +162,11 @@ export default function TransformQuantVisualizer({
             </span>
             <select
               value={selectedTuIdx}
-              onChange={(e) => setUserSelectedTuIdx(Number(e.target.value))}
+              onChange={(e) => {
+                setUserSelectedTuIdx(Number(e.target.value));
+                setSelectedCell(null);
+                setActiveWindow({ wx: 0, wy: 0 });
+              }}
               className="apple-select-control"
               style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
             >
@@ -237,9 +243,10 @@ export default function TransformQuantVisualizer({
             width={width}
             selectedCell={selectedCell}
             onSelectCell={handleCellClick}
+            activeWindow={activeWindow}
+            onSelectWindow={setActiveWindow}
             getColor={(val) => getResiColor(val)}
             formatValue={(val) => (val > 0 ? `+${val}` : val)}
-            getTooltip={(val, x, y) => `Residual (${x}, ${y}): ${val}`}
           />
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--apple-label-secondary)', marginTop: '0.5rem' }}>
@@ -267,9 +274,10 @@ export default function TransformQuantVisualizer({
             width={width}
             selectedCell={selectedCell}
             onSelectCell={handleCellClick}
+            activeWindow={activeWindow}
+            onSelectWindow={setActiveWindow}
             getColor={(val, isDC) => getDctColor(val, isDC)}
             formatValue={(val) => val}
-            getTooltip={(val, x, y, isDC) => `${isDst ? 'DST' : 'DCT'} (${x}, ${y}) [${isDC ? 'DC' : 'AC'}]: ${val}`}
           />
 
           {/* Energy bar */}
@@ -302,12 +310,13 @@ export default function TransformQuantVisualizer({
             width={width}
             selectedCell={selectedCell}
             onSelectCell={handleCellClick}
+            activeWindow={activeWindow}
+            onSelectWindow={setActiveWindow}
             getColor={(val) => {
               const res = getQuantColor(val);
               return { bg: res.bg, color: res.color, fontWeight: res.isZero ? 400 : 800 };
             }}
             formatValue={(val) => val}
-            getTooltip={(val, x, y) => `QCoeff (${x}, ${y}): ${val}`}
           />
 
           {/* Sparsity bar */}
@@ -340,30 +349,43 @@ export default function TransformQuantVisualizer({
       </div>
 
       {/* Selected Pixel Inspector Readout */}
-      {selectedCell && (
-        <div style={{
-          background: 'var(--apple-card-bg)',
-          border: '1px solid var(--apple-hairline)',
-          borderRadius: 0,
-          padding: '0.65rem 1rem',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '0.75rem',
-          fontFamily: 'JetBrains Mono, monospace',
-          fontSize: '0.8rem'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
-            <strong style={{ color: 'var(--apple-label-primary)' }}>
-              Sample ({selectedCell.x}, {selectedCell.y}):
-            </strong>
-            <span style={{ color: 'var(--apple-label-secondary)' }}>Residual: <strong style={{ color: 'var(--apple-label-primary)' }}>{resi_matrix[selectedCell.y * width + selectedCell.x]}</strong></span>
-            <span style={{ color: 'var(--apple-label-secondary)' }}>{transformName}: <strong style={{ color: 'var(--apple-blue)' }}>{dct_coeff[selectedCell.y * width + selectedCell.x]}</strong></span>
-            <span style={{ color: 'var(--apple-label-secondary)' }}>Quantized: <strong style={{ color: 'var(--apple-purple)' }}>{quant_coeff[selectedCell.y * width + selectedCell.x]}</strong></span>
+      <div style={{
+        background: selectedCell ? 'var(--apple-orange-subtle, rgba(255, 149, 0, 0.1))' : 'var(--apple-card-bg)',
+        border: selectedCell ? '1px solid var(--system-orange, #FF9500)' : '1px solid var(--apple-hairline)',
+        borderRadius: '4px',
+        padding: '0.65rem 1rem',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: '0.75rem',
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '0.8rem'
+      }}>
+        {selectedCell ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <strong style={{ color: 'var(--system-orange, #FF9500)' }}>
+                Sample ({selectedCell.x}, {selectedCell.y}):
+              </strong>
+              <span>Residual: <strong style={{ color: 'var(--apple-label-primary)' }}>{resi_matrix[selectedCell.y * width + selectedCell.x]}</strong></span>
+              <span>{transformName}: <strong style={{ color: 'var(--apple-blue)' }}>{dct_coeff[selectedCell.y * width + selectedCell.x]}</strong></span>
+              <span>Quantized: <strong style={{ color: 'var(--apple-purple)' }}>{quant_coeff[selectedCell.y * width + selectedCell.x]}</strong></span>
+            </div>
+            <Button
+              variant="gray"
+              size="small"
+              onClick={() => setSelectedCell(null)}
+            >
+              Clear Selection
+            </Button>
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ color: 'var(--apple-label-secondary)', fontSize: '0.76rem' }}>
+            Click any cell or region to inspect synchronized values across Residual, Transform, and Quantization
+          </div>
+        )}
+      </div>
 
       {/* HM-16.0 Source Code Inspector Modal for TU Transform & Quantization */}
       <HmSourceCodeModal
