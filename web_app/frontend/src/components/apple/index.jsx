@@ -561,7 +561,6 @@ export function Select({
             ))
           : children}
       </select>
-      <span className="apple-select-chevron" aria-hidden="true">▾</span>
     </div>
   );
 }

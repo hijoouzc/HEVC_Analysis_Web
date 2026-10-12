@@ -105,7 +105,7 @@ function InternalPartitionGrid({ node, x, y, size, showLeafNumbers = false }) {
  * - Geometric Square Blocks: D0 (64x64), D1 (32x32), D2 (16x16), D3 (8x8)
  * - Internal split lines (+) for split nodes; bold Z-scan index numbers (0..N-1) for leaf blocks
  * - Orthogonal edge connectors (orthogonalEdgeStyle)
- * - Pan & Zoom Viewport with Auto-Fit (eliminates any cramping / "bó cứng")
+ * - Pan & Zoom Viewport with Auto-Fit (eliminates any cramping or boundary overflow)
  * - Seamless 2-way selection sync with 2D CTU grid & Inspector
  */
 export default function QuadtreeHierarchyGraph({
@@ -281,7 +281,7 @@ export default function QuadtreeHierarchyGraph({
             className="apple-btn-tool"
             onClick={() => setZoom(z => Math.min(3.0, Number((z * 1.2).toFixed(2))))}
             title="Zoom In (+)"
-            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem' }}
+            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', minWidth: '24px', justifyContent: 'center' }}
           >
             +
           </button>
@@ -290,7 +290,7 @@ export default function QuadtreeHierarchyGraph({
             className="apple-btn-tool"
             onClick={() => setZoom(z => Math.max(0.15, Number((z / 1.2).toFixed(2))))}
             title="Zoom Out (-)"
-            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem' }}
+            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', minWidth: '24px', justifyContent: 'center' }}
           >
             −
           </button>
@@ -299,16 +299,16 @@ export default function QuadtreeHierarchyGraph({
             className="apple-btn-tool"
             onClick={handleFitView}
             title="Fit Entire Tree to Viewport"
-            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem' }}
+            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', minWidth: '60px', justifyContent: 'center' }}
           >
-            ⤢ Fit View
+            Fit View
           </button>
           <button
             type="button"
             className="apple-btn-tool"
             onClick={() => { setZoom(1); setPan({ x: 20, y: 20 }); }}
             title="Reset Zoom to 100%"
-            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem' }}
+            style={{ padding: '0.2rem 0.55rem', fontSize: '0.72rem', minWidth: '82px', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}
           >
             100% ({Math.round(zoom * 100)}%)
           </button>

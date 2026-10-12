@@ -191,13 +191,13 @@ export default function DrawioExportModal({
                 padding: '0.35rem 0.85rem',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.35rem',
+                justifyContent: 'center',
+                minWidth: '88px',
                 backgroundColor: copied ? '#34C759' : 'var(--apple-blue)'
               }}
               title="Copy raw XML code"
             >
-              <span>{copied ? '✓' : '📋'}</span>
-              <span>{copied ? 'Copied to Clipboard!' : 'Copy XML'}</span>
+              {copied ? 'Copied!' : 'Copy XML'}
             </button>
           </div>
         </div>

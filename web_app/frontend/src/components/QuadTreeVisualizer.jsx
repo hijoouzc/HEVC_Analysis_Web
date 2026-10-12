@@ -217,6 +217,8 @@ export default function QuadTreeVisualizer({
                 }}
                 disabled={activeNode.width !== 8}
                 style={{
+                  minWidth: '160px',
+                  justifyContent: 'center',
                   background: activeNode.width === 8 ? 'var(--apple-purple, #AF52DE)' : '#94A3B8',
                   cursor: activeNode.width === 8 ? 'pointer' : 'not-allowed',
                   opacity: activeNode.width === 8 ? 1 : 0.7
@@ -293,9 +295,20 @@ export default function QuadTreeVisualizer({
             type="button"
             className="apple-btn-secondary"
             onClick={() => setTextureMode(m => m === 'color' ? 'grayscale' : m === 'grayscale' ? 'off' : 'color')}
+            style={{
+              width: '76px',
+              height: '28px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
+              userSelect: 'none'
+            }}
             title="Toggle CTU block texture: COLOR / GRAYSCALE / OFF"
           >
-            {textureMode === 'color' ? 'COLOR' : textureMode === 'grayscale' ? 'GRAY' : 'OFF'}
+            <span style={{ width: '56px', textAlign: 'center', display: 'inline-block' }}>
+              {textureMode === 'color' ? 'COLOR' : textureMode === 'grayscale' ? 'GRAY' : 'OFF'}
+            </span>
           </button>
         </div>
 
@@ -305,9 +318,21 @@ export default function QuadTreeVisualizer({
             type="button"
             className="apple-btn-secondary"
             onClick={() => setColorScheme(c => c === 'mode' ? 'outline' : 'mode')}
+            style={{
+              width: '124px',
+              height: '28px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
+              userSelect: 'none'
+            }}
             title="Toggle PRED MODES cell overlay (INTRA, INTER, SKIP) ON / OFF"
           >
-            {colorScheme === 'mode' ? 'OVERLAY: ON' : 'OVERLAY: OFF'}
+            <span>OVERLAY:</span>
+            <span style={{ width: '28px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
+              {colorScheme === 'mode' ? 'ON' : 'OFF'}
+            </span>
           </button>
         </div>
       </div>

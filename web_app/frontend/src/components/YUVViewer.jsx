@@ -459,12 +459,22 @@ const YUVViewer = ({
             className={`apple-btn-tool ${showCtuGrid ? 'active' : ''}`}
             onClick={() => setShowCtuGrid(prev => !prev)}
             style={{
+              width: '116px',
+              height: '26px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
               background: showCtuGrid ? 'rgba(0, 122, 255, 0.12)' : 'transparent',
               color: showCtuGrid ? 'var(--apple-blue)' : 'var(--apple-label)',
-              border: '1px solid var(--apple-hairline)'
+              border: '1px solid var(--apple-hairline)',
+              userSelect: 'none'
             }}
           >
-            CTU Grid: {showCtuGrid ? 'On' : 'Off'}
+            <span>CTU Grid:</span>
+            <span style={{ width: '28px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
+              {showCtuGrid ? 'On' : 'Off'}
+            </span>
           </button>
         </div>
       </div>

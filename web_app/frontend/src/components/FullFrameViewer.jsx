@@ -488,13 +488,23 @@ function FullFrameViewer({
             className={`apple-btn-tool ${showGrid ? 'active' : ''}`}
             onClick={() => setShowGrid(prev => !prev)}
             style={{
+              width: '92px',
+              height: '26px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
               background: showGrid ? 'rgba(0, 122, 255, 0.12)' : 'transparent',
               color: showGrid ? 'var(--apple-blue)' : 'var(--apple-label)',
-              border: '1px solid var(--apple-hairline)'
+              border: '1px solid var(--apple-hairline)',
+              userSelect: 'none'
             }}
             title="Toggle 64x64 CTU boundaries"
           >
-            GRID: {showGrid ? 'ON' : 'OFF'}
+            <span>GRID:</span>
+            <span style={{ width: '28px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
+              {showGrid ? 'ON' : 'OFF'}
+            </span>
           </button>
 
           {/* Boundary Toggle Button */}
@@ -503,13 +513,23 @@ function FullFrameViewer({
             className={`apple-btn-tool ${showBoundary ? 'active' : ''}`}
             onClick={() => setShowBoundary(prev => !prev)}
             style={{
+              width: '126px',
+              height: '26px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxSizing: 'border-box',
               background: showBoundary ? 'rgba(245, 158, 11, 0.16)' : 'transparent',
               color: showBoundary ? 'var(--apple-orange, #FF9500)' : 'var(--apple-label)',
-              border: showBoundary ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid var(--apple-hairline)'
+              border: showBoundary ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid var(--apple-hairline)',
+              userSelect: 'none'
             }}
             title="Toggle picture boundary CTU cross-hatch overlay (B)"
           >
-            BOUNDARY: {showBoundary ? 'ON' : 'OFF'}
+            <span>BOUNDARY:</span>
+            <span style={{ width: '28px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
+              {showBoundary ? 'ON' : 'OFF'}
+            </span>
           </button>
 
           {/* Grid Color Cycle: White -> Yellow -> Cyan */}
@@ -518,14 +538,21 @@ function FullFrameViewer({
             className="apple-btn-tool"
             onClick={() => setGridColor(c => c === 'white' ? 'yellow' : c === 'yellow' ? 'cyan' : 'white')}
             style={{
-              display: 'flex',
+              width: '110px',
+              height: '26px',
+              display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem',
-              border: '1px solid var(--apple-hairline)'
+              justifyContent: 'center',
+              boxSizing: 'border-box',
+              border: '1px solid var(--apple-hairline)',
+              userSelect: 'none'
             }}
             title="Cycle Grid Color: White -> Yellow -> Cyan"
           >
-            <span>Grid: {gridColor.toUpperCase()}</span>
+            <span>Grid:</span>
+            <span style={{ width: '52px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
+              {gridColor.toUpperCase()}
+            </span>
           </button>
 
           {/* HM-16.0 Source Code Modal Trigger */}

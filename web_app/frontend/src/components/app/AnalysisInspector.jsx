@@ -55,15 +55,15 @@ const AnalysisInspector = ({
   const cachedPart = ctuPartitionsMap[`${ctuX}_${ctuY}`] || partitionData;
   const leafCount = cachedPart?.leaf_nodes || cachedPart?.nodes?.filter(n => !n.split).length || 1;
 
-  // Line Buffer & Spatial Neighbors (ITU-T H.265 Section 6.4.1)
+  // Spatial Reference Availability (ITU-T H.265 Section 8.4.4.2 & HM-16.0 getCuAbove/getCuLeft)
   const neighbors = useMemo(() => {
     const x = ctuX ?? 0;
     const y = ctuY ?? 0;
     return {
-      d: { label: 'D', name: 'Above-Left', avail: x > 0 && y > 0 },
-      b: { label: 'B', name: 'Above', avail: y > 0 },
-      c: { label: 'C', name: 'Above-Right', avail: y > 0 && x + 1 < numCols },
-      a: { label: 'A', name: 'Left', avail: x > 0 },
+      tl: { label: 'TL', name: 'Top-Left', avail: x > 0 && y > 0 },
+      t:  { label: 'T',  name: 'Above',    avail: y > 0 },
+      tr: { label: 'TR', name: 'Above-Right', avail: y > 0 && x + 1 < numCols },
+      l:  { label: 'L',  name: 'Left',     avail: x > 0 },
     };
   }, [ctuX, ctuY, numCols]);
 
@@ -74,7 +74,7 @@ const AnalysisInspector = ({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '12px', fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--apple-label)' }}>
-              Info Inspector
+              Analysis Inspector
             </span>
             <Badge variant="blue" style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px' }}>
               CTU ({ctuX ?? 0}, {ctuY ?? 0})
@@ -85,7 +85,7 @@ const AnalysisInspector = ({
               variant="plain"
               size="mini"
               onClick={onClose}
-              title="Close Info (I)"
+              title="Close Inspector (I)"
               style={{ color: 'var(--label-2)', padding: '2px 6px', fontSize: '12px' }}
             >
               ✕
@@ -94,32 +94,32 @@ const AnalysisInspector = ({
         </div>
       </Card>
 
-      {/* Section 1: Target CTU Geometry */}
+      {/* Section 1: CTU Properties */}
       <Card style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--apple-label-2)' }}>
-            Target Geometry
+            CTU Properties
           </span>
           <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--label-2)' }}>
-            Raster #{ctuIndex}
+            Raster Scan #{ctuIndex}
           </span>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>CTU Coordinates:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>CTU Position:</span>
             <strong style={{ color: 'var(--system-blue)' }}>({ctuX ?? 0}, {ctuY ?? 0})</strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>Sample Bounds:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>CTU Size:</span>
             <span style={{ color: 'var(--apple-label)' }}>{ctuPw} × {ctuPh} px</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>QuadTree Leaves:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>Leaf Partitions:</span>
             <span style={{ color: 'var(--apple-label)', fontWeight: 600 }}>{leafCount} CUs</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>Boundary:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>Frame Border:</span>
             <span
               style={{
                 fontSize: '10px',
@@ -131,7 +131,7 @@ const AnalysisInspector = ({
                 border: `0.5px solid ${isBoundary ? 'var(--system-orange)' : 'var(--system-green)'}`,
               }}
             >
-              {isBoundary ? 'Picture Boundary' : 'Inside Bounds'}
+              {isBoundary ? 'Picture Boundary' : 'Inside Picture'}
             </span>
           </div>
         </div>
@@ -149,11 +149,11 @@ const AnalysisInspector = ({
         )}
       </Card>
 
-      {/* Section 2: Active Coding Unit & Intra RDO */}
+      {/* Section 2: Selected Coding Unit & Intra RDO */}
       <Card style={{ padding: '12px 14px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <span style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--apple-label-2)' }}>
-            Active Coding Unit
+            Selected Coding Unit
           </span>
           <span
             style={{
@@ -173,13 +173,13 @@ const AnalysisInspector = ({
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>Block Dimension:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>CU Size:</span>
             <strong style={{ color: 'var(--apple-label)' }}>
               {cuW} × {cuH} px
             </strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>QuadTree Hierarchy:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>Tree Depth:</span>
             <strong style={{ color: depthConf.text }}>Depth {cuDepth} (64 → {cuW})</strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -195,12 +195,12 @@ const AnalysisInspector = ({
             )}
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>Mode Category:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>Mode Class:</span>
             <span style={{ color: 'var(--apple-label)' }}>{modeInfo ? modeInfo.type : '—'}</span>
           </div>
           {activeCost !== null && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--apple-label-2)' }}>RDO Cost (J):</span>
+              <span style={{ color: 'var(--apple-label-2)' }}>RD Cost (J):</span>
               <strong style={{ color: 'var(--system-green)' }}>
                 {Math.round(activeCost).toLocaleString()}
               </strong>
@@ -209,16 +209,17 @@ const AnalysisInspector = ({
         </div>
       </Card>
 
-      {/* Section 3: Spatial Neighbors & Line Buffer Status */}
+      {/* Section 3: Spatial Neighbor Reference Availability */}
       <Card style={{ padding: '12px 14px' }}>
         <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--apple-label-2)' }}>
-          Neighbor Line Buffers
+          Spatial Neighbor Availability
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', textAlign: 'center' }}>
           {Object.entries(neighbors).map(([k, n]) => (
             <div
               key={k}
+              title={`${n.name} (${n.label}): ${n.avail ? 'Available for Reference' : 'Outside Picture Border'}`}
               style={{
                 padding: '5px 2px',
                 borderRadius: '5px',
@@ -231,23 +232,23 @@ const AnalysisInspector = ({
                 {n.label}
               </div>
               <div style={{ fontSize: '8.5px', color: 'var(--apple-label-2)', marginTop: '2px' }}>
-                {n.avail ? 'LineBuf' : 'Edge'}
+                {n.avail ? 'Available' : 'Border'}
               </div>
             </div>
           ))}
         </div>
       </Card>
 
-      {/* Section 4: Sequence Telemetry & Reference Pipeline */}
+      {/* Section 4: Sequence Properties */}
       <Card style={{ padding: '12px 14px' }}>
         <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--apple-label-2)' }}>
-          Sequence Telemetry
+          Sequence Properties
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
           {file?.name && (
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--apple-label-2)' }}>Source File:</span>
+              <span style={{ color: 'var(--apple-label-2)' }}>Input File:</span>
               <span style={{ color: 'var(--apple-label)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}>
                 {file.name}
               </span>
@@ -263,12 +264,12 @@ const AnalysisInspector = ({
             <span style={{ color: 'var(--apple-label)' }}>{numCols} × {numRows} ({numCols * numRows} CTUs)</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>Colorimetry:</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>Chroma Format:</span>
             <span style={{ color: 'var(--apple-label)' }}>YCbCr 4:2:0 BT.709</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span style={{ color: 'var(--apple-label-2)' }}>Encoder:</span>
-            <span style={{ color: 'var(--apple-label)' }}>HM-16.0 (Reference)</span>
+            <span style={{ color: 'var(--apple-label-2)' }}>Reference Codec:</span>
+            <span style={{ color: 'var(--apple-label)' }}>HM-16.0 Reference</span>
           </div>
         </div>
       </Card>

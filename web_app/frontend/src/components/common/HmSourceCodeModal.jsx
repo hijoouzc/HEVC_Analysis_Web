@@ -227,9 +227,9 @@ export default function HmSourceCodeModal({
               size="mini"
               onClick={handleCopy}
               title="Copy C++ source code to clipboard"
-              style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}
+              style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', minWidth: '56px', justifyContent: 'center' }}
             >
-              {copied ? '✓ Copied' : 'Copy'}
+              {copied ? 'Copied' : 'Copy'}
             </Button>
             <Button
               variant="gray"
@@ -537,9 +537,9 @@ export default function HmSourceCodeModal({
               variant="gray"
               size="small"
               onClick={handleCopy}
-              style={{ fontSize: '11.5px' }}
+              style={{ fontSize: '11.5px', minWidth: '88px', justifyContent: 'center' }}
             >
-              {copied ? '✓ Copied' : 'Copy Code'}
+              {copied ? 'Copied!' : 'Copy Code'}
             </Button>
             <Button
               variant="filled"

@@ -88,7 +88,7 @@ const SetupScreen = ({
 
         <Card style={{ padding: '14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--apple-label)' }}>Target CTU</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--apple-label)' }}>Selected CTU</span>
             <Badge variant="blue">
               {ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : '(0, 0)'}
             </Badge>
@@ -106,7 +106,7 @@ const SetupScreen = ({
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--apple-label-2)' }}>Focus Coords:</span>
+              <span style={{ color: 'var(--apple-label-2)' }}>CTU Position:</span>
               <span style={{ color: 'var(--apple-label)', fontWeight: 700 }}>
                 {ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : '(0, 0)'}
               </span>

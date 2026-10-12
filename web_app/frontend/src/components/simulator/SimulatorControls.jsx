@@ -52,8 +52,8 @@ export default function SimulatorControls({
             variant="gray"
             size="regular"
             onClick={onFirst}
-            title="First Step"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '0 8px', height: '24px' }}
+            title="First Step (Home)"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: 0, height: '24px', width: '42px', justifyContent: 'center' }}
           >
             First
           </Button>
@@ -62,8 +62,8 @@ export default function SimulatorControls({
             size="regular"
             onClick={onPrev}
             disabled={stepIdx === 0}
-            title="Previous Step"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '0 8px', height: '24px' }}
+            title="Previous Step (Left Arrow)"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: 0, height: '24px', width: '42px', justifyContent: 'center' }}
           >
             Prev
           </Button>
@@ -72,24 +72,31 @@ export default function SimulatorControls({
             size="regular"
             onClick={onTogglePlay}
             style={{
-              padding: '0 10px',
+              padding: 0,
               fontFamily: 'var(--font-mono)',
               fontSize: '11px',
               fontWeight: 700,
               height: '24px',
+              width: '60px',
+              justifyContent: 'center',
+              display: 'inline-flex',
+              alignItems: 'center',
+              boxSizing: 'border-box',
               ...(isPlaying ? { backgroundColor: 'var(--system-orange)', color: '#FFFFFF' } : {})
             }}
-            title={isPlaying ? 'Pause Timeline' : 'Play Timeline'}
+            title={isPlaying ? 'Pause Timeline (Space)' : 'Play Timeline (Space)'}
           >
-            {isPlaying ? 'Pause' : 'Play'}
+            <span style={{ width: '42px', textAlign: 'center', display: 'inline-block' }}>
+              {isPlaying ? 'Pause' : 'Play'}
+            </span>
           </Button>
           <Button
             variant="gray"
             size="regular"
             onClick={onNext}
             disabled={stepIdx >= totalSteps - 1}
-            title="Next Step"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '0 8px', height: '24px' }}
+            title="Next Step (Right Arrow)"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: 0, height: '24px', width: '42px', justifyContent: 'center' }}
           >
             Next
           </Button>
@@ -97,8 +104,8 @@ export default function SimulatorControls({
             variant="gray"
             size="regular"
             onClick={onLast}
-            title="Last Step"
-            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: '0 8px', height: '24px' }}
+            title="Last Step (End)"
+            style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', padding: 0, height: '24px', width: '42px', justifyContent: 'center' }}
           >
             Last
           </Button>
@@ -108,7 +115,10 @@ export default function SimulatorControls({
           fontSize: '11.5px',
           fontFamily: 'var(--font-mono)',
           fontWeight: 600,
-          color: 'var(--label-2)'
+          color: 'var(--label-2)',
+          minWidth: '95px',
+          display: 'inline-block',
+          fontVariantNumeric: 'tabular-nums'
         }}>
           Step {stepIdx + 1} / {totalSteps}
         </span>

@@ -95,14 +95,14 @@ export default function RdoDecisionCard({
         gap: '0.35rem'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--label-2)' }}>J_NonSplit:</span>
+          <span style={{ color: 'var(--label-2)' }}>J (No Split):</span>
           <span style={{ fontWeight: 700, color: 'var(--label)' }}>
             {currentStep?.jNonSplit ? Math.round(currentStep.jNonSplit).toLocaleString() : '---'}
           </span>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ color: 'var(--label-2)' }}>J_Split (4× Sub + λ):</span>
+          <span style={{ color: 'var(--label-2)' }}>J (Split 4 CUs):</span>
           <span style={{ fontWeight: 700, color: currentStep?.jSplit ? 'var(--system-orange)' : 'var(--label-3)' }}>
             {currentStep?.jSplit && currentStep.jSplit < Infinity
               ? Math.round(currentStep.jSplit).toLocaleString()
@@ -123,7 +123,7 @@ export default function RdoDecisionCard({
             color: currentStep.decision === 'SPLIT' ? 'var(--system-green)' : 'var(--system-blue)',
             border: currentStep.decision === 'SPLIT' ? '0.5px solid rgba(52, 199, 89, 0.35)' : '0.5px solid rgba(0, 122, 255, 0.35)'
           }}>
-            {currentStep.decision === 'SPLIT' ? 'Quad Split Decision (4× Sub-CUs)' : 'Non-Split Decision (Leaf CU)'}
+            {currentStep.decision === 'SPLIT' ? 'Decision: Split into 4 Sub-CUs' : 'Decision: Keep Block (Leaf CU)'}
           </div>
         )}
       </div>

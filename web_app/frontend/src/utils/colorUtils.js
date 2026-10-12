@@ -265,17 +265,17 @@ export const getResidualColorAndTextColor = (val, maxScale = 64) => {
  * @returns {{ name: string, type: string, desc: string }}
  */
 export const getIntraModeInfo = (mode) => {
-  if (mode === 0) return { name: 'Planar', type: '2D Smooth', desc: '4-corner bilinear planar interpolation' };
-  if (mode === 1) return { name: 'DC', type: 'Flat Average', desc: 'Mean average of boundary reference samples' };
-  if (mode === 10) return { name: 'Horizontal', type: 'Directional 10', desc: 'Pure horizontal directional prediction' };
-  if (mode === 26) return { name: 'Vertical', type: 'Directional 26', desc: 'Pure vertical directional prediction' };
-  if (mode === 2) return { name: 'Angular 2', type: 'Bottom-Left (45°)', desc: 'Diagonal prediction from bottom-left' };
-  if (mode === 18) return { name: 'Angular 18', type: 'Diagonal (45°)', desc: 'Diagonal prediction from top-left' };
-  if (mode === 34) return { name: 'Angular 34', type: 'Top-Right (45°)', desc: 'Diagonal prediction from top-right' };
-  if (mode > 2 && mode < 10) return { name: `Angular ${mode}`, type: 'Bottom-Left → Hor', desc: `Angular prediction (Mode ${mode})` };
-  if (mode > 10 && mode < 18) return { name: `Angular ${mode}`, type: 'Hor → Diagonal', desc: `Angular prediction (Mode ${mode})` };
-  if (mode > 18 && mode < 26) return { name: `Angular ${mode}`, type: 'Diagonal → Ver', desc: `Angular prediction (Mode ${mode})` };
-  if (mode > 26 && mode < 34) return { name: `Angular ${mode}`, type: 'Ver → Top-Right', desc: `Angular prediction (Mode ${mode})` };
+  if (mode === 0) return { name: 'Planar', type: 'Non-Angular (Planar)', desc: '4-corner bilinear planar interpolation' };
+  if (mode === 1) return { name: 'DC', type: 'Non-Angular (DC)', desc: 'Mean average of boundary reference samples' };
+  if (mode === 10) return { name: 'Horizontal', type: 'Angular (Horizontal)', desc: 'Pure horizontal directional prediction' };
+  if (mode === 26) return { name: 'Vertical', type: 'Angular (Vertical)', desc: 'Pure vertical directional prediction' };
+  if (mode === 2) return { name: 'Angular 2', type: 'Angular (Bottom-Left 45°)', desc: 'Diagonal prediction from bottom-left' };
+  if (mode === 18) return { name: 'Angular 18', type: 'Angular (Diagonal 45°)', desc: 'Diagonal prediction from top-left' };
+  if (mode === 34) return { name: 'Angular 34', type: 'Angular (Top-Right 45°)', desc: 'Diagonal prediction from top-right' };
+  if (mode > 2 && mode < 10) return { name: `Angular ${mode}`, type: 'Angular (Bottom-Left → Hor)', desc: `Angular prediction (Mode ${mode})` };
+  if (mode > 10 && mode < 18) return { name: `Angular ${mode}`, type: 'Angular (Hor → Diagonal)', desc: `Angular prediction (Mode ${mode})` };
+  if (mode > 18 && mode < 26) return { name: `Angular ${mode}`, type: 'Angular (Diagonal → Ver)', desc: `Angular prediction (Mode ${mode})` };
+  if (mode > 26 && mode < 34) return { name: `Angular ${mode}`, type: 'Angular (Ver → Top-Right)', desc: `Angular prediction (Mode ${mode})` };
   return { name: `Mode ${mode}`, type: 'Intra', desc: `Intra Mode ${mode}` };
 };
 
