@@ -5,7 +5,8 @@ from app.domain.models.checkpoint import (
     IntraRefCheckpoint,
     IntraComparisonResult,
     CTUPartitionCheckpoint,
-    TransformQuantCheckpoint
+    TransformQuantCheckpoint,
+    IntraPipelineFullResponse
 )
 from app.domain.exceptions import JobNotFoundError, InvalidInputError
 from app.services.analysis_service import analysis_service
@@ -118,6 +119,29 @@ async def get_intra_search_modes(
     """Lazy-load full matrix and reference sample data for tested Intra modes"""
     try:
         return analysis_service.get_intra_search_data(job_id, mode=mode, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/CP_03_INTRA_SEARCH/pipeline", response_model=IntraPipelineFullResponse)
+@router.get("/{job_id}/intra-pipeline", response_model=IntraPipelineFullResponse)
+async def get_intra_pipeline_full(
+    job_id: str,
+    cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)"),
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+):
+    """
+    CP_03_INTRA_SEARCH Pipeline: Complete 5-stage Intra Prediction & RDO Search Flow
+    Step 1: Reference Boundary Init & MDIS Filter
+    Step 2: Rough Mode Decision (RMD) 35-Mode Funnel
+    Step 3: Top K Candidates & 3 MPM Derivation
+    Step 4: Full RDO Phase & QuadTree TU Decomposition
+    Step 5: Chroma Mode Search & Best Mode Decision
+    """
+    try:
+        return analysis_service.get_intra_pipeline_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:

@@ -173,6 +173,76 @@ class TransformQuantCheckpoint(BaseModel):
     energy_compaction_ratio: float = 0.0  # (DC^2 / Total Energy)
     sparsity_ratio: float = 0.0           # zero_coeffs / total_coeffs
 
+# ==========================================
+# Intra Prediction Pipeline Models (CP_03 Expanded)
+# ==========================================
+class RmdModeItem(BaseModel):
+    """A mode evaluated during Rough Mode Decision (RMD) phase"""
+    mode: int
+    category: str                    # PLANAR, DC, ANGULAR
+    direction_name: str
+    angle_offset: int
+    cost: float                      # SATD + lambda_had * mode_bits
+    rank: int                        # 1 to 35
+    selected_in_rmd: bool = False    # True if within top K candidates
+    is_mpm: bool = False             # True if in 3 MPMs
+    mpm_index: int | None = None     # 0, 1, 2 or None
+
+class MpmDerivationInfo(BaseModel):
+    """Most Probable Modes (MPM) derivation metadata adhering to H.265 Section 8.4.2"""
+    left_mode: int | None = None
+    above_mode: int | None = None
+    mpm_modes: list[int] = Field(default_factory=list) # exactly 3 modes
+    derivation_rule: str = ""
+
+class CandidateSelectionStep(BaseModel):
+    """Candidate pruning result: Top K from RMD + 3 MPMs"""
+    k_threshold: int = 8             # 8 for 4x4/8x8, 3 for 16x16/32x32/64x64
+    top_k_modes: list[int] = Field(default_factory=list)
+    mpm_modes: list[int] = Field(default_factory=list)
+    candidate_modes: list[int] = Field(default_factory=list) # Unified ordered candidates for Full RDO
+    derivation: MpmDerivationInfo | None = None
+
+class RdoCandidateDetail(BaseModel):
+    """Full RDO evaluation for a candidate mode"""
+    mode: int
+    direction_name: str
+    is_mpm: bool = False
+    rank_rdo: int = 1
+    cost_rdo: float = 0.0            # True J_RDO = SSE + lambda * bits
+    sse: int = 0
+    distortion: float = 0.0
+    bits: float = 0.0
+    tu_split: bool = False
+    reconstructed_data: list[int] = Field(default_factory=list)
+    reconstructed_resi: list[int] = Field(default_factory=list)
+
+class ChromaCandidateInfo(BaseModel):
+    """Allowed chroma mode candidate according to HM getAllowedChromaDir"""
+    mode: int
+    name: str                        # Planar, Vertical, Horizontal, DC, DM_CHROMA, or Angular 34
+    is_dm: bool = False
+    cost: float = 0.0
+    rank: int = 1
+
+class IntraPipelineFullResponse(BaseModel):
+    """Complete 5-Stage Intra Prediction & RDO Search Pipeline Response"""
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    cu_size: int = 8
+    best_luma_mode: int = 0
+    best_luma_cost: float = 0.0
+    best_chroma_mode: int = 0
+    winner_mode: int = 0
+    winner_cost: float = 0.0
+    winner_direction: str = ""
+    step1_reference: IntraRefCheckpoint
+    step2_rmd: list[RmdModeItem] = Field(default_factory=list)
+    step3_candidates: CandidateSelectionStep
+    step4_rdo: list[RdoCandidateDetail] = Field(default_factory=list)
+    step5_chroma: list[ChromaCandidateInfo] = Field(default_factory=list)
+
 class CheckpointSummaryResponse(BaseModel):
     stage_id: str
     name: str

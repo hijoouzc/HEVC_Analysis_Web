@@ -160,4 +160,17 @@ def test_modern_job_and_checkpoint_api(client, dummy_png_bytes, sample_trace_fil
     assert res_img_res.status_code == 200
     assert res_img_res.headers["content-type"] == "image/png"
 
+    # 11. Check CP_03_INTRA_SEARCH Pipeline Endpoint
+    pipe_res = client.get(f"/api/v1/checkpoints/{job_id}/intra-pipeline")
+    assert pipe_res.status_code == 200
+    pipe_data = pipe_res.json()
+    assert pipe_data["cu_size"] == 8
+    assert len(pipe_data["step1_reference"]["ref_unfilt_top"]) == 17
+    assert len(pipe_data["step2_rmd"]) == 35
+    assert pipe_data["step3_candidates"]["k_threshold"] == 8
+    assert len(pipe_data["step3_candidates"]["mpm_modes"]) == 3
+    assert len(pipe_data["step4_rdo"]) >= 8
+    assert len(pipe_data["step5_chroma"]) == 5
+    assert pipe_data["winner_mode"] == pipe_data["best_luma_mode"]
+
 

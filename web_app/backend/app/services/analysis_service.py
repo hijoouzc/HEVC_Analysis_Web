@@ -10,7 +10,8 @@ from app.domain.models.checkpoint import (
     IntraRefCheckpoint,
     IntraComparisonResult,
     CTUPartitionCheckpoint,
-    TransformQuantCheckpoint
+    TransformQuantCheckpoint,
+    IntraPipelineFullResponse
 )
 from app.domain.enums import JobStatus, StageEnum
 from app.domain.exceptions import JobNotFoundError, EncoderExecutionError, InvalidInputError
@@ -20,7 +21,7 @@ from app.engine.hm_runner import hm_runner
 from app.storage.session_manager import session_manager, SessionManager
 from app.storage.trace_reader import trace_reader, TraceReader
 from app.checkpoints.registry import checkpoint_registry, CheckpointRegistry
-from app.checkpoints.parsers.intra_search_parser import intra_search_parser
+from app.checkpoints.parsers.intra_search_parser import intra_search_parser, build_intra_pipeline_data
 from app.checkpoints.parsers.intra_ref_parser import intra_ref_parser
 from app.checkpoints.parsers.partition_parser import partition_parser
 from app.checkpoints.parsers.transform_parser import transform_quant_parser
@@ -308,6 +309,53 @@ class AnalysisService:
     def get_intra_search_summary(self, job_id: str) -> IntraSearchSummary:
         modes = self.get_intra_search_data(job_id)
         return intra_search_parser.compute_summary(modes)
+
+    def get_intra_pipeline_data(
+        self,
+        job_id: str,
+        cu_size: int | None = None,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> IntraPipelineFullResponse:
+        modes = self.get_intra_search_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+        ref_checkpoint = self.get_intra_ref_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+        
+        target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
+        active_cu_size = target_cu or (modes[0].cu_size if modes else 8)
+        active_ctu_x = target_x if target_x is not None else (modes[0].ctu_x if modes else 0)
+        active_ctu_y = target_y if target_y is not None else (modes[0].ctu_y if modes else 0)
+        poc = modes[0].poc if modes else 0
+
+        # Query Partition QuadTree for Left and Above Neighbor modes if available
+        left_mode, above_mode = None, None
+        try:
+            part = self.get_partition_data(job_id, ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+            for node in part.nodes:
+                if node.mode == "INTRA" and node.intra_dir is not None:
+                    if left_mode is None:
+                        left_mode = node.intra_dir
+                    elif above_mode is None:
+                        above_mode = node.intra_dir
+        except Exception:
+            pass
+
+        transform_events = []
+        try:
+            transform_events = self.get_transform_quant_data(job_id, comp="Y", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+        except Exception:
+            pass
+
+        return build_intra_pipeline_data(
+            modes=modes,
+            ref_checkpoint=ref_checkpoint,
+            cu_size=active_cu_size,
+            ctu_x=active_ctu_x,
+            ctu_y=active_ctu_y,
+            poc=poc,
+            left_mode=left_mode,
+            above_mode=above_mode,
+            transform_events=transform_events
+        )
 
     def get_intra_ref_data(
         self,
