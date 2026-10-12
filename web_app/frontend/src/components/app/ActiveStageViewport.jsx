@@ -238,6 +238,8 @@ const ActiveStageViewport = ({
           }}
           jobId={jobId}
           API_BASE_URL={API_BASE_URL}
+          transformData={transformData}
+          quantData={quantData}
         />
       )}
 

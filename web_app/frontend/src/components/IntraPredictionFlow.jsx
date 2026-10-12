@@ -19,6 +19,8 @@ import IntraPipelineStepper from './flow/IntraPipelineStepper';
 import IntraPipelineInspector from './flow/IntraPipelineInspector';
 import Step1BoundaryInitView from './flow/Step1BoundaryInitView';
 import Step2RmdFunnelView from './flow/Step2RmdFunnelView';
+import Step3CandidatesView from './flow/Step3CandidatesView';
+import Step4FullRdoView from './flow/Step4FullRdoView';
 import { Button, SegmentedControl, Badge, Card } from './apple';
 
 /**
@@ -123,7 +125,9 @@ const IntraPredictionFlow = ({
   onGoTo4Way = null,
   jobId = null,
   API_BASE_URL = null,
-  pipelineData: initialPipelineData = null
+  pipelineData: initialPipelineData = null,
+  transformData = null,
+  quantData = null
 }) => {
   const [channel, setChannel] = useState('Y'); // 'Y' (Luma), 'U' (Chroma Cb), 'V' (Chroma Cr)
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
@@ -204,6 +208,13 @@ const IntraPredictionFlow = ({
   const resiData = useMemo(() => (rawResi && rawResi.length >= totalPixels) ? rawResi.slice(0, totalPixels) : Array(totalPixels).fill(0), [rawResi, totalPixels]);
   const refTopRaw = useMemo(() => (rawRefTop && rawRefTop.length >= refSpan) ? rawRefTop.slice(0, refSpan) : Array(refSpan).fill(128), [rawRefTop, refSpan]);
   const refLeftRaw = useMemo(() => (rawRefLeft && rawRefLeft.length >= refSpan) ? rawRefLeft.slice(0, refSpan) : Array(refSpan).fill(128), [rawRefLeft, refSpan]);
+
+  const transformEvent = useMemo(() => {
+    const events = (transformData && transformData.length > 0) ? transformData : (quantData || []);
+    if (!events || events.length === 0) return null;
+    const compEvent = events.find(e => e.component === channel && e.width === N && e.height === N);
+    return compEvent || events.find(e => e.component === channel) || events[0] || null;
+  }, [transformData, quantData, channel, N]);
 
   const angle = INTRA_PRED_ANGLES[selectedMode] ?? 0;
   const invAngle = INV_ANGLES[angle] ?? 0;
@@ -716,153 +727,32 @@ const IntraPredictionFlow = ({
             )}
 
             {activePipelineStep === 3 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--apple-label)' }}>
-                      Stage 3: Candidate Selection & Most Probable Modes (MPM)
-                    </h3>
-                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: 'var(--apple-label-secondary)' }}>
-                      Derives 3 MPMs from Left (A) and Above (B) spatial neighbors per H.265 Section 8.4.2 and merges them into the candidate pool.
-                    </p>
-                  </div>
-                  <Badge variant="blue" style={{ fontFamily: 'JetBrains Mono', fontSize: '0.70rem' }}>
-                    getIntraDirPredictor()
-                  </Badge>
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: '0.85rem'
-                }}>
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      SPATIAL NEIGHBORS (A, B)
-                    </div>
-                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--apple-label)', fontFamily: 'JetBrains Mono' }}>
-                      Left: Mode {effectivePipelineData?.step3_candidates?.left_mode_a ?? 1} • Above: Mode {effectivePipelineData?.step3_candidates?.above_mode_b ?? 26}
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Inherited from adjacent reconstructed spatial CUs
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      DERIVED 3 MPMs
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--system-purple, #AF52DE)', fontFamily: 'JetBrains Mono' }}>
-                      [{(effectivePipelineData?.step3_candidates?.mpm_modes ?? [0, 1, 26]).join(', ')}]
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      High-probability modes encoded with only 1 MPM flag bit
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      TOTAL CANDIDATES FOR FULL RDO
-                    </div>
-                    <div style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--system-green, #34C759)', fontFamily: 'JetBrains Mono' }}>
-                      {effectivePipelineData?.step3_candidates?.candidate_modes?.length ?? (effectivePipelineData?.step3_candidates?.k_threshold || 8)} Modes
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Top K (RMD) ∪ 3 MPMs deduplicated pool
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Step3CandidatesView
+                candidatesData={effectivePipelineData?.step3_candidates}
+                kThreshold={effectivePipelineData?.step3_candidates?.k_threshold ?? (blockSize <= 8 ? 8 : 3)}
+                selectedMode={selectedMode}
+                onSelectMode={(targetMode) => {
+                  if (modesData && onSelectModeIndex) {
+                    const targetIdx = modesData.findIndex(d => d.mode === targetMode);
+                    if (targetIdx !== -1) onSelectModeIndex(targetIdx);
+                  }
+                }}
+                N={N}
+              />
             )}
 
             {activePipelineStep === 4 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--apple-label)' }}>
-                      Stage 4: Full RDO Phase & QuadTree TU Recursion
-                    </h3>
-                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: 'var(--apple-label-secondary)' }}>
-                      Runs complete Transform, Quantization, Inverse, Reconstruction S' and true CABAC RD Cost calculation.
-                    </p>
-                  </div>
-                  <Badge variant="blue" style={{ fontFamily: 'JetBrains Mono', fontSize: '0.70rem' }}>
-                    xRecurIntraCodingLumaQT()
-                  </Badge>
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: '0.85rem'
-                }}>
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      CORE TRANSFORM ENGINE
-                    </div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--apple-blue)', fontFamily: 'JetBrains Mono' }}>
-                      {blockSize === 4 ? 'DST-VII (4×4 Luma)' : 'DCT-II Orthogonal'}
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Energy compaction into top-left low frequencies
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      6-STAGE DOMAIN TRANSFORMATION
-                    </div>
-                    <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--apple-label)', fontFamily: 'JetBrains Mono' }}>
-                      S ➔ P ➔ R ➔ C ➔ Q ➔ S'
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Reconstruction S' immediately updates perimeter for sub-TUs
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      BEST LUMA WINNER RESULT
-                    </div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--system-green, #34C759)', fontFamily: 'JetBrains Mono' }}>
-                      Mode {effectivePipelineData?.best_luma_mode ?? 0} (J = {effectivePipelineData?.winner_cost ?? 0})
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      True Rate-Distortion Cost: J = D_SSE + λ_mode · R_CABAC
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Step4FullRdoView
+                orgData={orgData}
+                predData={predData}
+                resiData={resiData}
+                transformEvent={transformEvent}
+                selectedMode={selectedMode}
+                N={N}
+                channel={channel}
+                showValues={showValues}
+                qp={modeData?.qp ?? transformEvent?.qp ?? 32}
+              />
             )}
 
             {activePipelineStep === 5 && (
