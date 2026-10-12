@@ -21,6 +21,7 @@ import Step1BoundaryInitView from './flow/Step1BoundaryInitView';
 import Step2RmdFunnelView from './flow/Step2RmdFunnelView';
 import Step3CandidatesView from './flow/Step3CandidatesView';
 import Step4FullRdoView from './flow/Step4FullRdoView';
+import Step5ChromaWinnerView from './flow/Step5ChromaWinnerView';
 import { Button, SegmentedControl, Badge, Card } from './apple';
 
 /**
@@ -756,78 +757,22 @@ const IntraPredictionFlow = ({
             )}
 
             {activePipelineStep === 5 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--apple-label)' }}>
-                      Stage 5: Chroma Intra Search & Winner Commitment
-                    </h3>
-                    <p style={{ margin: '0.2rem 0 0', fontSize: '0.72rem', color: 'var(--apple-label-secondary)' }}>
-                      Tests 5 Chroma modes [Planar, Ver, Hor, DC, DM_CHROMA] and commits best coding unit to bitstream.
-                    </p>
-                  </div>
-                  <Badge variant="blue" style={{ fontFamily: 'JetBrains Mono', fontSize: '0.70rem' }}>
-                    estIntraPredChromaQT & xCheckBestMode
-                  </Badge>
-                </div>
-
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-                  gap: '0.85rem'
-                }}>
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      CHROMA CANDIDATE SET
-                    </div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--apple-label)', fontFamily: 'JetBrains Mono' }}>
-                      5 Modes Evaluated
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Duplicates of base modes replaced by Mode 34 (45° Diagonal)
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      WINNING CONFIGURATION
-                    </div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--system-green, #34C759)', fontFamily: 'JetBrains Mono' }}>
-                      Luma: Mode {effectivePipelineData?.best_luma_mode ?? 0} • Chroma: Mode {effectivePipelineData?.best_chroma_mode ?? 0}
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Committed into m_ppcBestCU for final NAL unit synthesis
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: 'var(--apple-surface)',
-                    border: '1px solid var(--apple-hairline)',
-                    borderRadius: '6px',
-                    padding: '0.85rem'
-                  }}>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)', marginBottom: '0.35rem' }}>
-                      FINAL COMMITTED RD COST
-                    </div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--apple-blue)', fontFamily: 'JetBrains Mono' }}>
-                      J_best = {effectivePipelineData?.winner_cost ?? 0}
-                    </div>
-                    <div style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', marginTop: '0.3rem' }}>
-                      Compared with Inter / Merge cost in parent xCompressCU
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <Step5ChromaWinnerView
+                pipelineData={effectivePipelineData}
+                modesData={modesData}
+                modeData={modeData}
+                bestLumaMode={effectivePipelineData?.best_luma_mode ?? selectedMode}
+                bestLumaCost={effectivePipelineData?.winner_cost ?? (modeData?.cost ?? 0)}
+                N={N}
+                showValues={showValues}
+                onSelectMode={(targetMode) => {
+                  if (modesData && onSelectModeIndex) {
+                    const targetIdx = modesData.findIndex(d => d.mode === targetMode);
+                    if (targetIdx !== -1) onSelectModeIndex(targetIdx);
+                  }
+                }}
+                qp={modeData?.qp ?? transformEvent?.qp ?? 32}
+              />
             )}
           </Card>
         </div>
