@@ -7,7 +7,7 @@ import { calculateLagrangianLambda } from '../../utils/metricsUtils';
 /**
  * Derives the 5 allowed Chroma Intra Prediction candidates according to:
  * - ITU-T H.265 Section 8.4.3 & Table 8-2
- * - HM-16.0 TComDataCU::getAllowedChromaDir
+ * - HM-18.0 TComDataCU::getAllowedChromaDir
  */
 function getAllowedChromaCandidates(lumaMode) {
   const baseModes = [0, 26, 10, 1]; // Planar, Vertical, Horizontal, DC
@@ -56,7 +56,7 @@ function getAllowedChromaCandidates(lumaMode) {
 /**
  * Step5ChromaWinnerView
  * Visualizes HEVC Stage 5: Chroma Intra Search & Final RDO Winner Commitment.
- * Adheres to HM-16.0 TEncSearch::estIntraPredChromaQT and TEncCu::xCheckBestMode.
+ * Adheres to HM-18.0 TEncSearch::estIntraPredChromaQT and TEncCu::xCheckBestMode.
  * 100% Click-Only: zero hover flutter, zero hover listeners.
  */
 export default function Step5ChromaWinnerView({
@@ -632,7 +632,7 @@ export default function Step5ChromaWinnerView({
               </strong>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed var(--apple-hairline)', paddingTop: '0.25rem', marginTop: '0.15rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--apple-hairline)', paddingTop: '0.25rem', marginTop: '0.15rem' }}>
               <span style={{ color: 'var(--apple-label-secondary)' }}>Total Mode Syntax Bits:</span>
               <strong style={{ color: 'var(--apple-label)' }}>
                 ≈ {totalSyntaxBits} bits

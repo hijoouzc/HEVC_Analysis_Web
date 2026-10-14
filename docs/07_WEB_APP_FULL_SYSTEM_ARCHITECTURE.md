@@ -1,7 +1,7 @@
 # 07. Kiến Trúc Toàn Diện Hệ Thống Web App (Full-Stack Architecture & Telemetry)
 
 > [!NOTE]
-> Tài liệu kỹ thuật tổng hợp toàn bộ kiến trúc hệ thống của ứng dụng **HEVC Video Analyzer**, bao gồm **FastAPI Backend (Python 3.12)** giao tiếp với bộ mã hóa C++ HM-16.0 instrumented, hệ thống trích xuất Checkpoints thời gian thực, và giao diện **React 19 + Vite Frontend** với 7 phân hệ phân tích chuyên sâu.
+> Tài liệu kỹ thuật tổng hợp toàn bộ kiến trúc hệ thống của ứng dụng **HEVC Video Analyzer**, bao gồm **FastAPI Backend (Python 3.12)** giao tiếp với bộ mã hóa C++ HM-18.0 instrumented, hệ thống trích xuất Checkpoints thời gian thực, và giao diện **React 19 + Vite Frontend** với 7 phân hệ phân tích chuyên sâu.
 > 
 > * **Thuộc bộ tài liệu:** [HEVC Documentation System](./README.md)
 > * **Tài liệu trước:** [06. Cẩm Nang Phong Cách Kiến Trúc Tích Hợp HM](./06_HM_STYLE_GUIDE_FOR_WEB_APP.md)
@@ -19,7 +19,7 @@
 
 ## 1. Sơ đồ kiến trúc tổng thể toàn hệ thống
 
-Hệ thống hoạt động theo mô hình **Khách - Chủ tách rời (Decoupled Client-Server)**, trong đó Backend đóng vai trò cầu nối điều phối giữa Web Browser và nhân tính toán C++ của bộ mã hóa tham chiếu HM-16.0:
+Hệ thống hoạt động theo mô hình **Khách - Chủ tách rời (Decoupled Client-Server)**, trong đó Backend đóng vai trò cầu nối điều phối giữa Web Browser và nhân tính toán C++ của bộ mã hóa tham chiếu HM-18.0:
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,7 @@ flowchart TD
 
     subgraph Native_Core ["Native Core Execution Engine"]
         FFmpeg["FFmpeg Adapter\n(Chuyển đổi PNG/JPEG sang raw YUV420p BT.709)"]
-        HM["HM-16.0 TAppEncoder\n(Được chèn hook C++ VisualDumper)"]
+        HM["HM-18.0 TAppEncoder\n(Được chèn hook C++ VisualDumper)"]
         TraceFile["trace.jsonl\n(Dòng sự kiện trích xuất từ HM)"]
         YUVFile["rec.yuv / str.bin\n(Ảnh tái tạo và luồng bit)"]
         FFmpeg --> HM
@@ -111,7 +111,7 @@ cd /home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/web_app/b
 source venv/bin/activate
 pytest -v
 ```
-* **29 unit & integration tests** đảm bảo tính toàn vẹn của Pydantic parser, FFmpeg adapter, Session manager và kết nối với bộ mã hóa thật HM-16.0.
+* **29 unit & integration tests** đảm bảo tính toàn vẹn của Pydantic parser, FFmpeg adapter, Session manager và kết nối với bộ mã hóa thật HM-18.0.
 
 ### B. Kiểm thử & Linting Frontend (React / Oxlint / Vitest):
 ```bash

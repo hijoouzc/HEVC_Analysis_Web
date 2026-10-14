@@ -1,5 +1,5 @@
 # ==============================================================================
-# Git Ignore Configuration - HEVC Analysis Tool & HM-16.0
+# Git Ignore Configuration - HEVC Analysis Tool & HM-18.0
 # ==============================================================================
 
 # Python Virtual Environments
@@ -43,6 +43,8 @@ str.bin
 *.bin
 dump_data/
 *.log
+tools/*_dump/
+tools/*.log
 
 # C++ Build Outputs & Binaries
 /build/

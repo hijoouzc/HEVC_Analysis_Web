@@ -2,93 +2,143 @@
 #define VISUAL_DUMPER_H
 
 #include "CommonDef.h"
-#include <string>
 #include <fstream>
-#include <iostream>
+#include <mutex>
+#include <string>
 
 class TComDataCU;
 
-#define ENABLE_VISUAL_DUMP 1
+#ifndef ENABLE_VISUAL_DUMP
+#define ENABLE_VISUAL_DUMP 0
+#endif
 
 class VisualDumper {
 private:
-    static VisualDumper* s_instance;
-    std::string m_outputDir;
     std::ofstream m_outFile;
     
     Bool m_enabled;
-    Bool m_exitOnFinish;
     Int m_targetPOC;
     Int m_targetCtuX;
     Int m_targetCtuY;
     Int m_targetCuSize;
-    
-    Int m_currentPOC;
-    Int m_currentCtuX;
-    Int m_currentCtuY;
-    Int m_dumpCount;
-    Int m_intraSearchCount;
-    Bool m_intraRefDumped;
+    Bool m_filterPuPosition;
+    Int m_targetPuX;
+    Int m_targetPuY;
+    std::mutex m_mutex;
 
     VisualDumper();
     ~VisualDumper();
 
 public:
     static VisualDumper* getInstance() {
-        if (!s_instance) s_instance = new VisualDumper();
-        return s_instance;
+        static VisualDumper instance;
+        return &instance;
     }
 
     Bool isEnabled() const { return m_enabled; }
 
-    Void setROI(Int poc, Int ctuX, Int ctuY, Int cuSize) {
-        m_targetPOC = poc;
-        m_targetCtuX = ctuX;
-        m_targetCtuY = ctuY;
-        m_targetCuSize = cuSize;
-    }
-
-    Void setContext(Int poc, Int ctuX, Int ctuY) {
-        m_currentPOC = poc;
-        m_currentCtuX = ctuX;
-        m_currentCtuY = ctuY;
-    }
-    
-    Bool isActive(Int cuSize) const { 
+    Bool isActive(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize) const {
         return m_enabled &&
-               (m_currentPOC == m_targetPOC) && 
-               (m_currentCtuX == m_targetCtuX) && 
-               (m_currentCtuY == m_targetCtuY) &&
-               (m_targetCuSize <= 0 || cuSize == m_targetCuSize); 
+               (m_targetPOC < 0 || poc == m_targetPOC) &&
+               (m_targetCtuX < 0 || ctuX == m_targetCtuX) &&
+               (m_targetCtuY < 0 || ctuY == m_targetCtuY) &&
+               (!m_filterPuPosition || (puX == m_targetPuX && puY == m_targetPuY)) &&
+               (m_targetCuSize <= 0 || puSize == m_targetCuSize);
     }
 
-    Void dumpIntraRefSamples(Int cuSize,
-                             const Pel* pRefUnfilt, const Pel* pRefFilt, Int refStride,
-                             Bool strongIntraSmoothing,
-                             const Pel* pRefUnfiltU, const Pel* pRefUnfiltV,
-                             const Pel* pRefFiltU, const Pel* pRefFiltV, Int refStrideC);
+    Bool isCtuActive(Int poc, Int ctuX, Int ctuY) const {
+        return m_enabled &&
+               (m_targetPOC < 0 || poc == m_targetPOC) &&
+               (m_targetCtuX < 0 || ctuX == m_targetCtuX) &&
+               (m_targetCtuY < 0 || ctuY == m_targetCtuY);
+    }
 
-    Void dumpIntraSearchStep(Int cuSize, Int mode, Double cost, Bool bUseFilter,
-                             const Pel* pOrg, const Pel* pPred, const Pel* pResi, Int stride,
-                             const Pel* pRef, Int refStride,
-                             const Pel* pOrgU, const Pel* pOrgV,
-                             const Pel* pPredU, const Pel* pPredV,
-                             Int strideC, Int predStrideC,
-                             const Pel* pRefU, const Pel* pRefV);
+    // CP_00: Frame & GOP Control
+    Void dumpFrameGOP(Int poc, Int sliceType, Int qp, Int temporalId,
+                      Int numRefL0, const Int* pRefL0,
+                      Int numRefL1, const Int* pRefL1);
 
+    // CP_01: CU Quadtree RDO Call Stack & Partition
+    Void dumpCuRdoDecision(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
+                           Double costNoSplit, Double costSplit, Bool splitDecision,
+                           Int bestMode);
     Void dumpPartitionTree(TComDataCU* pcCU);
 
-    Void dumpTransformQuant(Int poc, Int ctuX, Int ctuY, Int tuX, Int tuY, Int tuWidth, Int tuHeight,
-                            Int compID, Int qp,
+    // CP_02: Intra Prediction Pipeline
+    Void dumpIntraRefSamples(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                             const Pel* pRefUnfilt, const Pel* pRefFilt, Int refStride,
+                             Bool strongSmoothingEligible,
+                             const Pel* pRefUnfiltU = NULL, const Pel* pRefFiltU = NULL,
+                             const Pel* pRefUnfiltV = NULL, const Pel* pRefFiltV = NULL,
+                             Int refStrideC = 0);
+
+    Void dumpIntraSearchStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                             Int mode, Double fastCost, Bool bUseFilter,
+                             const Pel* pOrg, const Pel* pPred, Int stride,
+                             const Pel* pRef, Int refStride,
+                             const Pel* pOrgU = NULL, const Pel* pPredU = NULL,
+                             const Pel* pOrgV = NULL, const Pel* pPredV = NULL,
+                             Int strideC = 0);
+
+    Void dumpIntraMpm(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                      Int mpm0, Int mpm1, Int mpm2, Int leftMode, Int aboveMode,
+                      const UInt* pTopKModes, Int numTopK,
+                      const UInt* pFullCandModes, Int numFullCand);
+
+    Void dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                              Int candRank, Int mode, Double cost, Distortion dist, Double bits,
+                              Bool isWinner,
+                              const Pel* pReco, const Pel* pResi, const Pel* pOrg, const Pel* pPred,
+                              Int stride);
+
+    Void dumpIntraChromaSearch(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                               Int bestLumaMode, Int numModes,
+                               const UInt* pModeList, const Double* pCosts,
+                               const Distortion* pDists, const UInt* pBits,
+                               Int bestChromaMode, Double bestChromaCost, Distortion bestChromaDist,
+                               const Pel* pOrgU, const Pel* pPredU, const Pel* pResiU, const Pel* pRecoU,
+                               const Pel* pOrgV, const Pel* pPredV, const Pel* pResiV, const Pel* pRecoV,
+                               Int strideC, Int cWidth, Int cHeight);
+
+    // CP_04: Transform, Quantization & RQT
+    Void dumpTransformQuant(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY,
+                            Int cuWidth, Int cuHeight, Int cuDepth, Int predMode, Int intraMode,
+                            Int tuX, Int tuY, Int tuWidth, Int tuHeight, Int tuDepth,
+                            Int compID, ChromaFormat chromaFormat, Int qp,
                             const Pel* pResi, Int resiStride,
-                            const TCoeff* pDctCoeff, const TCoeff* pQCoeff);
+                            const TCoeff* pDctCoeff, const TCoeff* pQCoeff,
+                            const TCoeff* pDequantCoeff = NULL,
+                            const Pel* pInvResi = NULL, Int invResiStride = 0,
+                            Bool isDST = false, Bool isTransformSkip = false);
+
+    // CP_03: Inter Prediction & Motion Search
+    Void dumpInterSearch(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
+                         Int puIdx, Int puX, Int puY, Int puW, Int puH,
+                         Int refPicList, Int refIdx, Int mvpIdx,
+                         Int mvX, Int mvY, Int mvdX, Int mvdY,
+                         Double cost, Distortion dist, UInt bits,
+                         Int numMergeCand = 0, const Int* pMergeCandX = NULL, const Int* pMergeCandY = NULL,
+                         Int numAmvpCand = 0, const Int* pAmvpCandX = NULL, const Int* pAmvpCandY = NULL);
+
+    // CP_05: Reconstruction Picture Buffer
+    Void dumpReconPicture(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize,
+                          const Pel* pRecY, Int strideY,
+                          const Pel* pRecU, const Pel* pRecV, Int strideC);
+
+    // CP_06: In-Loop Filtering (DBF & SAO)
+    Void dumpDeblockingEdge(Int poc, Int ctuX, Int ctuY, Int edgeX, Int edgeY,
+                            Int edgeType, Int bS, Int beta, Int tc,
+                            const Pel* pSamples, const Pel* qSamples, Int stride);
+    Void dumpSaoDecision(Int poc, Int ctuX, Int ctuY,
+                         Int saoTypeY, const Int* pOffsetsY,
+                         Int saoTypeU, const Int* pOffsetsU,
+                         Int saoTypeV, const Int* pOffsetsV);
+
+    // CP_07: CABAC Entropy Coding
+    Void dumpCabacBin(Int poc, Int ctuX, Int ctuY,
+                      const char* syntaxName, UInt binValue,
+                      UInt ctxIdx, UInt pStateIdx, UInt valMPS,
+                      UInt writtenBits);
 };
 
-#if ENABLE_VISUAL_DUMP
-    #define DUMP_SET_ROI(poc, ctuX, ctuY, cuSize) VisualDumper::getInstance()->setROI(poc, ctuX, ctuY, cuSize)
-    #define DUMP_SET_CONTEXT(poc, ctuX, ctuY) VisualDumper::getInstance()->setContext(poc, ctuX, ctuY)
-#else
-    #define DUMP_SET_ROI(poc, ctuX, ctuY, cuSize)
-    #define DUMP_SET_CONTEXT(poc, ctuX, ctuY)
-#endif
 #endif

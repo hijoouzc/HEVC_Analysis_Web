@@ -38,6 +38,7 @@
 #include "TEncTop.h"
 #include "TEncSbac.h"
 #include "TLibCommon/TComTU.h"
+#include "TLibCommon/VisualDumper.h"
 
 #include <map>
 #include <algorithm>
@@ -622,6 +623,22 @@ Void TEncSbac::codeSplitFlag   ( TComDataCU* pcCU, UInt uiAbsPartIdx, UInt uiDep
 
   assert( uiCtx < 3 );
   m_pcBinIf->encodeBin( uiCurrSplitFlag, m_cCUSplitFlagSCModel.get( 0, 0, uiCtx ) );
+
+#if ENABLE_VISUAL_DUMP
+  VisualDumper* pDumper = VisualDumper::getInstance();
+  const Int dumpPoc = pcCU->getSlice()->getPOC();
+  const Int dumpCtuX = pcCU->getCtuRsAddr() % pcCU->getPic()->getFrameWidthInCtus();
+  const Int dumpCtuY = pcCU->getCtuRsAddr() / pcCU->getPic()->getFrameWidthInCtus();
+  if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+  {
+    ContextModel& cm = m_cCUSplitFlagSCModel.get( 0, 0, uiCtx );
+    pDumper->dumpCabacBin(dumpPoc, dumpCtuX, dumpCtuY,
+                          "split_cu_flag", uiCurrSplitFlag,
+                          uiCtx, cm.getState(), cm.getMps(),
+                          m_pcBinIf->getNumWrittenBits());
+  }
+#endif
+
   DTRACE_CABAC_VL( g_nSymbolCounter++ )
   DTRACE_CABAC_T( "\tSplitFlag\n" )
   return;
@@ -660,6 +677,20 @@ Void TEncSbac::codeIntraDirLumaAng( TComDataCU* pcCU, UInt absPartIdx, Bool isMu
       }
     }
     m_pcBinIf->encodeBin((predIdx[j] != -1)? 1 : 0, m_cCUIntraPredSCModel.get( 0, 0, 0 ) );
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const Int dumpPoc = pcCU->getSlice()->getPOC();
+    const Int dumpCtuX = pcCU->getCtuRsAddr() % pcCU->getPic()->getFrameWidthInCtus();
+    const Int dumpCtuY = pcCU->getCtuRsAddr() / pcCU->getPic()->getFrameWidthInCtus();
+    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+    {
+      ContextModel& cm = m_cCUIntraPredSCModel.get( 0, 0, 0 );
+      pDumper->dumpCabacBin(dumpPoc, dumpCtuX, dumpCtuY,
+                            "prev_intra_luma_pred_flag", (predIdx[j] != -1) ? 1 : 0,
+                            0, cm.getState(), cm.getMps(),
+                            m_pcBinIf->getNumWrittenBits());
+    }
+#endif
   }
   for (j=0;j<partNum;j++)
   {
@@ -702,11 +733,38 @@ Void TEncSbac::codeIntraDirChroma( TComDataCU* pcCU, UInt uiAbsPartIdx )
   if( uiIntraDirChroma == DM_CHROMA_IDX )
   {
     m_pcBinIf->encodeBin( 0, m_cCUChromaPredSCModel.get( 0, 0, 0 ) );
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const Int dumpPoc = pcCU->getSlice()->getPOC();
+    const Int dumpCtuX = pcCU->getCtuRsAddr() % pcCU->getPic()->getFrameWidthInCtus();
+    const Int dumpCtuY = pcCU->getCtuRsAddr() / pcCU->getPic()->getFrameWidthInCtus();
+    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+    {
+      ContextModel& cm = m_cCUChromaPredSCModel.get( 0, 0, 0 );
+      pDumper->dumpCabacBin(dumpPoc, dumpCtuX, dumpCtuY,
+                            "intra_chroma_pred_mode", 0,
+                            0, cm.getState(), cm.getMps(),
+                            m_pcBinIf->getNumWrittenBits());
+    }
+#endif
   }
   else
   {
     m_pcBinIf->encodeBin( 1, m_cCUChromaPredSCModel.get( 0, 0, 0 ) );
-
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const Int dumpPoc = pcCU->getSlice()->getPOC();
+    const Int dumpCtuX = pcCU->getCtuRsAddr() % pcCU->getPic()->getFrameWidthInCtus();
+    const Int dumpCtuY = pcCU->getCtuRsAddr() / pcCU->getPic()->getFrameWidthInCtus();
+    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+    {
+      ContextModel& cm = m_cCUChromaPredSCModel.get( 0, 0, 0 );
+      pDumper->dumpCabacBin(dumpPoc, dumpCtuX, dumpCtuY,
+                            "intra_chroma_pred_mode", 1,
+                            0, cm.getState(), cm.getMps(),
+                            m_pcBinIf->getNumWrittenBits());
+    }
+#endif
     UInt uiAllowedChromaDir[ NUM_CHROMA_MODE ];
     pcCU->getAllowedChromaDir( uiAbsPartIdx, uiAllowedChromaDir );
 

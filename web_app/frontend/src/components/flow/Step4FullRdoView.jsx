@@ -8,7 +8,7 @@ import { calculateLagrangianLambda, calculateQuantStep } from '../../utils/metri
  * Step4FullRdoView
  * Visualizes the 6-Stage Block Domain Transformation Strip:
  * S (Original) -> P (Prediction) -> R (Residual) -> C (DCT/DST) -> Q (Quant) -> S' (Reconstruction)
- * Adheres to HM-16.0 TEncSearch::xRecurIntraCodingLumaQT and industrial analyzers (Elecard, Intel VPA).
+ * Adheres to HM-18.0 TEncSearch::xRecurIntraCodingLumaQT and industrial analyzers (Elecard, Intel VPA).
  * 100% Click-Only: zero hover flutter, zero hover listeners.
  */
 export default function Step4FullRdoView({
@@ -161,10 +161,10 @@ export default function Step4FullRdoView({
     return { bg: 'rgba(255, 149, 0, 0.35)', color: '#FFFFFF', fontWeight: 800 };
   };
 
-  const cellSize = zoomLevel === 'zoom' ? (N <= 8 ? 38 : 28) : (N <= 8 ? 26 : 18);
+  const cellSize = zoomLevel === 'zoom' ? (N <= 4 ? 34 : N <= 8 ? 24 : 18) : (N <= 4 ? 26 : N <= 8 ? 20 : 15);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', minWidth: 0 }}>
       {/* 1. Header Toolbar & RD Metric HUD */}
       <div style={{
         display: 'flex',
@@ -212,6 +212,7 @@ export default function Step4FullRdoView({
             size="small"
             onClick={() => setZoomLevel(prev => prev === 'zoom' ? 'fit' : 'zoom')}
             title="Toggle matrix cell size"
+            style={{ width: '92px', minWidth: '92px', justifyContent: 'center' }}
           >
             {zoomLevel === 'zoom' ? 'Zoom: 1.5×' : 'Fit'}
           </Button>
@@ -223,35 +224,38 @@ export default function Step4FullRdoView({
         background: 'var(--apple-surface, #F5F5F7)',
         border: '1px solid var(--apple-hairline)',
         borderRadius: '6px',
-        padding: '0.65rem 0.85rem',
+        padding: '0.5rem 0.85rem',
+        minHeight: '38px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: '0.75rem',
         fontFamily: 'JetBrains Mono',
-        fontSize: '0.72rem'
+        fontVariantNumeric: 'tabular-nums',
+        fontSize: '0.72rem',
+        boxSizing: 'border-box'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--apple-label-secondary)' }}>PIXEL [{pxCoord.x}, {pxCoord.y}] TRANSFORMATION:</span>
-          <span style={{ color: 'var(--apple-label)' }}>Org S: <strong>{sVal}</strong></span>
+          <span style={{ color: 'var(--apple-label)' }}>Org S: <strong style={{ display: 'inline-block', minWidth: '28px', textAlign: 'right' }}>{sVal}</strong></span>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>➔</span>
-          <span style={{ color: 'var(--apple-label)' }}>Pred P: <strong>{pVal}</strong></span>
+          <span style={{ color: 'var(--apple-label)' }}>Pred P: <strong style={{ display: 'inline-block', minWidth: '28px', textAlign: 'right' }}>{pVal}</strong></span>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>➔</span>
           <span style={{ color: rVal >= 0 ? '#EF4444' : '#3B82F6' }}>
-            Resi R: <strong>{rVal > 0 ? `+${rVal}` : rVal}</strong>
+            Resi R: <strong style={{ display: 'inline-block', minWidth: '32px', textAlign: 'right' }}>{rVal > 0 ? `+${rVal}` : rVal}</strong>
           </span>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>➔</span>
-          <span style={{ color: '#AF52DE' }}>DCT C: <strong>{cVal}</strong></span>
+          <span style={{ color: '#AF52DE' }}>DCT C: <strong style={{ display: 'inline-block', minWidth: '32px', textAlign: 'right' }}>{cVal}</strong></span>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>➔</span>
-          <span style={{ color: '#FF9500' }}>Quant Q: <strong>{qVal}</strong></span>
+          <span style={{ color: '#FF9500' }}>Quant Q: <strong style={{ display: 'inline-block', minWidth: '28px', textAlign: 'right' }}>{qVal}</strong></span>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>➔</span>
-          <span style={{ color: 'var(--system-green, #34C759)' }}>Reco S': <strong>{sPrimeVal}</strong></span>
+          <span style={{ color: 'var(--system-green, #34C759)' }}>Reco S': <strong style={{ display: 'inline-block', minWidth: '28px', textAlign: 'right' }}>{sPrimeVal}</strong></span>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <span style={{ color: 'var(--apple-label-secondary)' }}>Lossy Error (S − S'):</span>
-          <strong style={{ color: lossyError === 0 ? 'var(--system-green)' : 'var(--system-orange)' }}>
+          <strong style={{ color: lossyError === 0 ? 'var(--system-green)' : 'var(--system-orange)', display: 'inline-block', minWidth: '70px', textAlign: 'right' }}>
             {lossyError === 0 ? '0 (Lossless)' : `${lossyError > 0 ? `+${lossyError}` : lossyError} LSB`}
           </strong>
         </div>
@@ -261,9 +265,10 @@ export default function Step4FullRdoView({
       {viewLayout === 'strip' ? (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 220px), 1fr))',
           gap: '0.65rem',
           width: '100%',
+          minWidth: 0,
           overflowX: 'auto'
         }}>
           {/* DOMAIN 1: Original S */}

@@ -49,9 +49,9 @@ assert(getIntraModeInfo(26).type === 'Angular (Vertical)', 'Mode 26 is Angular (
 assert(getIntraModeInfo(2).type.includes('Angular'), 'Mode 2 is Angular');
 
 // -------------------------------------------------------------
-// TEST SUITE 3: HM-16.0 Groundtruth 35-Mode Bit-Exact Trace Validation
+// TEST SUITE 3: HM-18.0 Groundtruth 35-Mode Bit-Exact Trace Validation
 // -------------------------------------------------------------
-console.log('\nTest Suite 3: HM-16.0 Reference Software 2,240 Pixel Bit-Exact Verification');
+console.log('\nTest Suite 3: HM-18.0 Reference Software 2,240 Pixel Bit-Exact Verification');
 
 const fixturePath = path.resolve(__dirname, '../../../../web_app/backend/tests/fixtures/sample_trace.jsonl');
 assert(fs.existsSync(fixturePath), `Fixture trace exists at: ${fixturePath}`);
@@ -96,7 +96,7 @@ for (const ev of intraEvents) {
 }
 
 assert(residualMatches === totalPixels, `All ${residualMatches}/${totalPixels} residuals satisfy S - P === R exactly`);
-assert(exactMatches === totalPixels, `All ${exactMatches}/${totalPixels} pixels match HM-16.0 groundtruth with 100.00% precision`);
+assert(exactMatches === totalPixels, `All ${exactMatches}/${totalPixels} pixels match HM-18.0 groundtruth with 100.00% precision`);
 
 console.log(`\n=== INTRA TEST SUMMARY: ${passCount} PASSED, ${failCount} FAILED ===\n`);
 

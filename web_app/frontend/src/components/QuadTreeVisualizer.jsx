@@ -188,7 +188,7 @@ export default function QuadTreeVisualizer({
             className="apple-btn-secondary"
             onClick={() => setShowHmModal(true)}
             style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-            title="Inspect HM-16.0 C++ Source Code for xCompressCU QuadTree"
+            title="Inspect HM-18.0 C++ Source Code for xCompressCU QuadTree"
           >
             <span>&lt;&gt;</span>
             <span>Show HM Code</span>
@@ -257,7 +257,7 @@ export default function QuadTreeVisualizer({
         </div>
         <div>
           <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>CU Size Range</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-label)' }}>64 → 8 px</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-label)' }}>64×64 → 8×8 samples</div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
           <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Color Overlay:</span>
@@ -417,7 +417,7 @@ export default function QuadTreeVisualizer({
                     top: `${relY}%`,
                     width: `${w}%`,
                     height: `${h}%`,
-                    border: '1px dashed rgba(255, 255, 255, 0.45)',
+                    border: '1px solid rgba(255, 255, 255, 0.45)',
                     pointerEvents: 'none',
                     boxSizing: 'border-box',
                     zIndex: 1
@@ -602,14 +602,22 @@ export default function QuadTreeVisualizer({
         {/* Selected CU Details Inspector Panel */}
         <div style={{ flex: '1 1 320px', minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <div className="apple-card" style={{
-            padding: '1.25rem'
+            padding: '1.25rem',
+            minHeight: '430px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxSizing: 'border-box'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--apple-hairline)', paddingBottom: '0.65rem', marginBottom: '0.85rem' }}>
               <div>
                 <h3 style={{ fontSize: '0.95rem', fontWeight: 800, textTransform: 'uppercase', margin: 0, color: 'var(--apple-label)' }}>CU Inspector</h3>
-                {activeNode && (
+                {activeNode ? (
                   <div style={{ fontSize: '0.72rem', color: 'var(--apple-label-secondary)', marginTop: '0.25rem', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
                     {activeW}×{activeH} • Cost {activeNode.cost !== null ? Number(activeNode.cost).toFixed(1) : '—'}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--apple-label-tertiary)', marginTop: '0.25rem', fontFamily: 'JetBrains Mono' }}>
+                    Click a CU node in the map
                   </div>
                 )}
               </div>
@@ -619,14 +627,15 @@ export default function QuadTreeVisualizer({
                 padding: '0.2rem 0.6rem',
                 borderRadius: '6px',
                 background: activeNode ? depthColors[activeNode.depth]?.bg : 'transparent',
+                color: activeNode ? 'var(--apple-label)' : 'var(--apple-label-tertiary)',
                 border: '1px solid var(--apple-hairline)'
               }}>
-                Depth {activeNode?.depth}
+                Depth {activeNode ? activeNode.depth : '—'}
               </span>
             </div>
 
             {activeNode ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', flex: 1 }}>
                 {/* CU Block Image Texture Crop */}
                 <div className="apple-card" style={{
                   padding: '0.75rem',
@@ -737,16 +746,79 @@ export default function QuadTreeVisualizer({
               </div>
             ) : (
               <div style={{
-                padding: '2.5rem 1rem',
-                textAlign: 'center',
-                background: 'var(--apple-canvas)',
-                border: '1.5px dashed var(--apple-hairline)',
-                borderRadius: '6px',
-                color: 'var(--apple-label-secondary)',
-                fontFamily: 'JetBrains Mono',
-                fontSize: '0.8rem'
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.85rem',
+                flex: 1
               }}>
-                <div style={{ fontWeight: 700, color: 'var(--apple-label-tertiary)' }}>No CU selected</div>
+                {/* Texture Crop Placeholder */}
+                <div className="apple-card" style={{
+                  padding: '0.75rem',
+                  background: 'var(--apple-canvas)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.45rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--apple-label-tertiary)' }}>
+                      Texture Crop
+                    </span>
+                  </div>
+
+                  <div style={{
+                    width: '100%',
+                    height: '192px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: 'var(--apple-canvas)',
+                    border: '1px dashed var(--apple-hairline)',
+                    borderRadius: 0,
+                    padding: '1rem',
+                    boxSizing: 'border-box',
+                    textAlign: 'center',
+                    color: 'var(--apple-label-tertiary)',
+                    fontFamily: 'JetBrains Mono',
+                    fontSize: '0.75rem',
+                    gap: '4px'
+                  }}>
+                    <span>Select a CU in map</span>
+                    <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>Inspects 64×64 to 8×8 leaves</span>
+                  </div>
+                </div>
+
+                {/* Mode Placeholder */}
+                <div className="apple-card" style={{ padding: '0.65rem 0.75rem', background: 'var(--apple-canvas)' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--apple-label-tertiary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                    Prediction Mode & Direction
+                  </div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--apple-label-tertiary)' }}>
+                    —
+                  </div>
+                </div>
+
+                {/* Disabled Intra Navigation Button */}
+                {onNavigateToIntra && (
+                  <button
+                    type="button"
+                    disabled
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 1rem',
+                      background: 'var(--fill-4)',
+                      color: 'var(--apple-label-tertiary)',
+                      border: '1px solid var(--apple-hairline)',
+                      borderRadius: '6px',
+                      cursor: 'not-allowed',
+                      fontFamily: 'JetBrains Mono',
+                      fontSize: '0.75rem',
+                      fontWeight: 700
+                    }}
+                  >
+                    Select 8×8 CU to Inspect Intra →
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -774,7 +846,7 @@ export default function QuadTreeVisualizer({
         </div>
       )}
 
-      {/* HM-16.0 Source Code Inspector Modal for xCompressCU */}
+      {/* HM-18.0 Source Code Inspector Modal for xCompressCU */}
       <HmSourceCodeModal
         isOpen={showHmModal}
         onClose={() => setShowHmModal(false)}

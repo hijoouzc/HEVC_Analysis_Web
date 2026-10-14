@@ -1176,6 +1176,27 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
         }
       }
 
+#if ENABLE_VISUAL_DUMP
+      VisualDumper* pDumper = VisualDumper::getInstance();
+      const Int dumpPoc = rpcBestCU->getSlice()->getPOC();
+      const UInt dumpCtuWidth = sps.getMaxCUWidth();
+      const UInt dumpCtuHeight = sps.getMaxCUHeight();
+      const Int dumpCtuX = rpcBestCU->getCUPelX() / dumpCtuWidth;
+      const Int dumpCtuY = rpcBestCU->getCUPelY() / dumpCtuHeight;
+      const Int dumpCuX = rpcBestCU->getCUPelX();
+      const Int dumpCuY = rpcBestCU->getCUPelY();
+      const Int dumpCuSize = rpcBestCU->getWidth(0);
+      const Double costNoSplit = rpcBestCU->getTotalCost();
+      const Double costSplit = rpcTempCU->getTotalCost();
+      const Bool splitCuFlag = (costSplit < costNoSplit);
+      const Int bestMode = (rpcBestCU->getPredictionMode(0) == MODE_INTRA) ?
+                           rpcBestCU->getIntraDir(CHANNEL_TYPE_LUMA, 0) : -1;
+
+      pDumper->dumpCuRdoDecision(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY,
+                                 dumpCuSize, uiDepth,
+                                 costNoSplit, costSplit, splitCuFlag, bestMode);
+#endif
+
       xCheckBestMode( rpcBestCU, rpcTempCU, uiDepth DEBUG_STRING_PASS_INTO(sDebug) DEBUG_STRING_PASS_INTO(sTempDebug) DEBUG_STRING_PASS_INTO(false) ); // RD compare current larger prediction
                                                                                                                                                        // with sub partitioned prediction.
     }
@@ -1904,6 +1925,29 @@ Void TEncCu::xCopyYuv2Pic(TComPic* rpcPic, UInt uiCUAddr, UInt uiAbsPartIdx, UIn
   m_ppcRecoYuvBest[uiSrcDepth]->copyToPicYuv( rpcPic->getPicYuvRec (), uiCUAddr, uiAbsPartIdx, uiDepth - uiSrcDepth, uiPartIdx);
 
   m_ppcPredYuvBest[uiSrcDepth]->copyToPicYuv( rpcPic->getPicYuvPred (), uiCUAddr, uiAbsPartIdx, uiDepth - uiSrcDepth, uiPartIdx);
+
+#if ENABLE_VISUAL_DUMP
+  VisualDumper* pDumper = VisualDumper::getInstance();
+  const Int dumpPoc = rpcPic->getSlice(0)->getPOC();
+  const UInt maxCuW = rpcPic->getSlice(0)->getSPS()->getMaxCUWidth();
+  const UInt maxCuH = rpcPic->getSlice(0)->getSPS()->getMaxCUHeight();
+  const Int dumpCtuX = uiCUAddr % rpcPic->getFrameWidthInCtus();
+  const Int dumpCtuY = uiCUAddr / rpcPic->getFrameWidthInCtus();
+  const Int dumpCuX = dumpCtuX * maxCuW + g_auiRasterToPelX[uiAbsPartIdxInRaster];
+  const Int dumpCuY = dumpCtuY * maxCuH + g_auiRasterToPelY[uiAbsPartIdxInRaster];
+  const Int dumpCuSize = maxCuW >> uiDepth;
+
+  if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+  {
+    TComPicYuv* pPicRec = rpcPic->getPicYuvRec();
+    const Pel* pRecY = pPicRec->getAddr(COMPONENT_Y, uiCUAddr, uiAbsPartIdx);
+    const Pel* pRecU = pPicRec->getAddr(COMPONENT_Cb, uiCUAddr, uiAbsPartIdx);
+    const Pel* pRecV = pPicRec->getAddr(COMPONENT_Cr, uiCUAddr, uiAbsPartIdx);
+    pDumper->dumpReconPicture(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY, dumpCuSize,
+                              pRecY, pPicRec->getStride(COMPONENT_Y),
+                              pRecU, pRecV, pPicRec->getStride(COMPONENT_Cb));
+  }
+#endif
 }
 
 Void TEncCu::xCopyYuv2Tmp( UInt uiPartUnitIdx, UInt uiNextDepth )

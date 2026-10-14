@@ -179,3 +179,85 @@ def test_build_intra_pipeline_data_from_trace(sample_trace_file):
     assert len(pipeline_resp.step5_chroma) == 5
     assert pipeline_resp.winner_mode == pipeline_resp.best_luma_mode
     assert pipeline_resp.winner_cost == pipeline_resp.best_luma_cost
+
+
+def test_build_intra_pipeline_with_real_cpp_events(sample_trace_file):
+    """Verifies that real C++ HM telemetry replaces synthetic calculations."""
+    raw_modes = TraceReader.read_all(sample_trace_file, event_filter="RDO_INTRA_SEARCH")
+    parsed_modes = [intra_search_parser.parse_event(m) for m in raw_modes]
+
+    dummy_ref = IntraRefCheckpoint(
+        poc=0, ctu_x=0, ctu_y=0, cu_size=8,
+        ref_unfilt_top=[128]*17, ref_unfilt_left=[128]*17,
+        ref_filt_top=[128]*17, ref_filt_left=[128]*17,
+        luma_ref_count=17
+    )
+
+    mpm_raw = {
+        "mpm_modes": [0, 1, 26],
+        "left_mode": 0,
+        "above_mode": 1,
+        "candidate_modes": [0, 1, 26, 2, 3, 4, 5, 6],
+        "top_k_modes": [0, 1, 26, 2, 3, 4, 5, 6]
+    }
+
+    full_rdo_raw = [
+        {
+            "mode": 0,
+            "rank_rdo": 1,
+            "cost_rdo": 1270.37,
+            "sse": 512,
+            "bits": 132.0,
+            "is_winner": True,
+            "reconstructed_data": [140] * 64,
+            "reconstructed_resi": [12] * 64
+        }
+    ]
+
+    chroma_raw = {
+        "best_luma_mode": 0,
+        "best_chroma_mode": 36,
+        "best_chroma_cost": 459.3,
+        "best_chroma_dist": 218,
+        "candidates": [
+            {"mode": 0, "cost": 465.0, "dist": 218, "bits": 43.0, "rank": 1},
+            {"mode": 36, "cost": 459.3, "dist": 218, "bits": 42.0, "rank": 2}
+        ],
+        "reco_u": [99] * 16,
+        "reco_v": [110] * 16
+    }
+
+    resp = build_intra_pipeline_data(
+        modes=parsed_modes,
+        ref_checkpoint=dummy_ref,
+        cu_size=8,
+        ctu_x=0,
+        ctu_y=0,
+        poc=0,
+        mpm_raw_event=mpm_raw,
+        full_rdo_events=full_rdo_raw,
+        chroma_raw_event=chroma_raw
+    )
+
+    # Step 3: MPM derived from C++
+    assert resp.step3_candidates.mpm_modes == [0, 1, 26]
+    assert resp.step3_candidates.candidate_modes == [0, 1, 26, 2, 3, 4, 5, 6]
+    assert "HM C++ Derived" in resp.step3_candidates.derivation.derivation_rule
+
+    # Step 4: True Full RDO from C++ (No synthetic math!)
+    assert len(resp.step4_rdo) == 1
+    assert resp.step4_rdo[0].cost_rdo == 1270.37
+    assert resp.step4_rdo[0].sse == 512
+    assert resp.step4_rdo[0].bits == 132.0
+    assert resp.step4_rdo[0].reconstructed_data == [140] * 64
+    assert resp.step4_rdo[0].reconstructed_resi == [12] * 64
+
+    # Step 5: True Chroma search from C++
+    assert resp.best_chroma_mode == 36
+    assert len(resp.step5_chroma) == 2
+    assert resp.step5_chroma[0].cost == 465.0
+    assert resp.step5_chroma[0].dist == 218
+    assert resp.step5_chroma[0].bits == 43.0
+    assert resp.reco_u == [99] * 16
+    assert resp.reco_v == [110] * 16
+

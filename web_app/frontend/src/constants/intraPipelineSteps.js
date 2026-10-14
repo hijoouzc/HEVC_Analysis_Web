@@ -1,6 +1,6 @@
 /**
  * intraPipelineSteps.js
- * 5-Stage Execution Timeline definition for HEVC HM-16.0 Intra Search & RDO Flow
+ * 5-Stage Execution Timeline definition for HEVC HM-18.0 Intra Search & RDO Flow
  */
 
 export const PIPELINE_STEPS = [

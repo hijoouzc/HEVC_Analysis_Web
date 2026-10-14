@@ -134,7 +134,9 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
         img_w = job.frame.aligned_width
         img_h = job.frame.aligned_height
     except Exception:
-        img_w, img_h = await asyncio.to_thread(_read_image_dims, input_img)
+        orig_w, orig_h = await asyncio.to_thread(_read_image_dims, input_img)
+        img_w = max(64, round(orig_w / 8) * 8)
+        img_h = max(64, round(orig_h / 8) * 8)
 
     norm_type = image_type.lower().strip()
 

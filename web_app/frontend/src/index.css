@@ -597,6 +597,8 @@ h1 {
   user-select: none;
   border: 1px solid var(--apple-hairline, rgba(0, 0, 0, 0.08));
   max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .apple-segmented-small {
@@ -1155,7 +1157,7 @@ h1 {
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  border: 1.5px dashed var(--apple-hairline);
+  border: 1px solid var(--apple-hairline);
   border-radius: var(--apple-radius-control);
   cursor: pointer;
   background: var(--apple-canvas);
@@ -1408,12 +1410,11 @@ h1 {
 }
 
 .ref-extended {
-  border-style: dashed !important;
-  border-width: 1.5px !important;
+  border-style: solid;
+  border-width: 1px;
 }
 
 .pred-cell {
-  background: var(--apple-surface);
   z-index: 1;
 }
 
@@ -2285,7 +2286,7 @@ h1 {
   font-family: 'JetBrains Mono', monospace;
   color: var(--apple-blue);
   margin-top: 0.3rem;
-  border-top: 1px dashed var(--apple-hairline);
+  border-top: 1px solid var(--apple-hairline);
   padding-top: 0.3rem;
 }
 

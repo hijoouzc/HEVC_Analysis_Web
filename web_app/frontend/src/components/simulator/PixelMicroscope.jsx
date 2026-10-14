@@ -114,7 +114,7 @@ export default function PixelMicroscope({
   const canShowNumbers = showValues && currentSize <= 16;
 
   const renderMatrix = (data, label, isResidual = false) => {
-    if (!data || data.length === 0) return null;
+    const hasData = Boolean(data && data.length >= currentSize * currentSize);
 
     return (
       <div className="apple-card" style={{
@@ -140,25 +140,49 @@ export default function PixelMicroscope({
         }}>
           <span>{label}</span>
           <span style={{
-            background: 'var(--fill-4)',
-            color: 'var(--label-2)',
+            background: hasData ? 'var(--fill-4)' : 'transparent',
+            color: hasData ? 'var(--label-2)' : 'var(--label-3)',
             border: '0.5px solid var(--separator)',
             borderRadius: '3px',
             padding: '1px 5px',
             fontSize: '10px',
             fontWeight: 700
           }}>
-            {currentSize}×{currentSize}
+            {hasData ? `${currentSize}×${currentSize}` : 'Standby'}
           </span>
         </div>
 
         {/* 192×192 Matrix Viewport */}
-        <MatrixCanvas
-          data={data}
-          size={currentSize}
-          isResidual={isResidual}
-          showText={canShowNumbers}
-        />
+        {hasData ? (
+          <MatrixCanvas
+            data={data}
+            size={currentSize}
+            isResidual={isResidual}
+            showText={canShowNumbers}
+          />
+        ) : (
+          <div
+            style={{
+              width: '192px',
+              height: '192px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '0.5px dashed var(--separator)',
+              background: 'var(--fill-4)',
+              color: 'var(--apple-label-tertiary)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: '11px',
+              gap: '4px',
+              userSelect: 'none',
+              boxSizing: 'border-box'
+            }}
+          >
+            <span>Awaiting RDO</span>
+            <span style={{ fontSize: '9.5px', opacity: 0.7 }}>[Split / Branch Node]</span>
+          </div>
+        )}
       </div>
     );
   };

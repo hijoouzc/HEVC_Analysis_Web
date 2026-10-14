@@ -6,7 +6,7 @@ import { getIntraModeInfo } from '../../utils/colorUtils';
 /**
  * Step2RmdFunnelView
  * Visualizes Rough Mode Decision (RMD) 35-Mode Funnel and Pruning Threshold.
- * Adheres to HM-16.0 TEncSearch::estIntraPredLumaQT and industrial analyzers (Elecard, Intel VPA).
+ * Adheres to HM-18.0 TEncSearch::estIntraPredLumaQT and industrial analyzers (Elecard, Intel VPA).
  * 100% Click-Only: zero hover flutter, zero hover listeners.
  */
 export default function Step2RmdFunnelView({
@@ -177,11 +177,12 @@ export default function Step2RmdFunnelView({
         border: '1px solid var(--apple-hairline)',
         borderRadius: '6px',
         padding: '0.85rem',
-        maxHeight: '380px',
+        height: '380px',
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.35rem'
+        gap: '0.35rem',
+        boxSizing: 'border-box'
       }}>
         {displayModes.map((item, idx) => {
           const isInspected = item.mode === inspectedMode;
@@ -199,7 +200,7 @@ export default function Step2RmdFunnelView({
                   padding: '0.35rem 0.65rem',
                   borderRadius: '4px',
                   background: 'rgba(255, 149, 0, 0.08)',
-                  border: '1px dashed rgba(255, 149, 0, 0.4)',
+                  border: '1px solid rgba(255, 149, 0, 0.4)',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',

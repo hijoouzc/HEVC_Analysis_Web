@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Badge, Button } from '../apple';
 
 /**
@@ -19,7 +19,22 @@ export default function Step1BoundaryInitView({
   getSampleColor = null
 }) {
   const [activeAxis, setActiveAxis] = useState('top'); // 'top' | 'left'
-  const [selectedIdx, setSelectedIdx] = useState(1); // 0 (Corner), 1..N (Primary), N+1..2N (Extended)
+  const [selectedIdx, setSelectedIdx] = useState(1); // 0 (Corner), 1..N (Primary), N+1..2N (Extended), null (Deselected)
+
+  // Deselect on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedIdx(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const handleSelectSample = (i) => {
+    setSelectedIdx(prev => (prev === i ? null : i));
+  };
 
   const reqLen = 2 * N + 1;
   const rawTop = useMemo(() => (refTopRaw && refTopRaw.length >= reqLen) ? refTopRaw.slice(0, reqLen) : Array(reqLen).fill(128), [refTopRaw, reqLen]);
@@ -32,6 +47,7 @@ export default function Step1BoundaryInitView({
 
   // Selected sample 3-tap formula computation breakdown
   const formulaDetails = useMemo(() => {
+    if (selectedIdx === null || selectedIdx === undefined) return null;
     const idx = Math.max(0, Math.min(reqLen - 1, selectedIdx));
     const rawVal = activeRaw[idx];
     const filtVal = activeFilt[idx];
@@ -170,7 +186,7 @@ export default function Step1BoundaryInitView({
           justifyContent: 'space-between',
           alignItems: 'center'
         }}>
-          <span>SAMPLE COMPARISON STRIP (Click any sample cell to inspect 3-tap formula)</span>
+          <span>SAMPLE COMPARISON STRIP (Click any sample cell to inspect 3-tap formula, click again to deselect)</span>
           <span>Max |Δ|: {stats.maxDiff} • Avg |Δ|: {stats.avgDiff}</span>
         </div>
 
@@ -196,7 +212,7 @@ export default function Step1BoundaryInitView({
             return (
               <div
                 key={`hdr-${i}`}
-                onClick={() => setSelectedIdx(i)}
+                onClick={() => handleSelectSample(i)}
                 style={{
                   textAlign: 'center',
                   padding: '2px 0',
@@ -228,7 +244,7 @@ export default function Step1BoundaryInitView({
             return (
               <div
                 key={`raw-${i}`}
-                onClick={() => setSelectedIdx(i)}
+                onClick={() => handleSelectSample(i)}
                 style={{
                   height: '28px',
                   backgroundColor: bg,
@@ -261,7 +277,7 @@ export default function Step1BoundaryInitView({
             return (
               <div
                 key={`filt-${i}`}
-                onClick={() => setSelectedIdx(i)}
+                onClick={() => handleSelectSample(i)}
                 style={{
                   height: '28px',
                   backgroundColor: bg,
@@ -299,7 +315,7 @@ export default function Step1BoundaryInitView({
             return (
               <div
                 key={`diff-${i}`}
-                onClick={() => setSelectedIdx(i)}
+                onClick={() => handleSelectSample(i)}
                 style={{
                   textAlign: 'center',
                   fontSize: '0.62rem',
@@ -332,49 +348,66 @@ export default function Step1BoundaryInitView({
           padding: '0.85rem',
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.45rem'
+          gap: '0.45rem',
+          minHeight: '120px',
+          justifyContent: formulaDetails ? 'flex-start' : 'center'
         }}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            fontFamily: 'JetBrains Mono',
-            color: 'var(--apple-label)'
-          }}>
-            <span>
-              SAMPLE INSPECTOR: {activeAxis.toUpperCase()}[{formulaDetails.idx === 0 ? 'Corner -1' : formulaDetails.idx - 1}]
-            </span>
-            <span style={{
-              color: formulaDetails.delta === 0 ? 'var(--apple-label-secondary)' : 'var(--apple-blue)',
-              fontWeight: 700
+          {formulaDetails ? (
+            <>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                fontFamily: 'JetBrains Mono',
+                color: 'var(--apple-label)'
+              }}>
+                <span>
+                  SAMPLE INSPECTOR: {activeAxis.toUpperCase()}[{formulaDetails.idx === 0 ? 'Corner -1' : formulaDetails.idx - 1}]
+                </span>
+                <span style={{
+                  color: formulaDetails.delta === 0 ? 'var(--apple-label-secondary)' : 'var(--apple-blue)',
+                  fontWeight: 700
+                }}>
+                  Δ = {formulaDetails.delta > 0 ? `+${formulaDetails.delta}` : formulaDetails.delta} LSB
+                </span>
+              </div>
+
+              <div style={{
+                background: 'var(--apple-canvas)',
+                padding: '0.5rem 0.65rem',
+                borderRadius: '4px',
+                border: '1px solid var(--apple-hairline)',
+                fontFamily: 'JetBrains Mono',
+                fontSize: '0.72rem',
+                lineHeight: 1.5,
+                color: 'var(--apple-label)'
+              }}>
+                <div style={{ color: 'var(--apple-label-secondary)', fontSize: '0.66rem' }}>
+                  {formulaDetails.formulaStr}
+                </div>
+                <div style={{ marginTop: '0.25rem', fontWeight: 700, color: 'var(--apple-blue)' }}>
+                  ({formulaDetails.pPrev} + 2·{formulaDetails.pCurr} + {formulaDetails.pNext} + 2) &gt;&gt; 2 = {formulaDetails.calcVal}
+                </div>
+              </div>
+
+              <div style={{ fontSize: '0.68rem', color: 'var(--apple-label-secondary)', lineHeight: 1.4 }}>
+                {formulaDetails.note}
+              </div>
+            </>
+          ) : (
+            <div style={{
+              fontSize: '0.70rem',
+              color: 'var(--apple-label-tertiary)',
+              fontFamily: 'JetBrains Mono',
+              textAlign: 'center',
+              lineHeight: 1.5,
+              padding: '1.5rem 0'
             }}>
-              Δ = {formulaDetails.delta > 0 ? `+${formulaDetails.delta}` : formulaDetails.delta} LSB
-            </span>
-          </div>
-
-          <div style={{
-            background: 'var(--apple-canvas)',
-            padding: '0.5rem 0.65rem',
-            borderRadius: '4px',
-            border: '1px solid var(--apple-hairline)',
-            fontFamily: 'JetBrains Mono',
-            fontSize: '0.72rem',
-            lineHeight: 1.5,
-            color: 'var(--apple-label)'
-          }}>
-            <div style={{ color: 'var(--apple-label-secondary)', fontSize: '0.66rem' }}>
-              {formulaDetails.formulaStr}
+              [Click any sample cell above to inspect 3-tap formula calculation (Click again or Esc to deselect)]
             </div>
-            <div style={{ marginTop: '0.25rem', fontWeight: 700, color: 'var(--apple-blue)' }}>
-              ({formulaDetails.pPrev} + 2·{formulaDetails.pCurr} + {formulaDetails.pNext} + 2) &gt;&gt; 2 = {formulaDetails.calcVal}
-            </div>
-          </div>
-
-          <div style={{ fontSize: '0.68rem', color: 'var(--apple-label-secondary)', lineHeight: 1.4 }}>
-            {formulaDetails.note}
-          </div>
+          )}
         </div>
 
         {/* Card B: MDIS Decision Rules & HEVC Specifications */}

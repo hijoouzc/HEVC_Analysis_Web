@@ -116,7 +116,7 @@ class IntraSearchParser(BaseCheckpointParser):
 def get_top_k_threshold(cu_size: int) -> int:
     """
     Candidate pool size for Rough Mode Decision (RMD).
-    Ground Truth: HM-16.0 g_aucIntraModeNumFast_UseMPM table:
+    Ground Truth: HM-18.0 g_aucIntraModeNumFast_UseMPM table:
     - 4x4: 8
     - 8x8: 8
     - 16x16: 3
@@ -129,7 +129,7 @@ def derive_mpm(left_mode: int | None = None, above_mode: int | None = None) -> t
     """
     Derives 3 Most Probable Modes (MPM) strictly adhering to:
     - ITU-T H.265 Section 8.4.2
-    - HM-16.0 TComDataCU::getIntraDirPredictor
+    - HM-18.0 TComDataCU::getIntraDirPredictor
     """
     PLANAR_IDX = 0
     DC_IDX = 1
@@ -167,7 +167,7 @@ def get_allowed_chroma_modes(luma_mode: int) -> list[dict[str, Any]]:
     """
     Generates 5 Chroma candidates strictly adhering to:
     - ITU-T H.265 Section 8.4.3
-    - HM-16.0 TComDataCU::getAllowedChromaDir
+    - HM-18.0 TComDataCU::getAllowedChromaDir
     """
     base_modes = [0, 26, 10, 1] # [Planar, Vertical, Horizontal, DC]
     names = {0: "Planar", 26: "Vertical", 10: "Horizontal", 1: "DC", 34: "Angular 34 (45° Top-Right)"}
@@ -209,7 +209,10 @@ def build_intra_pipeline_data(
     poc: int = 0,
     left_mode: int | None = None,
     above_mode: int | None = None,
-    transform_events: list[TransformQuantCheckpoint] | None = None
+    transform_events: list[TransformQuantCheckpoint] | None = None,
+    mpm_raw_event: dict[str, Any] | None = None,
+    full_rdo_events: list[dict[str, Any]] | None = None,
+    chroma_raw_event: dict[str, Any] | None = None
 ) -> IntraPipelineFullResponse:
     """
     Constructs the complete 5-stage Intra Prediction & RDO Search Pipeline data:
@@ -230,13 +233,25 @@ def build_intra_pipeline_data(
         )
 
     # 1. MPM Derivation
-    mpm_modes, mpm_rule = derive_mpm(left_mode, above_mode)
-    mpm_info = MpmDerivationInfo(
-        left_mode=left_mode,
-        above_mode=above_mode,
-        mpm_modes=mpm_modes,
-        derivation_rule=mpm_rule
-    )
+    if mpm_raw_event and "mpm_modes" in mpm_raw_event:
+        mpm_modes = mpm_raw_event["mpm_modes"]
+        left_m = mpm_raw_event.get("left_mode", left_mode)
+        above_m = mpm_raw_event.get("above_mode", above_mode)
+        mpm_rule = f"HM C++ Derived: Left={left_m}, Above={above_m} -> {mpm_modes}"
+        mpm_info = MpmDerivationInfo(
+            left_mode=left_m if (left_m is not None and left_m >= 0) else None,
+            above_mode=above_m if (above_m is not None and above_m >= 0) else None,
+            mpm_modes=mpm_modes,
+            derivation_rule=mpm_rule
+        )
+    else:
+        mpm_modes, mpm_rule = derive_mpm(left_mode, above_mode)
+        mpm_info = MpmDerivationInfo(
+            left_mode=left_mode,
+            above_mode=above_mode,
+            mpm_modes=mpm_modes,
+            derivation_rule=mpm_rule
+        )
 
     # 2. RMD Ranking & Candidate Selection
     k_threshold = get_top_k_threshold(cu_size)
@@ -264,14 +279,19 @@ def build_intra_pipeline_data(
     rmd_items_ordered = sorted(rmd_items, key=lambda x: x.mode)
 
     # 3. Construct unified candidate list (Top K + MPMs)
-    candidate_list: list[int] = [m.mode for m in sorted_by_cost[:k_threshold]]
-    for mpm in mpm_modes:
-        if mpm not in candidate_list:
-            candidate_list.append(mpm)
+    if mpm_raw_event and "candidate_modes" in mpm_raw_event:
+        candidate_list = mpm_raw_event["candidate_modes"]
+        top_k_modes = mpm_raw_event.get("top_k_modes", [m.mode for m in sorted_by_cost[:k_threshold]])
+    else:
+        candidate_list = [m.mode for m in sorted_by_cost[:k_threshold]]
+        for mpm in mpm_modes:
+            if mpm not in candidate_list:
+                candidate_list.append(mpm)
+        top_k_modes = [m.mode for m in sorted_by_cost[:k_threshold]]
 
     candidate_step = CandidateSelectionStep(
         k_threshold=k_threshold,
-        top_k_modes=[m.mode for m in sorted_by_cost[:k_threshold]],
+        top_k_modes=top_k_modes,
         mpm_modes=mpm_modes,
         candidate_modes=candidate_list,
         derivation=mpm_info
@@ -283,48 +303,99 @@ def build_intra_pipeline_data(
     best_luma_mode = sorted_by_cost[0].mode
     best_luma_cost = sorted_by_cost[0].cost
 
-    for rdo_rank, cand_mode in enumerate(candidate_list, start=1):
-        m_data = mode_map.get(cand_mode)
-        if not m_data:
-            continue
+    if full_rdo_events:
+        for rdo_item in full_rdo_events:
+            c_mode = rdo_item.get("mode", 0)
+            m_data = mode_map.get(c_mode)
+            dir_name = m_data.direction_name if m_data else get_intra_mode_hevc_info(c_mode)[1]
+            rdo_cost = float(rdo_item.get("cost_rdo", 0.0))
+            rdo_sse = int(rdo_item.get("sse", 0))
+            rdo_bits = float(rdo_item.get("bits", 0.0))
+            if rdo_item.get("is_winner", False):
+                best_luma_mode = c_mode
+                best_luma_cost = rdo_cost
+            rdo_details.append(RdoCandidateDetail(
+                mode=c_mode,
+                direction_name=dir_name,
+                is_mpm=(c_mode in mpm_set),
+                rank_rdo=int(rdo_item.get("rank_rdo", 1)),
+                cost_rdo=round(rdo_cost, 4),
+                sse=rdo_sse,
+                distortion=float(rdo_sse),
+                bits=round(rdo_bits, 1),
+                tu_split=False,
+                reconstructed_data=rdo_item.get("reconstructed_data", []),
+                reconstructed_resi=rdo_item.get("reconstructed_resi", [])
+            ))
+    else:
+        for rdo_rank, cand_mode in enumerate(candidate_list, start=1):
+            m_data = mode_map.get(cand_mode)
+            if not m_data:
+                continue
 
-        # Compute Reconstructed samples: Clip3(0, 255, Pred + Resi)
-        pred = m_data.pred_data or []
-        resi = m_data.resi_data or []
-        org = m_data.org_data or []
-        reco = [max(0, min(255, p + r)) for p, r in zip(pred, resi)]
-        reco_resi = resi
+            # Compute Reconstructed samples: Clip3(0, 255, Pred + Resi)
+            pred = m_data.pred_data or []
+            resi = m_data.resi_data or []
+            org = m_data.org_data or []
+            reco = [max(0, min(255, p + r)) for p, r in zip(pred, resi)]
+            reco_resi = resi
 
-        # Compute SSE Distortion
-        sse = sum((o - rec) ** 2 for o, rec in zip(org, reco)) if org and reco else 0
+            # Compute SSE Distortion
+            sse = sum((o - rec) ** 2 for o, rec in zip(org, reco)) if org and reco else 0
 
-        rdo_details.append(RdoCandidateDetail(
-            mode=cand_mode,
-            direction_name=m_data.direction_name,
-            is_mpm=(cand_mode in mpm_set),
-            rank_rdo=rdo_rank,
-            cost_rdo=round(m_data.cost, 4),
-            sse=sse,
-            distortion=float(sse),
-            bits=round(max(0.0, (m_data.cost - sse) / 0.85), 1),
-            tu_split=False,
-            reconstructed_data=reco,
-            reconstructed_resi=reco_resi
-        ))
+            rdo_details.append(RdoCandidateDetail(
+                mode=cand_mode,
+                direction_name=m_data.direction_name,
+                is_mpm=(cand_mode in mpm_set),
+                rank_rdo=rdo_rank,
+                cost_rdo=round(m_data.cost, 4),
+                sse=sse,
+                distortion=float(sse),
+                bits=round(max(0.0, (m_data.cost - sse) / 0.85), 1),
+                tu_split=False,
+                reconstructed_data=reco,
+                reconstructed_resi=reco_resi
+            ))
 
     # 5. Chroma Candidates & Final Winner
-    chroma_raw = get_allowed_chroma_modes(best_luma_mode)
+    reco_u: list[int] = []
+    reco_v: list[int] = []
+    best_chroma_mode = best_luma_mode
     chroma_items: list[ChromaCandidateInfo] = []
-    for c in chroma_raw:
-        chroma_items.append(ChromaCandidateInfo(
-            mode=c["mode"],
-            name=c["name"],
-            is_dm=c["is_dm"],
-            cost=c["cost"],
-            rank=c["rank"]
-        ))
 
-    winner_name = mode_map.get(best_luma_mode).direction_name if best_luma_mode in mode_map else "Unknown"
+    if chroma_raw_event and "candidates" in chroma_raw_event:
+        best_chroma_mode = chroma_raw_event.get("best_chroma_mode", best_luma_mode)
+        if "best_luma_mode" in chroma_raw_event:
+            best_luma_mode = chroma_raw_event["best_luma_mode"]
+            if best_luma_mode in mode_map:
+                best_luma_cost = mode_map[best_luma_mode].cost
+        reco_u = chroma_raw_event.get("reco_u", [])
+        reco_v = chroma_raw_event.get("reco_v", [])
+        for c in chroma_raw_event.get("candidates", []):
+            c_mode = c.get("mode", 0)
+            is_dm = (c_mode == best_luma_mode or c.get("is_dm", False))
+            c_name = f"DM_CHROMA ({get_intra_mode_hevc_info(best_luma_mode)[1]})" if is_dm else get_intra_mode_hevc_info(c_mode)[1]
+            chroma_items.append(ChromaCandidateInfo(
+                mode=c_mode,
+                name=c_name,
+                is_dm=is_dm,
+                cost=round(float(c.get("cost", 0.0)), 4),
+                dist=int(c.get("dist", 0)),
+                bits=round(float(c.get("bits", 0.0)), 1),
+                rank=int(c.get("rank", 1))
+            ))
+    else:
+        chroma_raw = get_allowed_chroma_modes(best_luma_mode)
+        for c in chroma_raw:
+            chroma_items.append(ChromaCandidateInfo(
+                mode=c["mode"],
+                name=c["name"],
+                is_dm=c["is_dm"],
+                cost=c["cost"],
+                rank=c["rank"]
+            ))
+
+    winner_name = mode_map.get(best_luma_mode).direction_name if best_luma_mode in mode_map else get_intra_mode_hevc_info(best_luma_mode)[1]
 
     return IntraPipelineFullResponse(
         poc=poc,
@@ -333,10 +404,12 @@ def build_intra_pipeline_data(
         cu_size=cu_size,
         best_luma_mode=best_luma_mode,
         best_luma_cost=round(best_luma_cost, 4),
-        best_chroma_mode=best_luma_mode,
+        best_chroma_mode=best_chroma_mode,
         winner_mode=best_luma_mode,
         winner_cost=round(best_luma_cost, 4),
         winner_direction=winner_name,
+        reco_u=reco_u,
+        reco_v=reco_v,
         step1_reference=ref_checkpoint,
         step2_rmd=rmd_items_ordered,
         step3_candidates=candidate_step,

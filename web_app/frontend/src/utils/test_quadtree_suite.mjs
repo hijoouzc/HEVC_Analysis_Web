@@ -1,5 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildQuadtreeTree, computeTreeLayout } from './quadtreeTreeLayout.js';
 import { generateDrawioXml } from './drawioXmlGenerator.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('=== RUNNING HEVC QUADTREE ENGINE COMPREHENSIVE TESTS ===\n');
 
@@ -360,6 +366,23 @@ for (const tn of testNodes) {
     assert(rectW >= 7.5, `8x8 active block retains ${rectW}x${rectH} clean visible pixel interior`);
   }
 }
+
+// -------------------------------------------------------------
+// TEST SUITE 8: RDO Simulator Tab Integration & Checkpoint Synchronization
+// -------------------------------------------------------------
+console.log('\nTest Suite 8: RDO Simulator Tab Integration & Checkpoint Synchronization');
+
+const appSource = fs.readFileSync(path.join(__dirname, '../App.jsx'), 'utf-8');
+const viewportSource = fs.readFileSync(path.join(__dirname, '../components/app/ActiveStageViewport.jsx'), 'utf-8');
+
+assert(appSource.includes("{ id: 'RDO_SIM', label: '8. RDO Simulator' }"), "App.jsx defines RDO_SIM tab in stageTabs");
+assert(appSource.includes("else if (e.key === '8') setActiveStageTab('RDO_SIM');"), "App.jsx provides key '8' shortcut for RDO Simulator");
+assert(viewportSource.includes("import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';"), "ActiveStageViewport imports RdoQuadtreeSimulator");
+assert(viewportSource.includes("onNavigateToSim={() => setActiveStageTab('RDO_SIM')}"), "ActiveStageViewport connects QuadTreeVisualizer onNavigateToSim to RDO_SIM");
+assert(viewportSource.includes("activeStageTab === 'RDO_SIM'"), "ActiveStageViewport renders RDO_SIM stage section");
+assert(viewportSource.includes("<RdoQuadtreeSimulator"), "ActiveStageViewport mounts RdoQuadtreeSimulator component");
+assert(viewportSource.includes("partitionData={ctuPartitionsMap?.[`${ctuX}_${ctuY}`] || partitionData}"), "ActiveStageViewport passes 100% synchronized CTU partition ground truth to RdoQuadtreeSimulator");
+assert(viewportSource.includes("(val === 'CP_01' || val === 'RDO_SIM')"), "ActiveStageViewport updates partition cache on RDO_SIM tab switch");
 
 console.log(`\n=== TEST SUMMARY: ${passCount} PASSED, ${failCount} FAILED ===`);
 if (failCount > 0) process.exit(1);

@@ -31,6 +31,11 @@ set( EXTENSION_360_VIDEO OFF CACHE BOOL "If EXTENSION_360_VIDEO is on, 360Lib wi
 set( SET_ENABLE_TRACING OFF CACHE BOOL "Set ENABLE_TRACING as a compiler flag" )
 set( ENABLE_TRACING OFF CACHE BOOL "If SET_ENABLE_TRACING is on, it will be set to this value" )
 set( HIGH_BITDEPTH OFF CACHE BOOL "Build libraries and applications with high bit depth support" )
+option( ENABLE_VISUAL_DUMP "Compile the optional intra probe trace hooks" ON )
+
+if( ENABLE_VISUAL_DUMP )
+  add_definitions( -DENABLE_VISUAL_DUMP=1 )
+endif()
 
 set( ENABLE_SEARCH_OPENSSL ON CACHE BOOL "ENABLE_SEARCH_OPENSSL will be set to this value" )
 

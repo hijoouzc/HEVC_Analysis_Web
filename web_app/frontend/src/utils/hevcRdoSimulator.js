@@ -432,7 +432,7 @@ export function runHevcQuadtreeSimulation({
   ctuPatch, // 64x64 1D array of original pixels
   qp = 32,
   forcedMode = null, // null: Auto best mode; or fixed mode (0, 1, 10, 26)
-  groundTruthNodes = null // Optional: real HM-16.0 encoder trace nodes from CU QuadTree
+  groundTruthNodes = null // Optional: real HM-18.0 encoder trace nodes from CU QuadTree
 }) {
   const steps = [];
   const ctuSize = 64;
@@ -700,8 +700,8 @@ export function runHevcQuadtreeSimulation({
 
     const descText = (gtNode && gtNode.split !== undefined)
       ? (willSplit
-          ? `HM-16.0 Encoder Decision: SPLIT (J_Split ${nodeMeta.jSplit.toLocaleString()})`
-          : `HM-16.0 Encoder Decision: KEEP (Leaf CU • J ${(nodeMeta.jNonSplit || bestEval.cost).toLocaleString()})`)
+          ? `HM-18.0 Encoder Decision: SPLIT (J_Split ${nodeMeta.jSplit.toLocaleString()})`
+          : `HM-18.0 Encoder Decision: KEEP (Leaf CU • J ${(nodeMeta.jNonSplit || bestEval.cost).toLocaleString()})`)
       : (willSplit
           ? `J_Split ${nodeMeta.jSplit.toLocaleString()} < J_NonSplit ${bestEval.cost.toLocaleString()} (Δ -${Math.round(bestEval.cost - nodeMeta.jSplit).toLocaleString()})`
           : `J_NonSplit ${bestEval.cost.toLocaleString()} ≤ J_Split ${nodeMeta.jSplit.toLocaleString()}`);

@@ -21,7 +21,7 @@ class CheckpointRegistry:
         self.register(
             intra_ref_parser,
             name="Intra Reference Sample Preparation & Filtering",
-            description="Extracts 4N+1 neighbor reference pixels before and after MDIS 3-tap / Strong Intra Smoothing."
+            description="Extracts 4N+1 neighbor reference samples before and after MDIS 3-tap / Strong Intra Smoothing."
         )
         self.register(
             intra_search_parser,
@@ -40,6 +40,38 @@ class CheckpointRegistry:
             name="Forward Quantization (QCoeff)",
             description="Applies scalar quantization with QP scaling, analyzing high-frequency zeroing and sparsity ratio."
         )
+
+        # Standard 8 Checkpoint Suite Descriptions
+        self._descriptions.update({
+            "CP_00_FRAME_GOP": (
+                "Frame & GOP Reference Hierarchy",
+                "Analyzes Picture Order Count (POC), temporal layers, and DPB Reference Picture Lists L0/L1."
+            ),
+            "CP_02_INTRA_SEARCH": (
+                "Intra Spatial Prediction Search",
+                "Evaluates all 35 directional, planar, and DC intra prediction candidates with 5-stage RDO pipeline."
+            ),
+            "CP_03_INTER_SEARCH": (
+                "Inter Prediction & Motion Estimation",
+                "Evaluates Motion Estimation (ME/MC), motion vectors (MV/MVD), and AMVP candidate lists."
+            ),
+            "CP_04_TRANSFORM_RQT": (
+                "Residual Transform & RQT Hierarchy",
+                "Transforms spatial residual matrix into 2D frequency spectrum (DCT-II / DST-VII) and quantization levels."
+            ),
+            "CP_05_RECON_PICTURE": (
+                "Reconstructed Picture Buffer (S')",
+                "Inspects discrete reconstructed picture planar samples (m_cPicYuvRec) pre-in-loop filter."
+            ),
+            "CP_06_INLOOP_FILTER": (
+                "In-Loop Deblocking & SAO Filtering",
+                "Applies boundary strength (bS) deblocking filter and Sample Adaptive Offset (SAO) corrections."
+            ),
+            "CP_07_CABAC_ENTROPY": (
+                "CABAC Context Modeling & Entropy Coding",
+                "Encodes syntax elements into binary arithmetic bitstream using 63-state FSM context models."
+            ),
+        })
 
     def register(self, parser: BaseCheckpointParser, name: str, description: str):
         self._parsers_by_stage[parser.stage_id] = parser
@@ -62,7 +94,7 @@ class CheckpointRegistry:
                 "name": self._descriptions[stage_id][0],
                 "description": self._descriptions[stage_id][1]
             }
-            for stage_id in self._parsers_by_stage
+            for stage_id in self._descriptions
         ]
 
 checkpoint_registry = CheckpointRegistry()

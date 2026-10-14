@@ -1534,14 +1534,31 @@ Void TComTrQuant::transformNxN(       TComTU        & rTu,
       if (pDumper->isEnabled())
       {
         UInt maxCUWidth = pcCU->getSlice()->getSPS()->getMaxCUWidth();
+        UInt maxCUHeight = pcCU->getSlice()->getSPS()->getMaxCUHeight();
         Int poc = pcCU->getSlice()->getPOC();
         Int ctuX = pcCU->getCUPelX() / maxCUWidth;
-        Int ctuY = pcCU->getCUPelY() / maxCUWidth;
+        Int ctuY = pcCU->getCUPelY() / maxCUHeight;
+        const Int cuX = pcCU->getCUPelX();
+        const Int cuY = pcCU->getCUPelY();
+        const Int cuWidth = pcCU->getWidth(0);
+        const Int cuHeight = pcCU->getHeight(0);
+        const Int cuDepth = pcCU->getDepth(0);
+        const PredMode predMode = pcCU->getPredictionMode(uiAbsPartIdx);
+        const Int intraMode = predMode == MODE_INTRA
+                            ? static_cast<Int>(pcCU->getIntraDir(CHANNEL_TYPE_LUMA, uiAbsPartIdx))
+                            : -1;
+        const ChromaFormat chromaFormat = pcCU->getSlice()->getSPS()->getChromaFormatIdc();
         Int tuX = pcCU->getCUPelX() + g_auiRasterToPelX[ g_auiZscanToRaster[uiAbsPartIdx] ];
         Int tuY = pcCU->getCUPelY() + g_auiRasterToPelY[ g_auiZscanToRaster[uiAbsPartIdx] ];
-        pDumper->dumpTransformQuant(poc, ctuX, ctuY, tuX, tuY, uiWidth, uiHeight,
-                                    (Int)compID, cQP.Qp,
-                                    pcResidual, uiStride, m_plTempCoeff, rpcCoeff);
+        tuX >>= getComponentScaleX(compID, chromaFormat);
+        const Bool isDST = rTu.useDST(compID);
+        const Bool isTransformSkip = (pcCU->getTransformSkip(uiAbsPartIdx, compID) != 0);
+        pDumper->dumpTransformQuant(poc, ctuX, ctuY, cuX, cuY, cuWidth, cuHeight, cuDepth,
+                                    static_cast<Int>(predMode), intraMode,
+                                    tuX, tuY, uiWidth, uiHeight, uiOrgTrDepth,
+                                    (Int)compID, chromaFormat, cQP.Qp,
+                                    pcResidual, uiStride, m_plTempCoeff, rpcCoeff,
+                                    NULL, NULL, 0, isDST, isTransformSkip);
       }
 #endif
     }
@@ -1681,6 +1698,40 @@ Void TComTrQuant::invTransformNxN(      TComTU        &rTu,
   }
 
   invRdpcmNxN( rTu, compID, pcResidual, uiStride );
+
+#if ENABLE_VISUAL_DUMP
+  VisualDumper* pDumperInv = VisualDumper::getInstance();
+  if (pDumperInv->isEnabled())
+  {
+    UInt maxCUWidth = pcCU->getSlice()->getSPS()->getMaxCUWidth();
+    UInt maxCUHeight = pcCU->getSlice()->getSPS()->getMaxCUHeight();
+    Int poc = pcCU->getSlice()->getPOC();
+    Int ctuX = pcCU->getCUPelX() / maxCUWidth;
+    Int ctuY = pcCU->getCUPelY() / maxCUHeight;
+    const Int cuX = pcCU->getCUPelX();
+    const Int cuY = pcCU->getCUPelY();
+    const Int cuWidth = pcCU->getWidth(0);
+    const Int cuHeight = pcCU->getHeight(0);
+    const Int cuDepth = pcCU->getDepth(0);
+    const PredMode predMode = pcCU->getPredictionMode(uiAbsPartIdx);
+    const Int intraMode = predMode == MODE_INTRA
+                        ? static_cast<Int>(pcCU->getIntraDir(CHANNEL_TYPE_LUMA, uiAbsPartIdx))
+                        : -1;
+    const ChromaFormat chromaFormat = pcCU->getSlice()->getSPS()->getChromaFormatIdc();
+    Int tuX = pcCU->getCUPelX() + g_auiRasterToPelX[ g_auiZscanToRaster[uiAbsPartIdx] ];
+    Int tuY = pcCU->getCUPelY() + g_auiRasterToPelY[ g_auiZscanToRaster[uiAbsPartIdx] ];
+    tuX >>= getComponentScaleX(compID, chromaFormat);
+    tuY >>= getComponentScaleY(compID, chromaFormat);
+    const Bool isDST = rTu.useDST(compID);
+    const Bool isTransformSkip = (pcCU->getTransformSkip(uiAbsPartIdx, compID) != 0);
+    pDumperInv->dumpTransformQuant(poc, ctuX, ctuY, cuX, cuY, cuWidth, cuHeight, cuDepth,
+                                   static_cast<Int>(predMode), intraMode,
+                                   tuX, tuY, uiWidth, uiHeight, rTu.GetTransformDepthRel(),
+                                   (Int)compID, chromaFormat, cQP.Qp,
+                                   NULL, 0, NULL, pcCoeff, m_plTempCoeff, pcResidual, uiStride,
+                                   isDST, isTransformSkip);
+  }
+#endif
 }
 
 Void TComTrQuant::invRecurTransformNxN( const ComponentID compID,

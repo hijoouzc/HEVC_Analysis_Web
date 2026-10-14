@@ -11,7 +11,15 @@ from app.domain.models.checkpoint import (
     IntraComparisonResult,
     CTUPartitionCheckpoint,
     TransformQuantCheckpoint,
-    IntraPipelineFullResponse
+    IntraPipelineFullResponse,
+    FrameGopCheckpoint,
+    InterSearchCheckpoint,
+    ReconPictureCheckpoint,
+    DeblockingEdgeCheckpoint,
+    SaoDecisionCheckpoint,
+    InLoopFilterFullResponse,
+    CabacBinCheckpoint,
+    CabacEntropyFullResponse
 )
 from app.domain.enums import JobStatus, StageEnum
 from app.domain.exceptions import JobNotFoundError, EncoderExecutionError, InvalidInputError
@@ -180,14 +188,26 @@ class AnalysisService:
             
             # Check and register all available stages dynamically
             stages = []
+            if self.reader.find_one(trace_path, lambda e: e.get("event") == "FRAME_GOP"):
+                stages.append(StageEnum.CP_00_FRAME_GOP.value)
             if self.reader.find_one(trace_path, lambda e: e.get("event") == "CTU_PARTITION"):
                 stages.append(StageEnum.CP_01_PARTITION.value)
             if self.reader.find_one(trace_path, lambda e: e.get("event") == "INTRA_REF_SAMPLES"):
                 stages.append(StageEnum.CP_02_INTRA_REF.value)
+            stages.append(StageEnum.CP_02_INTRA_SEARCH.value)
             stages.append(StageEnum.CP_03_INTRA_SEARCH.value)
+            if self.reader.find_one(trace_path, lambda e: e.get("event") == "INTER_SEARCH"):
+                stages.append(StageEnum.CP_03_INTER_SEARCH.value)
             if self.reader.find_one(trace_path, lambda e: e.get("event") == "TRANSFORM_QUANT"):
+                stages.append(StageEnum.CP_04_TRANSFORM_RQT.value)
                 stages.append(StageEnum.CP_06_TRANSFORM.value)
                 stages.append(StageEnum.CP_07_QUANT.value)
+            if self.reader.find_one(trace_path, lambda e: e.get("event") == "RECON_PICTURE"):
+                stages.append(StageEnum.CP_05_RECON_PICTURE.value)
+            if self.reader.find_one(trace_path, lambda e: e.get("event") in ("DEBLOCKING_EDGE", "SAO_DECISION")):
+                stages.append(StageEnum.CP_06_INLOOP_FILTER.value)
+            if self.reader.find_one(trace_path, lambda e: e.get("event") == "CABAC_BIN"):
+                stages.append(StageEnum.CP_07_CABAC_ENTROPY.value)
                 
             await self.job_mgr.set_result(
                 job_id=job_id,
@@ -345,6 +365,37 @@ class AnalysisService:
         except Exception:
             pass
 
+        mpm_raw_event = None
+        full_rdo_events = []
+        chroma_raw_event = None
+        try:
+            trace_path = self.storage.get_trace_path(job_id)
+            if trace_path.exists():
+                all_mpm = self.reader.read_all(trace_path, event_filter="INTRA_MPM_DERIVATION")
+                for e in all_mpm:
+                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
+                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
+                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        mpm_raw_event = e
+                        break
+
+                all_rdo = self.reader.read_all(trace_path, event_filter="INTRA_FULL_RDO")
+                for e in all_rdo:
+                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
+                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
+                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        full_rdo_events.append(e)
+
+                all_chroma = self.reader.read_all(trace_path, event_filter="INTRA_CHROMA_SEARCH")
+                for e in all_chroma:
+                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
+                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
+                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        chroma_raw_event = e
+                        break
+        except Exception:
+            pass
+
         return build_intra_pipeline_data(
             modes=modes,
             ref_checkpoint=ref_checkpoint,
@@ -354,7 +405,10 @@ class AnalysisService:
             poc=poc,
             left_mode=left_mode,
             above_mode=above_mode,
-            transform_events=transform_events
+            transform_events=transform_events,
+            mpm_raw_event=mpm_raw_event,
+            full_rdo_events=full_rdo_events if full_rdo_events else None,
+            chroma_raw_event=chroma_raw_event
         )
 
     def get_intra_ref_data(
@@ -499,5 +553,200 @@ class AnalysisService:
             target_comp = comp.strip().upper()
             return [t for t in parsed if t.component.upper() == target_comp]
         return parsed
+
+    def get_frame_gop_data(self, job_id: str) -> list[FrameGopCheckpoint]:
+        trace_path = self.storage.get_trace_path(job_id)
+        if not trace_path.exists():
+            raise JobNotFoundError(job_id)
+        raw_events = self.reader.read_all(trace_path, event_filter="FRAME_GOP")
+        return [
+            FrameGopCheckpoint(
+                poc=e.get("poc", 0),
+                slice_type=e.get("slice_type", "I"),
+                qp=e.get("qp", 22),
+                temporal_id=e.get("temporal_id", 0),
+                ref_l0=e.get("ref_l0", []),
+                ref_l1=e.get("ref_l1", [])
+            )
+            for e in raw_events
+        ]
+
+    def get_inter_search_data(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> list[InterSearchCheckpoint]:
+        trace_path = self.storage.get_trace_path(job_id)
+        if not trace_path.exists():
+            raise JobNotFoundError(job_id)
+        raw_events = self.reader.read_all(trace_path, event_filter="INTER_SEARCH")
+        parsed = [
+            InterSearchCheckpoint(
+                poc=e.get("poc", 0),
+                ctu_x=e.get("ctu_x", 0),
+                ctu_y=e.get("ctu_y", 0),
+                cu_x=e.get("cu_x", 0),
+                cu_y=e.get("cu_y", 0),
+                cu_size=e.get("cu_size", 16),
+                depth=e.get("depth", 0),
+                pu_idx=e.get("pu_idx", 0),
+                pu_x=e.get("pu_x", 0),
+                pu_y=e.get("pu_y", 0),
+                pu_w=e.get("pu_w", 16),
+                pu_h=e.get("pu_h", 16),
+                ref_list=e.get("ref_list", 0),
+                ref_idx=e.get("ref_idx", 0),
+                mvp_idx=e.get("mvp_idx", 0),
+                mv_x=e.get("mv_x", 0),
+                mv_y=e.get("mv_y", 0),
+                mvd_x=e.get("mvd_x", 0),
+                mvd_y=e.get("mvd_y", 0),
+                cost=float(e.get("cost", 0.0)),
+                dist=int(e.get("dist", 0)),
+                bits=int(e.get("bits", 0))
+            )
+            for e in raw_events
+        ]
+        if ctu_x is not None:
+            parsed = [t for t in parsed if t.ctu_x == ctu_x]
+        if ctu_y is not None:
+            parsed = [t for t in parsed if t.ctu_y == ctu_y]
+        return parsed
+
+    def get_recon_picture_data(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> list[ReconPictureCheckpoint]:
+        trace_path = self.storage.get_trace_path(job_id)
+        if not trace_path.exists():
+            raise JobNotFoundError(job_id)
+        raw_events = self.reader.read_all(trace_path, event_filter="RECON_PICTURE")
+        parsed = [
+            ReconPictureCheckpoint(
+                poc=e.get("poc", 0),
+                ctu_x=e.get("ctu_x", 0),
+                ctu_y=e.get("ctu_y", 0),
+                cu_x=e.get("cu_x", 0),
+                cu_y=e.get("cu_y", 0),
+                cu_w=e.get("cu_size", e.get("cu_w", 16)),
+                cu_h=e.get("cu_size", e.get("cu_h", 16)),
+                reco_y=e.get("reco_y", []),
+                reco_u=e.get("reco_u", []),
+                reco_v=e.get("reco_v", [])
+            )
+            for e in raw_events
+        ]
+        if ctu_x is not None:
+            parsed = [t for t in parsed if t.ctu_x == ctu_x]
+        if ctu_y is not None:
+            parsed = [t for t in parsed if t.ctu_y == ctu_y]
+        return parsed
+
+    def get_inloop_filter_data(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> InLoopFilterFullResponse:
+        trace_path = self.storage.get_trace_path(job_id)
+        if not trace_path.exists():
+            raise JobNotFoundError(job_id)
+        raw_edges = self.reader.read_all(trace_path, event_filter="DEBLOCKING_EDGE")
+        raw_sao = self.reader.read_all(trace_path, event_filter="SAO_DECISION")
+        
+        edges = [
+            DeblockingEdgeCheckpoint(
+                poc=e.get("poc", 0),
+                ctu_x=e.get("ctu_x", 0),
+                ctu_y=e.get("ctu_y", 0),
+                edge_x=e.get("edge_x", 0),
+                edge_y=e.get("edge_y", 0),
+                dir=e.get("dir", 0),
+                bs=e.get("bs", 0),
+                beta=e.get("beta", 0),
+                tc=e.get("tc", 0),
+                p_before=e.get("p_before", []),
+                q_before=e.get("q_before", []),
+                p_after=e.get("p_after", []),
+                q_after=e.get("q_after", [])
+            )
+            for e in raw_edges
+        ]
+        if ctu_x is not None:
+            edges = [ed for ed in edges if ed.ctu_x == ctu_x]
+        if ctu_y is not None:
+            edges = [ed for ed in edges if ed.ctu_y == ctu_y]
+
+        sao_res = None
+        for s in raw_sao:
+            if ctu_x is not None and s.get("ctu_x") != ctu_x:
+                continue
+            if ctu_y is not None and s.get("ctu_y") != ctu_y:
+                continue
+            sao_res = SaoDecisionCheckpoint(
+                poc=s.get("poc", 0),
+                ctu_x=s.get("ctu_x", 0),
+                ctu_y=s.get("ctu_y", 0),
+                sao_mode=s.get("sao_mode", 0),
+                offset_y=s.get("offset_y", []),
+                offset_u=s.get("offset_u", []),
+                offset_v=s.get("offset_v", [])
+            )
+            break
+
+        bs2 = sum(1 for ed in edges if ed.bs == 2)
+        bs1 = sum(1 for ed in edges if ed.bs == 1)
+
+        return InLoopFilterFullResponse(
+            poc=edges[0].poc if edges else 0,
+            ctu_x=ctu_x or 0,
+            ctu_y=ctu_y or 0,
+            edges=edges,
+            sao=sao_res,
+            total_edges=len(edges),
+            bs2_edges=bs2,
+            bs1_edges=bs1
+        )
+
+    def get_cabac_entropy_data(
+        self,
+        job_id: str,
+        limit: int = 500
+    ) -> CabacEntropyFullResponse:
+        trace_path = self.storage.get_trace_path(job_id)
+        if not trace_path.exists():
+            raise JobNotFoundError(job_id)
+        raw_bins = self.reader.read_all(trace_path, event_filter="CABAC_BIN")
+        
+        bins = []
+        breakdown: dict[str, int] = {}
+        total_bits = 0
+        for b in raw_bins:
+            elem = b.get("syntax_element", "other")
+            bit_count = int(b.get("bits", 1))
+            total_bits += bit_count
+            breakdown[elem] = breakdown.get(elem, 0) + bit_count
+            if len(bins) < limit:
+                bins.append(
+                    CabacBinCheckpoint(
+                        syntax_element=elem,
+                        bin=int(b.get("bin", 0)),
+                        ctx_idx=int(b.get("ctx_idx", 0)),
+                        p_state_idx=int(b.get("p_state_idx", 0)),
+                        val_mps=int(b.get("val_mps", 0)),
+                        bits=bit_count
+                    )
+                )
+
+        return CabacEntropyFullResponse(
+            bins=bins,
+            total_bins=len(raw_bins),
+            total_bits=total_bits,
+            syntax_breakdown=breakdown
+        )
+
 
 analysis_service = AnalysisService()

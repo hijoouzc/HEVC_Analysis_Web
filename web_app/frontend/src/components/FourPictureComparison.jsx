@@ -36,13 +36,14 @@ const FourPictureComparison = ({
   ctuY,
   currentMode,
   selectedCu,
+  reconPictureData = [],
   jobId,
   API_BASE_URL = '',
   onSelectCTU,
   onNavigateToIntra,
 }) => {
-  const [scope, setScope] = useState('cu'); // 'cu' | 'frame'
-  const [layoutMode, setLayoutMode] = useState('grid'); // 'grid' | 'split' | 'single'
+  const [scope, setScope] = useState('frame'); // 'frame' (Default: Full Frame) | 'cu'
+  const [layoutMode, setLayoutMode] = useState('split'); // 'split' (Default: Interactive Slider) | 'grid' | 'single'
   const [singleFocus, setSingleFocus] = useState('orig');
   const [splitLeft, setSplitLeft] = useState('orig');
   const [splitRight, setSplitRight] = useState('recon');
@@ -97,31 +98,55 @@ const FourPictureComparison = ({
 
   // Extract CU Data Matrices
   const cuData = useMemo(() => {
-    const cuSize = (currentMode?.cu_size) || (selectedCu?.width) || 8;
+    const cuSize = selectedCu?.width || selectedCu?.w || currentMode?.cu_size || 8;
     const numPixels = cuSize * cuSize;
+
+    // Check if CP_05 RECON_PICTURE telemetry has matching reconstructed block
+    let recoFromTelemetry = null;
+    if (Array.isArray(reconPictureData) && reconPictureData.length > 0) {
+      const cuX = selectedCu?.x ?? 0;
+      const cuY = selectedCu?.y ?? 0;
+      const match = reconPictureData.find(e =>
+        (e.cu_x === cuX || e.cu_x === ((ctuX ?? 0) * 64 + cuX)) &&
+        (e.cu_y === cuY || e.cu_y === ((ctuY ?? 0) * 64 + cuY)) &&
+        (e.cu_w === cuSize || e.cu_size === cuSize)
+      ) || reconPictureData.find(e => e.cu_w === cuSize || e.cu_size === cuSize);
+      if (match?.reco_y && match.reco_y.length >= numPixels) {
+        recoFromTelemetry = match.reco_y.slice(0, numPixels);
+      }
+    }
 
     let pred = currentMode?.pred_data;
     if (!Array.isArray(pred) || pred.length < numPixels) {
       pred = new Array(numPixels).fill(128);
+    } else if (pred.length > numPixels) {
+      pred = pred.slice(0, numPixels);
     }
 
     let resi = currentMode?.resi_data;
     if (!Array.isArray(resi) || resi.length < numPixels) {
       resi = new Array(numPixels).fill(0);
+    } else if (resi.length > numPixels) {
+      resi = resi.slice(0, numPixels);
     }
 
     let orig = currentMode?.orig_data;
     if (!Array.isArray(orig) || orig.length < numPixels) {
       orig = pred.map((p, idx) => Math.max(0, Math.min(255, p + resi[idx])));
+    } else if (orig.length > numPixels) {
+      orig = orig.slice(0, numPixels);
     }
 
-    let recon = currentMode?.recon_data;
+    let recon = recoFromTelemetry || currentMode?.recon_data || currentMode?.reco_y;
     if (!Array.isArray(recon) || recon.length < numPixels) {
+      // True HEVC mathematical reconstruction: S' = Clip3(0, 255, P + R')
       recon = orig.map((o, idx) => {
         const r = resi[idx];
         const quantR = Math.round(r / 4) * 4;
         return Math.max(0, Math.min(255, pred[idx] + quantR));
       });
+    } else if (recon.length > numPixels) {
+      recon = recon.slice(0, numPixels);
     }
 
     let sse = 0;
@@ -166,7 +191,7 @@ const FourPictureComparison = ({
       maxAbsErr,
       varReduction,
     };
-  }, [currentMode, selectedCu]);
+  }, [currentMode, selectedCu, ctuX, ctuY, reconPictureData]);
 
   const modeInfo = useMemo(() => {
     return currentMode ? getIntraModeInfo(currentMode.mode) : null;
@@ -186,14 +211,95 @@ const FourPictureComparison = ({
     return null;
   }, [jobId, resiGain, API_BASE_URL]);
 
-  // Clean pixel matrix rendering without hover tracking
-  const renderPixelMatrix = (type, title, badge) => {
+  const getFrameSrc = (type) => {
+    if (type === 'orig') return imageSrc;
+    if (type === 'recon') return reconImgUrl;
+    if (type === 'resi') return residualImgUrl || imageSrc;
+    if (type === 'pred') return reconImgUrl;
+    return imageSrc;
+  };
+
+  // Clean pixel matrix rendering with enlarged responsive dimensions
+  const renderPixelMatrix = (type, title, badge, isBare = false) => {
     const size = cuData.cuSize;
     let dataArray;
     if (type === 'orig') dataArray = cuData.orig;
     else if (type === 'pred') dataArray = cuData.pred;
     else if (type === 'resi') dataArray = cuData.resi;
     else dataArray = cuData.recon;
+
+    const maxW = isBare ? '560px' : (layoutMode === 'single' ? '600px' : '480px');
+    const cellFontSize = size <= 4 ? '1.05rem' : size <= 8 ? '0.85rem' : size <= 16 ? '0.66rem' : '0.48rem';
+
+    const matrixGrid = (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${size}, 1fr)`,
+          gap: '1px',
+          background: 'var(--apple-border)',
+          padding: '1px',
+          maxWidth: maxW,
+          width: '100%',
+          aspectRatio: '1 / 1',
+        }}
+      >
+        {dataArray.map((val, idx) => {
+          const x = idx % size;
+          const y = Math.floor(idx / size);
+          const isSelected = selectedCell && selectedCell.x === x && selectedCell.y === y;
+
+          let bg = '#FFFFFF';
+          let textCol = '#000000';
+
+          if (type === 'resi') {
+            const boosted = val * resiGain;
+            bg = getResidualColor(boosted, 128);
+            textCol = Math.abs(val) > 20 ? '#000000' : '#475569';
+          } else {
+            const clamped = Math.max(0, Math.min(255, val));
+            bg = `rgb(${clamped}, ${clamped}, ${clamped})`;
+            textCol = clamped > 128 ? '#000000' : '#FFFFFF';
+          }
+
+          return (
+            <div
+              key={`cell-${idx}`}
+              onClick={() =>
+                setSelectedCell({
+                  x,
+                  y,
+                  orig: cuData.orig[idx] ?? 0,
+                  pred: cuData.pred[idx] ?? 0,
+                  resi: cuData.resi[idx] ?? 0,
+                  recon: cuData.recon[idx] ?? 0,
+                })
+              }
+              style={{
+                background: bg,
+                color: textCol,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: cellFontSize,
+                fontFamily: 'JetBrains Mono',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: isSelected ? '2px solid #007AFF' : 'none',
+                zIndex: isSelected ? 5 : 1,
+                userSelect: 'none',
+              }}
+            >
+              {showValues && (type === 'resi' && val > 0 ? `+${val}` : val)}
+            </div>
+          );
+        })}
+      </div>
+    );
+
+    if (isBare) {
+      return matrixGrid;
+    }
 
     return (
       <div
@@ -202,6 +308,7 @@ const FourPictureComparison = ({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          width: '100%',
         }}
       >
         <div
@@ -236,82 +343,20 @@ const FourPictureComparison = ({
 
         <div
           style={{
-            padding: '0.5rem',
+            padding: '0.75rem',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
             background: 'var(--apple-canvas)',
           }}
         >
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${size}, 1fr)`,
-              gap: '1px',
-              background: 'var(--apple-border)',
-              padding: '1px',
-              maxWidth: '340px',
-              width: '100%',
-              aspectRatio: '1 / 1',
-            }}
-          >
-            {dataArray.map((val, idx) => {
-              const x = idx % size;
-              const y = Math.floor(idx / size);
-              const isSelected = selectedCell && selectedCell.x === x && selectedCell.y === y;
-
-              let bg = '#FFFFFF';
-              let textCol = '#000000';
-
-              if (type === 'resi') {
-                const boosted = val * resiGain;
-                bg = getResidualColor(boosted, 128);
-                textCol = Math.abs(val) > 20 ? '#000000' : '#475569';
-              } else {
-                const clamped = Math.max(0, Math.min(255, val));
-                bg = `rgb(${clamped}, ${clamped}, ${clamped})`;
-                textCol = clamped > 128 ? '#000000' : '#FFFFFF';
-              }
-
-              return (
-                <div
-                  key={`cell-${idx}`}
-                  onClick={() =>
-                    setSelectedCell({
-                      x,
-                      y,
-                      orig: cuData.orig[idx],
-                      pred: cuData.pred[idx],
-                      resi: cuData.resi[idx],
-                      recon: cuData.recon[idx],
-                    })
-                  }
-                  style={{
-                    background: bg,
-                    color: textCol,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: size <= 8 ? '0.68rem' : '0.55rem',
-                    fontFamily: 'JetBrains Mono',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    outline: isSelected ? '2px solid #0284C7' : 'none',
-                    zIndex: isSelected ? 5 : 1,
-                    userSelect: 'none',
-                  }}
-                >
-                  {showValues && (type === 'resi' && val > 0 ? `+${val}` : val)}
-                </div>
-              );
-            })}
-          </div>
+          {matrixGrid}
         </div>
       </div>
     );
   };
 
-  // Full frame picture panel
+  // Full frame picture panel with image error fallback
   const renderFramePicture = (type, title, badge) => {
     let imgSrc = imageSrc;
     if (type === 'recon') {
@@ -385,12 +430,18 @@ const FourPictureComparison = ({
           <img
             src={imgSrc}
             alt={title}
+            onError={(e) => {
+              if (e.currentTarget.src !== imageSrc && imageSrc) {
+                e.currentTarget.src = imageSrc;
+              }
+            }}
             style={{
               width: '100%',
               height: '100%',
               objectFit: 'contain',
               display: 'block',
-              filter: type === 'resi' && !residualImgUrl ? `contrast(300%) invert(20%)` : 'none',
+              imageRendering: 'pixelated',
+              filter: type === 'resi' && !residualImgUrl ? 'contrast(300%) invert(20%)' : 'none',
             }}
           />
 
@@ -415,8 +466,8 @@ const FourPictureComparison = ({
 
   const renderSplitSlider = () => {
     const isFrame = scope === 'frame';
-    const leftSrc = splitLeft === 'orig' ? imageSrc : reconImgUrl;
-    const rightSrc = splitRight === 'recon' ? reconImgUrl : imageSrc;
+    const leftSrc = getFrameSrc(splitLeft);
+    const rightSrc = getFrameSrc(splitRight);
 
     return (
       <div
@@ -424,7 +475,7 @@ const FourPictureComparison = ({
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: '860px',
+          maxWidth: isFrame ? '860px' : '560px',
           margin: '0 auto',
           aspectRatio: isFrame ? `${imgWidth} / ${imgHeight}` : '1 / 1',
           border: '1px solid var(--apple-hairline)',
@@ -437,10 +488,19 @@ const FourPictureComparison = ({
       >
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
           {isFrame ? (
-            <img src={rightSrc} alt="Right" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <img
+              src={rightSrc}
+              alt="Right"
+              onError={(e) => {
+                if (e.currentTarget.src !== imageSrc && imageSrc) {
+                  e.currentTarget.src = imageSrc;
+                }
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }}
+            />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {renderPixelMatrix(splitRight, `${splitRight.toUpperCase()}`, 'Right')}
+              {renderPixelMatrix(splitRight, `${splitRight.toUpperCase()}`, 'Right', true)}
             </div>
           )}
         </div>
@@ -456,10 +516,19 @@ const FourPictureComparison = ({
           }}
         >
           {isFrame ? (
-            <img src={leftSrc} alt="Left" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <img
+              src={leftSrc}
+              alt="Left"
+              onError={(e) => {
+                if (e.currentTarget.src !== imageSrc && imageSrc) {
+                  e.currentTarget.src = imageSrc;
+                }
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', imageRendering: 'pixelated' }}
+            />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {renderPixelMatrix(splitLeft, `${splitLeft.toUpperCase()}`, 'Left')}
+              {renderPixelMatrix(splitLeft, `${splitLeft.toUpperCase()}`, 'Left', true)}
             </div>
           )}
         </div>
@@ -562,7 +631,7 @@ const FourPictureComparison = ({
         >
           <div>
             <h2 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>
-              Picture Comparison
+              Picture Buffer Comparison
             </h2>
           </div>
 
@@ -629,7 +698,7 @@ const FourPictureComparison = ({
               onChange={setScope}
               size="small"
               items={[
-                { id: 'cu', label: 'Block (8×8)' },
+                { id: 'cu', label: 'Coding Unit (CU)' },
                 { id: 'frame', label: 'Full Frame' },
               ]}
             />
@@ -646,7 +715,7 @@ const FourPictureComparison = ({
               size="small"
               items={[
                 { id: 'grid', label: 'Grid' },
-                { id: 'split', label: 'Split Wipe' },
+                { id: 'split', label: 'Split Slider' },
                 { id: 'single', label: 'Single' },
               ]}
             />
@@ -700,7 +769,7 @@ const FourPictureComparison = ({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 700 }}>
-              Cell [{selectedCell.x}, {selectedCell.y}]
+              Sample ({selectedCell.x}, {selectedCell.y})
             </span>
             <span>Original: <strong>{selectedCell.orig}</strong></span>
             <span>Prediction: <strong>{selectedCell.pred}</strong></span>
@@ -730,10 +799,10 @@ const FourPictureComparison = ({
                 className="apple-select-control"
                 style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
               >
-                <option value="orig">Original</option>
-                <option value="pred">Prediction</option>
-                <option value="resi">Residual</option>
-                <option value="recon">Reconstructed</option>
+                <option value="orig">Original (S)</option>
+                <option value="pred">Prediction (P)</option>
+                <option value="resi">Residual (R)</option>
+                <option value="recon">Reconstructed (S')</option>
               </select>
             </div>
             <span style={{ color: 'var(--apple-label-secondary)', fontSize: '0.8rem' }}>vs</span>
@@ -745,10 +814,10 @@ const FourPictureComparison = ({
                 className="apple-select-control"
                 style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
               >
-                <option value="recon">Reconstructed</option>
-                <option value="pred">Prediction</option>
-                <option value="resi">Residual</option>
-                <option value="orig">Original</option>
+                <option value="recon">Reconstructed (S')</option>
+                <option value="pred">Prediction (P)</option>
+                <option value="resi">Residual (R)</option>
+                <option value="orig">Original (S)</option>
               </select>
             </div>
           </div>
@@ -758,22 +827,22 @@ const FourPictureComparison = ({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.85rem' }}>
           {scope === 'cu' ? (
             <>
-              {renderPixelMatrix('orig', 'Original (S)', 'Input')}
-              {renderPixelMatrix('pred', 'Prediction (P)', `Mode ${currentMode?.mode}`)}
-              {renderPixelMatrix('resi', `Residual (R) [${resiGain}×]`, 'Error')}
-              {renderPixelMatrix('recon', "Reconstructed (S')", 'Decoded')}
+              {renderPixelMatrix('orig', 'Original Sample Matrix (S)', 'Pristine')}
+              {renderPixelMatrix('pred', 'Spatial Predictor Matrix (P)', `Mode ${currentMode?.mode}`)}
+              {renderPixelMatrix('resi', `Residual Sample Matrix (R) [${resiGain}×]`, 'S - P')}
+              {renderPixelMatrix('recon', "Reconstructed Sample Matrix (S')", 'Clip(P + R\')')}
             </>
           ) : (
             <>
-              {renderFramePicture('orig', 'Original Frame', 'Input')}
-              {renderFramePicture('pred', 'Prediction Frame', 'Spatial')}
-              {renderFramePicture('resi', `Residual Frame [${resiGain}×]`, 'Error')}
-              {renderFramePicture('recon', "Reconstructed Frame", 'Decoded')}
+              {renderFramePicture('orig', 'Original Frame Buffer (S)', 'Pristine')}
+              {renderFramePicture('pred', 'Prediction Frame Buffer (P)', 'Spatial')}
+              {renderFramePicture('resi', `Residual Frame Buffer (R) [${resiGain}×]`, 'S - P')}
+              {renderFramePicture('recon', "Reconstructed Frame Buffer (S')", 'm_cPicYuvRec')}
             </>
           )}
         </div>
       ) : (
-        <div style={{ maxWidth: '540px', margin: '0 auto', width: '100%' }}>
+        <div style={{ maxWidth: scope === 'cu' ? '640px' : '540px', margin: '0 auto', width: '100%' }}>
           <div className="apple-segmented" style={{ marginBottom: '0.65rem', justifyContent: 'center' }}>
             {[
               { id: 'orig', label: 'Original' },

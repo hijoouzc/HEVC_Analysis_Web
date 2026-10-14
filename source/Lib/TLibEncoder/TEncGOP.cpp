@@ -46,6 +46,7 @@
 #include "libmd5/MD5.h"
 #include "TLibCommon/SEI.h"
 #include "TLibCommon/NAL.h"
+#include "TLibCommon/VisualDumper.h"
 #include "NALwrite.h"
 #include <time.h>
 #include <math.h>
@@ -1752,6 +1753,32 @@ Void TEncGOP::compressGOP( Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rc
     {
       pcSlice->setSliceType ( P_SLICE );
     }
+
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    Int numRefL0 = (pcSlice->getSliceType() != I_SLICE) ? pcSlice->getNumRefIdx(REF_PIC_LIST_0) : 0;
+    Int refL0[16];
+    for (Int i = 0; i < numRefL0 && i < 16; i++)
+    {
+      const TComPic* rPic = pcSlice->getRefPic(REF_PIC_LIST_0, i);
+      refL0[i] = rPic ? rPic->getPOC() : -1;
+    }
+
+    Int numRefL1 = (pcSlice->getSliceType() == B_SLICE) ? pcSlice->getNumRefIdx(REF_PIC_LIST_1) : 0;
+    Int refL1[16];
+    for (Int i = 0; i < numRefL1 && i < 16; i++)
+    {
+      const TComPic* rPic = pcSlice->getRefPic(REF_PIC_LIST_1, i);
+      refL1[i] = rPic ? rPic->getPOC() : -1;
+    }
+
+    pDumper->dumpFrameGOP(pcSlice->getPOC(),
+                          pcSlice->getSliceType(),
+                          pcSlice->getSliceQp(),
+                          pcSlice->getTLayer(),
+                          numRefL0, refL0,
+                          numRefL1, refL1);
+#endif
 
 
     if (pcSlice->getPOC() > m_RASPOCforResetEncoder && m_pcCfg->getResetEncoderStateAfterIRAP())

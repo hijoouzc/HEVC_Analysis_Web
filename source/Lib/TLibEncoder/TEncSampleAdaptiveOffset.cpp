@@ -36,6 +36,7 @@
  \brief       estimation part of sample adaptive offset class
  */
 #include "TEncSampleAdaptiveOffset.h"
+#include "TLibCommon/VisualDumper.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -853,6 +854,23 @@ Void TEncSampleAdaptiveOffset::decideBlkParams(TComPic* pic, Bool* sliceEnabled,
     reconParams[ctuRsAddr] = codedParams[ctuRsAddr];
     reconstructBlkSAOParam(reconParams[ctuRsAddr], mergeList);
     offsetCTU(ctuRsAddr, srcYuv, resYuv, reconParams[ctuRsAddr], pic);
+
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const Int dumpPoc = pic->getSlice(0)->getPOC();
+    const Int dumpCtuX = ctuRsAddr % pic->getFrameWidthInCtus();
+    const Int dumpCtuY = ctuRsAddr / pic->getFrameWidthInCtus();
+    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+    {
+      const SAOOffset& offY = reconParams[ctuRsAddr][COMPONENT_Y];
+      const SAOOffset& offU = reconParams[ctuRsAddr][COMPONENT_Cb];
+      const SAOOffset& offV = reconParams[ctuRsAddr][COMPONENT_Cr];
+      pDumper->dumpSaoDecision(dumpPoc, dumpCtuX, dumpCtuY,
+                               offY.typeIdc, offY.offset,
+                               offU.typeIdc, offU.offset,
+                               offV.typeIdc, offV.offset);
+    }
+#endif
   } //ctuRsAddr
 
   if (!allBlksDisabled && (totalCost >= 0) && bTestSAODisableAtPictureLevel) //SAO has not beneficial in this case - disable it

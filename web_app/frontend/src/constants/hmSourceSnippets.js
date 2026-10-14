@@ -1,6 +1,6 @@
 /**
  * hmSourceSnippets.js
- * Centralized C++ source snippets from ITU-T H.265 / HEVC HM-16.0 Reference Software.
+ * Centralized C++ source snippets from ITU-T H.265 / HEVC HM-18.0 Reference Software.
  * Serves as documentation and code modal inspector references.
  */
 
@@ -57,7 +57,7 @@ export const HM_QUADTREE_RDO_SNIPPET = {
   sourceFile: 'source/Lib/TLibEncoder/TEncCu.cpp (Lines 660-840)',
   functionName: 'xCompressCU',
   standardRef: 'ITU-T H.265 Section 6.4.1 / 7.3.8 / HEVC Book Chapter 3',
-  description: 'HM-16.0 evaluates CU partitioning recursively in Z-scan order (k=0: Top-Left, k=1: Top-Right, k=2: Bottom-Left, k=3: Bottom-Right). At each quadtree depth, the encoder tests non-split modes (Intra/Inter) computing J_nosplit = D + λ·R. It then recursively tests 4 sub-CUs to compute J_split = Σ J_sub + λ·R_split_flag. Finally, xCheckBestMode decides whether to split or keep the current block.',
+  description: 'HM-18.0 evaluates CU partitioning recursively in Z-scan order (k=0: Top-Left, k=1: Top-Right, k=2: Bottom-Left, k=3: Bottom-Right). At each quadtree depth, the encoder tests non-split modes (Intra/Inter) computing J_nosplit = D + λ·R. It then recursively tests 4 sub-CUs to compute J_split = Σ J_sub + λ·R_split_flag. Finally, xCheckBestMode decides whether to split or keep the current block.',
   codeSnippet: `// source/Lib/TLibEncoder/TEncCu.cpp
 
 Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const UInt uiDepth DEBUG_STRING_FN_DECLARE(sDebug_), UInt uiSplitFlag )

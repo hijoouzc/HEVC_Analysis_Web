@@ -28,12 +28,12 @@ function assert(condition, message) {
 }
 
 // -------------------------------------------------------------------
-// TEST SUITE 1: Pipeline Steps Definition & HM-16.0 Call-Stack Mapping
+// TEST SUITE 1: Pipeline Steps Definition & HM-18.0 Call-Stack Mapping
 // -------------------------------------------------------------------
 console.log('Test Suite 1: Pipeline Steps & Call-Stack Mapping');
 
 assert(Array.isArray(PIPELINE_STEPS), 'PIPELINE_STEPS is an exported array');
-assert(PIPELINE_STEPS.length === 5, 'Exactly 5 pipeline steps defined for HM-16.0 Intra Search');
+assert(PIPELINE_STEPS.length === 5, 'Exactly 5 pipeline steps defined for HM-18.0 Intra Search');
 
 const expectedFunctions = [
   'initIntraPatternChType()',
@@ -60,9 +60,9 @@ PIPELINE_STEPS.forEach((step, idx) => {
 });
 
 // -------------------------------------------------------------------
-// TEST SUITE 2: Official HM-16.0 C++ Source Code Snippets Conformance
+// TEST SUITE 2: Official HM-18.0 C++ Source Code Snippets Conformance
 // -------------------------------------------------------------------
-console.log('\nTest Suite 2: HM-16.0 C++ Source Code Snippets Conformance');
+console.log('\nTest Suite 2: HM-18.0 C++ Source Code Snippets Conformance');
 
 assert(Boolean(HM_INTRA_PREDICTION_SNIPPET), 'HM_INTRA_PREDICTION_SNIPPET is defined');
 assert(HM_INTRA_PREDICTION_SNIPPET.functionName.includes('predIntraLumaAng'), 'HM_INTRA_PREDICTION_SNIPPET references predIntraLumaAng');

@@ -173,6 +173,15 @@ class TransformQuantCheckpoint(BaseModel):
     energy_compaction_ratio: float = 0.0  # (DC^2 / Total Energy)
     sparsity_ratio: float = 0.0           # zero_coeffs / total_coeffs
 
+    # Frequency & Transform Domain flags
+    is_dst: bool = False
+    is_transform_skip: bool = False
+    tu_depth: int = 0
+    intra_mode: int | None = None
+    pred_mode: str = "INTRA"
+    dequant_coeff: list[int] = Field(default_factory=list)
+    reco_resi: list[int] = Field(default_factory=list)
+
 # ==========================================
 # Intra Prediction Pipeline Models (CP_03 Expanded)
 # ==========================================
@@ -223,6 +232,8 @@ class ChromaCandidateInfo(BaseModel):
     name: str                        # Planar, Vertical, Horizontal, DC, DM_CHROMA, or Angular 34
     is_dm: bool = False
     cost: float = 0.0
+    dist: int = 0
+    bits: float = 0.0
     rank: int = 1
 
 class IntraPipelineFullResponse(BaseModel):
@@ -237,6 +248,8 @@ class IntraPipelineFullResponse(BaseModel):
     winner_mode: int = 0
     winner_cost: float = 0.0
     winner_direction: str = ""
+    reco_u: list[int] = Field(default_factory=list)
+    reco_v: list[int] = Field(default_factory=list)
     step1_reference: IntraRefCheckpoint
     step2_rmd: list[RmdModeItem] = Field(default_factory=list)
     step3_candidates: CandidateSelectionStep
@@ -249,3 +262,111 @@ class CheckpointSummaryResponse(BaseModel):
     description: str
     count: int
     summary_data: dict[str, Any] = Field(default_factory=dict)
+
+# ==========================================
+# CP_00_FRAME_GOP Models
+# ==========================================
+class FrameGopCheckpoint(BaseModel):
+    poc: int = 0
+    slice_type: str = "I"
+    qp: int = 22
+    temporal_id: int = 0
+    ref_l0: list[int] = Field(default_factory=list)
+    ref_l1: list[int] = Field(default_factory=list)
+
+# ==========================================
+# CP_03_INTER_SEARCH Models
+# ==========================================
+class InterSearchCheckpoint(BaseModel):
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    cu_x: int = 0
+    cu_y: int = 0
+    cu_size: int = 16
+    depth: int = 0
+    pu_idx: int = 0
+    pu_x: int = 0
+    pu_y: int = 0
+    pu_w: int = 16
+    pu_h: int = 16
+    ref_list: int = 0
+    ref_idx: int = 0
+    mvp_idx: int = 0
+    mv_x: int = 0
+    mv_y: int = 0
+    mvd_x: int = 0
+    mvd_y: int = 0
+    cost: float = 0.0
+    dist: int = 0
+    bits: int = 0
+
+# ==========================================
+# CP_05_RECON_PICTURE Models
+# ==========================================
+class ReconPictureCheckpoint(BaseModel):
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    cu_x: int = 0
+    cu_y: int = 0
+    cu_w: int = 16
+    cu_h: int = 16
+    reco_y: list[int] = Field(default_factory=list)
+    reco_u: list[int] = Field(default_factory=list)
+    reco_v: list[int] = Field(default_factory=list)
+
+# ==========================================
+# CP_06_INLOOP_FILTER Models
+# ==========================================
+class DeblockingEdgeCheckpoint(BaseModel):
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    edge_x: int = 0
+    edge_y: int = 0
+    dir: int = 0                     # 0: vertical, 1: horizontal
+    bs: int = 0                      # Boundary strength (0, 1, 2)
+    beta: int = 0
+    tc: int = 0
+    p_before: list[int] = Field(default_factory=list)
+    q_before: list[int] = Field(default_factory=list)
+    p_after: list[int] = Field(default_factory=list)
+    q_after: list[int] = Field(default_factory=list)
+
+class SaoDecisionCheckpoint(BaseModel):
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    sao_mode: int = 0                 # 0: None, 1: BO, 2-5: EO, Merge
+    offset_y: list[int] = Field(default_factory=list)
+    offset_u: list[int] = Field(default_factory=list)
+    offset_v: list[int] = Field(default_factory=list)
+
+class InLoopFilterFullResponse(BaseModel):
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    edges: list[DeblockingEdgeCheckpoint] = Field(default_factory=list)
+    sao: SaoDecisionCheckpoint | None = None
+    total_edges: int = 0
+    bs2_edges: int = 0
+    bs1_edges: int = 0
+
+# ==========================================
+# CP_07_CABAC_ENTROPY Models
+# ==========================================
+class CabacBinCheckpoint(BaseModel):
+    syntax_element: str
+    bin: int
+    ctx_idx: int
+    p_state_idx: int
+    val_mps: int
+    bits: int = 1
+
+class CabacEntropyFullResponse(BaseModel):
+    bins: list[CabacBinCheckpoint] = Field(default_factory=list)
+    total_bins: int = 0
+    total_bits: int = 0
+    syntax_breakdown: dict[str, int] = Field(default_factory=dict)
+

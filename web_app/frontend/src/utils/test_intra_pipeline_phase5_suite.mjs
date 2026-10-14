@@ -33,8 +33,8 @@ assert(!step5Code.includes('scale-105') && !step5Code.includes('scale-110'), 'St
 
 assert(step5Code.includes('8.4.3'), 'Step5ChromaWinnerView cites H.265 Section 8.4.3 (Chroma intra prediction)');
 assert(step5Code.includes('Table 8-2'), 'Step5ChromaWinnerView cites H.265 Table 8-2 (intra_chroma_pred_mode specification)');
-assert(step5Code.includes('estIntraPredChromaQT'), 'Step5ChromaWinnerView references HM-16.0 estIntraPredChromaQT');
-assert(step5Code.includes('xCheckBestMode'), 'Step5ChromaWinnerView references HM-16.0 xCheckBestMode');
+assert(step5Code.includes('estIntraPredChromaQT'), 'Step5ChromaWinnerView references HM-18.0 estIntraPredChromaQT');
+assert(step5Code.includes('xCheckBestMode'), 'Step5ChromaWinnerView references HM-18.0 xCheckBestMode');
 assert(step5Code.includes('CHROMA CANDIDATE SET'), 'Step5ChromaWinnerView displays Chroma candidate set');
 assert(step5Code.includes('DM_CHROMA'), 'Step5ChromaWinnerView displays DM_CHROMA direct mode');
 assert(step5Code.includes('Mode 34'), 'Step5ChromaWinnerView explains Mode 34 duplicate replacement rule');

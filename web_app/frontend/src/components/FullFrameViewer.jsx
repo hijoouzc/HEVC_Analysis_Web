@@ -392,7 +392,7 @@ function FullFrameViewer({
     };
   }, [localCtu, width, height, ctuSize, numCols]);
 
-  // HM-16.0 Live Parameters for Source Code Inspector
+  // HM-18.0 Live Parameters for Source Code Inspector
   const hmVariables = useMemo(() => {
     if (!activeCtuData) return [];
     return [
@@ -404,7 +404,7 @@ function FullFrameViewer({
       { name: 'PicWidth', value: width },
       { name: 'PicHeight', value: height },
       { name: 'bBoundary', value: activeCtuData.isBoundary ? 'TRUE (Forced Split)' : 'FALSE (Regular RDO)', highlight: true },
-      { name: 'Valid Dimensions', value: `${activeCtuData.pw} × ${activeCtuData.ph}` }
+      { name: 'Valid Dimensions', value: `${activeCtuData.pw} × ${activeCtuData.ph} samples` }
     ];
   }, [activeCtuData, width, height]);
 
@@ -555,7 +555,7 @@ function FullFrameViewer({
             </span>
           </button>
 
-          {/* HM-16.0 Source Code Modal Trigger */}
+          {/* HM-18.0 Source Code Modal Trigger */}
           <button
             type="button"
             className="apple-btn-tool"
@@ -708,7 +708,7 @@ function FullFrameViewer({
           </svg>
         </div>
 
-      {/* HM-16.0 Source Code Inspector Modal */}
+      {/* HM-18.0 Source Code Inspector Modal */}
       <HmSourceCodeModal
         isOpen={showHmModal}
         onClose={() => setShowHmModal(false)}

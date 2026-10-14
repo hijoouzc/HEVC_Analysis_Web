@@ -160,11 +160,11 @@ export default function RdoQuadtreeSimulator({
             RDO Simulator
           </div>
           <span style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'JetBrains Mono' }}>
-            HM xCompressCU
+            HM TEncCu::xCompressCU
           </span>
           {isGroundTruthActive && (
             <Badge color="green" style={{ fontSize: '0.66rem', padding: '0.12rem 0.45rem' }}>
-              Synced with CU QuadTree (HM-16.0)
+              Synced with CU QuadTree (HM-18.0)
             </Badge>
           )}
         </div>
@@ -183,7 +183,7 @@ export default function RdoQuadtreeSimulator({
             variant="filled"
             size="small"
             onClick={() => setShowHmModal(true)}
-            title="Inspect HM-16.0 C++ Source Code for xCompressCU"
+            title="Inspect HM-18.0 C++ Source Code for xCompressCU"
           >
             &lt;&gt; Show HM Code
           </Button>
@@ -312,12 +312,10 @@ export default function RdoQuadtreeSimulator({
             showValues={showValues}
           />
 
-          {currentStep?.allEvaluations && currentStep.allEvaluations.length > 0 && (
-            <CandidateModesTable
-              size={activeNode.size}
-              evaluations={currentStep.allEvaluations}
-            />
-          )}
+          <CandidateModesTable
+            size={activeNode.size}
+            evaluations={currentStep?.allEvaluations}
+          />
 
           <TreeCallStack
             treeSnapshot={currentStep?.treeSnapshot}
@@ -328,7 +326,7 @@ export default function RdoQuadtreeSimulator({
         </div>
       </div>
 
-      {/* HM-16.0 Source Code Inspector Modal for RDO Evaluation & xCompressCU */}
+      {/* HM-18.0 Source Code Inspector Modal for RDO Evaluation & xCompressCU */}
       <HmSourceCodeModal
         isOpen={showHmModal}
         onClose={() => setShowHmModal(false)}
@@ -341,7 +339,7 @@ export default function RdoQuadtreeSimulator({
           { name: 'Active QP', value: qp, highlight: true },
           { name: 'Quantization Step (Qstep)', value: qstepVal.toFixed(2) },
           { name: 'Lagrange Multiplier (λ)', value: lambdaVal.toFixed(2), highlight: true },
-          { name: 'Active Node', value: `${activeNode.size}×${activeNode.size} (Depth ${activeNode.depth ?? 0})` },
+          { name: 'Active Node', value: `${activeNode.size}×${activeNode.size} samples (Depth ${activeNode.depth ?? 0})` },
           { name: 'Simulation Step', value: `${safeStepIdx + 1} / ${totalSteps}` },
           { name: 'Current Event', value: currentStep?.type || 'EVAL' },
         ]}

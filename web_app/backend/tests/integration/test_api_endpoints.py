@@ -173,4 +173,36 @@ def test_modern_job_and_checkpoint_api(client, dummy_png_bytes, sample_trace_fil
     assert len(pipe_data["step5_chroma"]) == 5
     assert pipe_data["winner_mode"] == pipe_data["best_luma_mode"]
 
+    # 12. Check New Standard 8-Checkpoint Endpoints
+    gop_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_00_FRAME_GOP")
+    assert gop_res.status_code == 200
+    assert isinstance(gop_res.json(), list)
 
+    inter_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_03_INTER_SEARCH")
+    assert inter_res.status_code == 200
+    assert isinstance(inter_res.json(), list)
+
+    rqt_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_04_TRANSFORM_RQT")
+    assert rqt_res.status_code == 200
+    assert isinstance(rqt_res.json(), list)
+
+    recon_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_05_RECON_PICTURE")
+    assert recon_res.status_code == 200
+    assert isinstance(recon_res.json(), list)
+
+    inloop_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_06_INLOOP_FILTER")
+    assert inloop_res.status_code == 200
+    assert "edges" in inloop_res.json()
+
+    cabac_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_07_CABAC_ENTROPY")
+    assert cabac_res.status_code == 200
+    assert "bins" in cabac_res.json()
+
+    # 13. Check CP_02_INTRA_SEARCH aliases
+    intra_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_02_INTRA_SEARCH")
+    assert intra_res.status_code == 200
+    assert len(intra_res.json()) == 35
+
+    intra_pipe_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_02_INTRA_SEARCH/pipeline")
+    assert intra_pipe_res.status_code == 200
+    assert "step1_reference" in intra_pipe_res.json()

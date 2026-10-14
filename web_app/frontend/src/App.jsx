@@ -59,6 +59,11 @@ function App() {
     setPartitionData,
     transformData,
     quantData,
+    frameGopData,
+    interSearchData,
+    reconPictureData,
+    inloopFilterData,
+    cabacEntropyData,
     selectedCu,
     ctuPartitionsMap,
     hasDesync,
@@ -110,15 +115,15 @@ function App() {
     const handleKeyDown = (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-      if (e.key === '1') setActiveStageTab('MACRO');
-      else if (e.key === '2') setActiveStageTab('YUV_VIEW');
-      else if (e.key === '3') setActiveStageTab('CP_01');
-      else if (e.key === '4') {
-        if (!data) setIsStandaloneSim(true);
-        else setActiveStageTab('RDO_SIM');
-      } else if (e.key === '5') setActiveStageTab('INTRA_PIPE');
-      else if (e.key === '6') setActiveStageTab('CP_06_07');
-      else if (e.key === '7') setActiveStageTab('RECON_VIEW');
+      if (e.key === '0') setActiveStageTab('CP_00');
+      else if (e.key === '1') setActiveStageTab('CP_01');
+      else if (e.key === '2') setActiveStageTab('CP_02');
+      else if (e.key === '3') setActiveStageTab('CP_03');
+      else if (e.key === '4') setActiveStageTab('CP_04');
+      else if (e.key === '5') setActiveStageTab('CP_05');
+      else if (e.key === '6') setActiveStageTab('CP_06');
+      else if (e.key === '7') setActiveStageTab('CP_07');
+      else if (e.key === '8') setActiveStageTab('RDO_SIM');
       else if (e.key === 'i' || e.key === 'I') {
         setShowInspector((prev) => !prev);
       } else if (e.key === 'd' || e.key === 'D') {
@@ -131,13 +136,15 @@ function App() {
   }, [data, setActiveStageTab]);
 
   const stageTabs = [
-    { id: 'MACRO', label: '1. CTU Grid' },
-    { id: 'YUV_VIEW', label: '2. YCbCr Planes' },
-    { id: 'CP_01', label: '3. CU QuadTree' },
-    { id: 'RDO_SIM', label: '4. RDO Simulator' },
-    { id: 'INTRA_PIPE', label: '5. Intra Prediction' },
-    { id: 'CP_06_07', label: '6. Transform & Quant' },
-    { id: 'RECON_VIEW', label: '7. Reconstruction' },
+    { id: 'CP_00', label: '0. Frame & GOP' },
+    { id: 'CP_01', label: '1. CU QuadTree' },
+    { id: 'CP_02', label: '2. Intra Search' },
+    { id: 'CP_03', label: '3. Inter Search' },
+    { id: 'CP_04', label: '4. Transform RQT' },
+    { id: 'CP_05', label: '5. Recon Picture' },
+    { id: 'CP_06', label: '6. In-Loop Filter' },
+    { id: 'CP_07', label: '7. CABAC Entropy' },
+    { id: 'RDO_SIM', label: '8. RDO Simulator' },
   ];
 
   return (
@@ -162,7 +169,7 @@ function App() {
                 fontWeight: 600,
               }}
             >
-              HM-16.0
+              HM-18.0
             </span>
             <span
               style={{
@@ -189,22 +196,28 @@ function App() {
         }
         trailing={
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {loading && loadingStatus && (
-              <span
-                style={{
-                  fontSize: '11px',
-                  color: 'var(--system-blue)',
-                  fontFamily: 'var(--font-mono)',
-                  fontWeight: 600,
-                }}
-              >
-                {loadingStatus}
-              </span>
-            )}
+            <div style={{ minWidth: '150px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+              {loading && loadingStatus && (
+                <span
+                  style={{
+                    fontSize: '11px',
+                    color: 'var(--system-blue)',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: '150px'
+                  }}
+                >
+                  {loadingStatus}
+                </span>
+              )}
+            </div>
 
             {/* Active CTU Badge */}
             {data && (
-              <Badge variant="blue" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+              <Badge variant="blue" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', minWidth: '85px', justifyContent: 'center' }}>
                 CTU ({ctuX !== null ? ctuX : 0}, {ctuY !== null ? ctuY : 0})
               </Badge>
             )}
@@ -216,6 +229,7 @@ function App() {
                 size="small"
                 onClick={() => setShowInspector((prev) => !prev)}
                 title="Toggle Info (I)"
+                style={{ width: '80px', minWidth: '80px', justifyContent: 'center' }}
               >
                 {showInspector ? 'Hide Info' : 'Info (i)'}
               </Button>
@@ -227,6 +241,7 @@ function App() {
               size="small"
               onClick={() => setIsDarkMode((d) => !d)}
               title="Toggle Theme (D)"
+              style={{ width: '64px', minWidth: '64px', justifyContent: 'center' }}
             >
               {isDarkMode ? 'Light' : 'Dark'}
             </Button>
@@ -240,6 +255,7 @@ function App() {
                   handleResetImage();
                 }}
                 title="Select another image"
+                style={{ width: '100px', minWidth: '100px', justifyContent: 'center' }}
               >
                 Change Image
               </Button>
@@ -349,6 +365,11 @@ function App() {
               refSamples={refSamples}
               transformData={transformData}
               quantData={quantData}
+              frameGopData={frameGopData}
+              interSearchData={interSearchData}
+              reconPictureData={reconPictureData}
+              inloopFilterData={inloopFilterData}
+              cabacEntropyData={cabacEntropyData}
               reconMode={reconMode}
               setReconMode={setReconMode}
               jobId={jobId}
@@ -416,7 +437,7 @@ function App() {
         }
         right={
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--apple-label-tertiary)' }}>
-            1-7: Stages • I: Info • D: Theme • HM-16.0
+            0-8: Stages • I: Info • D: Theme • HM-18.0
           </span>
         }
       />

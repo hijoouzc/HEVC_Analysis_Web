@@ -6,7 +6,12 @@ from app.domain.models.checkpoint import (
     IntraComparisonResult,
     CTUPartitionCheckpoint,
     TransformQuantCheckpoint,
-    IntraPipelineFullResponse
+    IntraPipelineFullResponse,
+    FrameGopCheckpoint,
+    InterSearchCheckpoint,
+    ReconPictureCheckpoint,
+    InLoopFilterFullResponse,
+    CabacEntropyFullResponse
 )
 from app.domain.exceptions import JobNotFoundError, InvalidInputError
 from app.services.analysis_service import analysis_service
@@ -79,8 +84,9 @@ async def get_intra_ref_checkpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
 # ==========================================
-# CP_03_INTRA_SEARCH Endpoints
+# CP_02_INTRA_SEARCH / CP_03_INTRA_SEARCH Endpoints
 # ==========================================
+@router.get("/{job_id}/CP_02_INTRA_SEARCH/summary", response_model=IntraSearchSummary)
 @router.get("/{job_id}/CP_03_INTRA_SEARCH/summary", response_model=IntraSearchSummary)
 async def get_intra_search_summary(job_id: str):
     """Lightweight endpoint returning high-level intra prediction summary (<1 KB)"""
@@ -91,6 +97,7 @@ async def get_intra_search_summary(job_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/{job_id}/CP_02_INTRA_SEARCH/compare", response_model=IntraComparisonResult)
 @router.get("/{job_id}/CP_03_INTRA_SEARCH/compare", response_model=IntraComparisonResult)
 async def compare_intra_candidates(
     job_id: str,
@@ -108,6 +115,7 @@ async def compare_intra_candidates(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/{job_id}/CP_02_INTRA_SEARCH", response_model=list[IntraModeData])
 @router.get("/{job_id}/CP_03_INTRA_SEARCH", response_model=list[IntraModeData])
 async def get_intra_search_modes(
     job_id: str,
@@ -124,6 +132,7 @@ async def get_intra_search_modes(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/{job_id}/CP_02_INTRA_SEARCH/pipeline", response_model=IntraPipelineFullResponse)
 @router.get("/{job_id}/CP_03_INTRA_SEARCH/pipeline", response_model=IntraPipelineFullResponse)
 @router.get("/{job_id}/intra-pipeline", response_model=IntraPipelineFullResponse)
 async def get_intra_pipeline_full(
@@ -183,3 +192,87 @@ async def get_quant_checkpoints(
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# ==========================================
+# Specialized 8 Checkpoints Standard Endpoints
+# ==========================================
+@router.get("/{job_id}/CP_00_FRAME_GOP", response_model=list[FrameGopCheckpoint])
+async def get_frame_gop(job_id: str):
+    """CP_00_FRAME_GOP: Retrieves Frame and GOP structure, temporal layer, and DPB reference lists"""
+    try:
+        return analysis_service.get_frame_gop_data(job_id)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/CP_03_INTER_SEARCH", response_model=list[InterSearchCheckpoint])
+async def get_inter_search(
+    job_id: str,
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+):
+    """CP_03_INTER_SEARCH: Retrieves Inter Prediction, Motion Estimation (MV, MVD), and candidate data"""
+    try:
+        return analysis_service.get_inter_search_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/CP_04_TRANSFORM_RQT", response_model=list[TransformQuantCheckpoint])
+async def get_transform_rqt(
+    job_id: str,
+    comp: str | None = Query(None, description="Color component ('Y', 'Cb', 'Cr')"),
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+):
+    """CP_04_TRANSFORM_RQT: Retrieves 6-domain Transform, RQT hierarchy, DST-VII, and TSM data"""
+    try:
+        return analysis_service.get_transform_quant_data(job_id, comp=comp, ctu_x=ctu_x, ctu_y=ctu_y)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/CP_05_RECON_PICTURE", response_model=list[ReconPictureCheckpoint])
+async def get_recon_picture(
+    job_id: str,
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+):
+    """CP_05_RECON_PICTURE: Retrieves reconstructed picture buffer (Y, U, V) before in-loop filtering"""
+    try:
+        return analysis_service.get_recon_picture_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/CP_06_INLOOP_FILTER", response_model=InLoopFilterFullResponse)
+async def get_inloop_filter(
+    job_id: str,
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+):
+    """CP_06_INLOOP_FILTER: Retrieves Deblocking Filter (DBF) edge profiles and SAO decision offsets"""
+    try:
+        return analysis_service.get_inloop_filter_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/CP_07_CABAC_ENTROPY", response_model=CabacEntropyFullResponse)
+async def get_cabac_entropy(
+    job_id: str,
+    limit: int = Query(500, description="Maximum number of bin transition events to return")
+):
+    """CP_07_CABAC_ENTROPY: Retrieves bitstream syntax element bins, context index, and FSM probability state"""
+    try:
+        return analysis_service.get_cabac_entropy_data(job_id, limit=limit)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+

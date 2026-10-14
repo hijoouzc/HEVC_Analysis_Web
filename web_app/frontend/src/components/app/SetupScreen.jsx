@@ -49,7 +49,7 @@ const SetupScreen = ({
               alignItems: 'center',
               justifyContent: 'center',
               padding: '20px 14px',
-              border: '1px dashed var(--separator)',
+              border: '1px solid var(--separator)',
               borderRadius: '8px',
               cursor: 'pointer',
               background: 'var(--fill-4)',

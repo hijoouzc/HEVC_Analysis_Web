@@ -171,7 +171,7 @@ export default function Step3CandidatesView({
             {/* Top-Left Empty Corner */}
             <div style={{
               background: 'transparent',
-              border: '1px dashed var(--apple-hairline)',
+              border: '1px solid var(--apple-hairline)',
               borderRadius: '3px',
               display: 'flex',
               alignItems: 'center',

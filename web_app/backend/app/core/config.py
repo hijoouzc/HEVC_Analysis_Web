@@ -29,9 +29,10 @@ class Settings(BaseModel):
     @property
     def ENCODER_BIN(self) -> Path:
         # 1. Release compiled path (Optimized with -O3 for high performance)
-        release_path = self.PROJECT_ROOT / "bin/umake/gcc-13.3/x86_64/release/TAppEncoder"
-        if release_path.exists() and not os.environ.get("HEVC_FORCE_DEBUG"):
-            return release_path
+        for gcc_ver in ["gcc-15.2", "gcc-13.3"]:
+            release_path = self.PROJECT_ROOT / f"bin/umake/{gcc_ver}/x86_64/release/TAppEncoder"
+            if release_path.exists() and not os.environ.get("HEVC_FORCE_DEBUG"):
+                return release_path
 
         # 2. Environment variable override
         env_bin = os.environ.get("HEVC_ENCODER_BIN")

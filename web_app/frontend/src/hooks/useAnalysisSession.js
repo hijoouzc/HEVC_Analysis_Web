@@ -26,11 +26,16 @@ export function useAnalysisSession() {
   const [cuSize, setCuSize] = useState(8);
   const [analyzedCuSize, setAnalyzedCuSize] = useState(8);
 
-  const [activeStageTab, setActiveStageTab] = useState('MACRO');
+  const [activeStageTab, setActiveStageTab] = useState('CP_00');
   const [jobId, setJobId] = useState(null);
   const [partitionData, setPartitionData] = useState(null);
   const [transformData, setTransformData] = useState([]);
   const [quantData, setQuantData] = useState([]);
+  const [frameGopData, setFrameGopData] = useState([]);
+  const [interSearchData, setInterSearchData] = useState([]);
+  const [reconPictureData, setReconPictureData] = useState([]);
+  const [inloopFilterData, setInloopFilterData] = useState(null);
+  const [cabacEntropyData, setCabacEntropyData] = useState(null);
   const [selectedCu, setSelectedCu] = useState(null);
   const [ctuPartitionsMap, setCtuPartitionsMap] = useState({});
   const [ctuAnalysisCache, setCtuAnalysisCache] = useState({});
@@ -122,12 +127,17 @@ export function useAnalysisSession() {
       ? `?ctu_x=${targetX}&ctu_y=${targetY}`
       : '';
 
-    const [p, allParts, ref, transform, quant] = await Promise.all([
+    const [p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac] = await Promise.all([
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_01_PARTITION${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/partitions`).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_02_INTRA_REF?cu_size=${targetCuSize}${ctuParams}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_06_TRANSFORM${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${ctuOnlyParams}`).then(r => r.ok ? r.json() : [])
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_04_TRANSFORM_RQT${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_00_FRAME_GOP`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTER_SEARCH${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_05_RECON_PICTURE${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_06_INLOOP_FILTER${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_CABAC_ENTROPY?limit=300`).then(r => r.ok ? r.json() : null),
     ]);
 
     if (p) {
@@ -154,7 +164,12 @@ export function useAnalysisSession() {
     if (ref) setRefSamples(ref);
     if (Array.isArray(transform) && transform.length > 0) setTransformData(transform);
     if (Array.isArray(quant) && quant.length > 0) setQuantData(quant);
-    return { p, allParts, ref, transform, quant };
+    if (Array.isArray(gop)) setFrameGopData(gop);
+    if (Array.isArray(inter)) setInterSearchData(inter);
+    if (Array.isArray(recon)) setReconPictureData(recon);
+    if (inloop) setInloopFilterData(inloop);
+    if (cabac) setCabacEntropyData(cabac);
+    return { p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac };
   }, []);
 
   // Poll job status until COMPLETED or FAILED
@@ -215,7 +230,7 @@ export function useAnalysisSession() {
           const initJob = await submitRes.json();
           currentJobId = initJob.job_id;
           setJobId(currentJobId);
-          setLoadingStatus('Running HM-16.0 Encoder & Tracing Checkpoints...');
+          setLoadingStatus('Running HM-18.0 Encoder & Tracing Checkpoints...');
           jobInfo = await pollJobCompletion(currentJobId);
         }
       } catch (asyncErr) {
@@ -341,6 +356,11 @@ export function useAnalysisSession() {
     setRefSamples(null);
     setTransformData([]);
     setQuantData([]);
+    setFrameGopData([]);
+    setInterSearchData([]);
+    setReconPictureData([]);
+    setInloopFilterData(null);
+    setCabacEntropyData(null);
     setJobId(null);
     setErrorMsg(null);
     setCtuPartitionsMap({});
@@ -382,20 +402,10 @@ export function useAnalysisSession() {
     const cachedPart = ctuPartitionsMap[`${x}_${y}`];
     if (cachedPart) {
       setPartitionData(cachedPart);
-    } else if (jobId) {
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_01_PARTITION?ctu_x=${x}&ctu_y=${y}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((part) => {
-          if (part && Array.isArray(part.nodes) && part.nodes.length > 0) {
-            const normalized = { ...part, ctu_x: x, ctu_y: y };
-            setPartitionData(normalized);
-            setCtuPartitionsMap((prev) => ({
-              ...prev,
-              [`${x}_${y}`]: normalized,
-            }));
-          }
-        })
-        .catch(() => {});
+    }
+
+    if (jobId) {
+      fetchCheckpoints(jobId, x, y, cuSize).catch(() => {});
     }
 
     // Instant restoration from analysis cache if this CTU was previously analyzed
@@ -406,7 +416,7 @@ export function useAnalysisSession() {
       if (cachedAnalysis.jobId) setJobId(cachedAnalysis.jobId);
       setAnalyzedCtu({ x, y });
     }
-  }, [ctuPartitionsMap, ctuAnalysisCache, cuSize, jobId]);
+  }, [ctuPartitionsMap, ctuAnalysisCache, cuSize, jobId, fetchCheckpoints]);
 
   const hasDesync = data && ctuX !== null && ctuY !== null && (ctuX !== analyzedCtu.x || ctuY !== analyzedCtu.y);
 
@@ -439,6 +449,11 @@ export function useAnalysisSession() {
     setPartitionData,
     transformData,
     quantData,
+    frameGopData,
+    interSearchData,
+    reconPictureData,
+    inloopFilterData,
+    cabacEntropyData,
     selectedCu,
     ctuPartitionsMap,
     hasDesync,

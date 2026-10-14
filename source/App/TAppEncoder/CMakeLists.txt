@@ -46,6 +46,17 @@ endif()
 
 target_link_libraries( ${EXE_NAME} TLibCommon TLibEncoder TLibDecoder Utilities Threads::Threads ${ADDITIONAL_LIBS} )
 
+if( ENABLE_VISUAL_DUMP )
+  set( PROBE_SRC_FILES ${SRC_FILES} )
+  list( REMOVE_ITEM PROBE_SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/encmain.cpp" )
+  add_executable( TAppEncoderIntraProbe ${PROBE_SRC_FILES} ${CMAKE_SOURCE_DIR}/tools/intra_probe_main.cpp )
+  target_include_directories( TAppEncoderIntraProbe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} )
+  target_link_libraries( TAppEncoderIntraProbe TLibCommon TLibEncoder TLibDecoder Utilities Threads::Threads ${ADDITIONAL_LIBS} )
+  if( EXTENSION_360_VIDEO )
+    target_link_libraries( TAppEncoderIntraProbe Lib360 AppEncHelper360 )
+  endif()
+endif()
+
 if( EXTENSION_360_VIDEO )
   target_link_libraries( ${EXE_NAME} Lib360 AppEncHelper360 )
 endif()

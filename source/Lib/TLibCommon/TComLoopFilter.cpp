@@ -39,6 +39,7 @@
 #include "TComSlice.h"
 #include "TComMv.h"
 #include "TComTU.h"
+#include "VisualDumper.h"
 
 //! \ingroup TLibCommon
 //! \{
@@ -653,6 +654,28 @@ Void TComLoopFilter::xEdgeFilterLuma( TComDataCU* const pcCU, const UInt uiAbsZo
           bPartPNoFilter = bPartPNoFilter || (pcCUP->isLosslessCoded(uiPartPIdx) );
           bPartQNoFilter = bPartQNoFilter || (pcCUQ->isLosslessCoded(uiPartQIdx) );
         }
+
+#if ENABLE_VISUAL_DUMP
+        VisualDumper* pDumper = VisualDumper::getInstance();
+        const Int dumpPoc = pcCU->getSlice()->getPOC();
+        const Int dumpCtuX = pcCU->getCtuRsAddr() % pcCU->getPic()->getFrameWidthInCtus();
+        const Int dumpCtuY = pcCU->getCtuRsAddr() / pcCU->getPic()->getFrameWidthInCtus();
+        if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+        {
+          const Int edgeX = pcCU->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[uiBsAbsIdx]];
+          const Int edgeY = pcCU->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[uiBsAbsIdx]];
+          Pel pBuf[4], qBuf[4];
+          Pel* pCenter = piTmpSrc + iSrcStep * (iIdx * uiPelsInPart + iBlkIdx * 4);
+          for (Int k = 0; k < 4; ++k)
+          {
+            pBuf[k] = *(pCenter - (k + 1) * iOffset);
+            qBuf[k] = *(pCenter + k * iOffset);
+          }
+          pDumper->dumpDeblockingEdge(dumpPoc, dumpCtuX, dumpCtuY, edgeX, edgeY,
+                                     (Int)edgeDir, uiBs, iBeta, iTc,
+                                     pBuf, qBuf, 1);
+        }
+#endif
 
         if (d < iBeta)
         {

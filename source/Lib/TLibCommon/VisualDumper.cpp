@@ -1,467 +1,770 @@
 #include "VisualDumper.h"
+
 #include "TComDataCU.h"
 #include "TComPic.h"
 #include "TComSlice.h"
 #include "TComRom.h"
-#include <sys/stat.h>
-#include <sstream>
+
 #include <cstdlib>
+#include <cstdio>
+#include <string>
+#include <sys/stat.h>
 
-VisualDumper* VisualDumper::s_instance = NULL;
+namespace
+{
+Bool readIntegerEnv(const char* name, Int& value)
+{
+  const char* text = std::getenv(name);
+  if (text == NULL || *text == '\0')
+  {
+    return false;
+  }
 
-VisualDumper::VisualDumper() {
-    const char* envX = getenv("VISUAL_CTU_X");
-    const char* envY = getenv("VISUAL_CTU_Y");
-    const char* envCuSize = getenv("VISUAL_CU_SIZE");
-    const char* envExit = getenv("VISUAL_DUMP_EXIT");
+  char* end = NULL;
+  const long parsed = std::strtol(text, &end, 10);
+  if (end == text || *end != '\0' || parsed < -1 || parsed > 0x7fffffffL)
+  {
+    return false;
+  }
 
-    // Only enable if explicit CTU coordinate is passed in environment
-    m_enabled = (envX != NULL && envY != NULL);
-    m_exitOnFinish = (envExit != NULL) ? (atoi(envExit) != 0) : true;
-
-    m_targetPOC = 0;
-    m_targetCtuX = envX ? atoi(envX) : 0;
-    m_targetCtuY = envY ? atoi(envY) : 0;
-    m_targetCuSize = envCuSize ? atoi(envCuSize) : 8;
-    
-    m_currentPOC = -1;
-    m_currentCtuX = -1;
-    m_currentCtuY = -1;
-    m_dumpCount = 0;
-    m_intraSearchCount = 0;
-    m_intraRefDumped = false;
-
-    if (m_enabled) {
-        const char* envOutDir = getenv("VISUAL_OUTPUT_DIR");
-        if (envOutDir != NULL && std::string(envOutDir).length() > 0) {
-            m_outputDir = envOutDir;
-            if (m_outputDir[m_outputDir.length() - 1] != '/') {
-                m_outputDir += "/";
-            }
-        } else {
-            m_outputDir = "dump_data/";
-        }
-        mkdir(m_outputDir.c_str(), 0777);
-        m_outFile.open((m_outputDir + "trace.jsonl").c_str(), std::ios::out | std::ios::trunc);
-    }
+  value = static_cast<Int>(parsed);
+  return true;
 }
 
-VisualDumper::~VisualDumper() {
-    if (m_outFile.is_open()) {
-        m_outFile.close();
-    }
+inline std::string makeBlockKey(Int poc, Int ctuX, Int ctuY, Int cuDepth, Int absZscan, Int puIdx = 0, Int tuDepth = 0)
+{
+  char buf[64];
+  std::snprintf(buf, sizeof(buf), "%04d/%03d_%03d/%d/%04d/%d/%d", poc, ctuX, ctuY, cuDepth, absZscan, puIdx, tuDepth);
+  return std::string(buf);
 }
 
-Void VisualDumper::dumpIntraRefSamples(Int cuSize,
-                                       const Pel* pRefUnfilt, const Pel* pRefFilt, Int refStride,
-                                       Bool strongIntraSmoothing,
-                                       const Pel* pRefUnfiltU, const Pel* pRefUnfiltV,
-                                       const Pel* pRefFiltU, const Pel* pRefFiltV, Int refStrideC) {
-    if (!m_enabled || !m_outFile.is_open()) return;
-    
-    std::stringstream ss;
-    ss << "{";
-    ss << "\"poc\":" << m_currentPOC << ",";
-    ss << "\"ctu_x\":" << m_currentCtuX << ",";
-    ss << "\"ctu_y\":" << m_currentCtuY << ",";
-    ss << "\"cu_size\":" << cuSize << ",";
-    ss << "\"event\":\"INTRA_REF_SAMPLES\",";
-    ss << "\"strong_smoothing\":" << (strongIntraSmoothing ? "true" : "false") << ",";
+template<typename T>
+Void writeArray(std::ostream& out, const T* values, Int width, Int height, Int stride)
+{
+  out << '[';
+  Bool first = true;
+  if (values != NULL)
+  {
+    for (Int y = 0; y < height; ++y)
+    {
+      for (Int x = 0; x < width; ++x)
+      {
+        if (!first) out << ',';
+        out << values[y * stride + x];
+        first = false;
+      }
+    }
+  }
+  out << ']';
+}
 
-    // Unfiltered Luma Top (2N + 1)
-    ss << "\"ref_unfilt_top\":[";
-    if (pRefUnfilt) {
-        for(int i = 0; i <= 2 * cuSize; i++) ss << pRefUnfilt[i] << (i < 2 * cuSize ? "," : "");
-    }
-    ss << "],";
+Void dumpCUNode(std::ostream& out, TComDataCU* cu, UInt absPartIdx, UInt depth, Bool& first)
+{
+  const TComSPS& sps = *(cu->getSlice()->getSPS());
+  const UInt width = sps.getMaxCUWidth() >> depth;
+  const UInt height = sps.getMaxCUHeight() >> depth;
+  const UInt x = cu->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[absPartIdx]];
+  const UInt y = cu->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[absPartIdx]];
 
-    // Unfiltered Luma Left (2N + 1)
-    ss << "\"ref_unfilt_left\":[";
-    if (pRefUnfilt) {
-        for(int i = 0; i <= 2 * cuSize; i++) ss << pRefUnfilt[i * refStride] << (i < 2 * cuSize ? "," : "");
-    }
-    ss << "],";
+  if (x >= sps.getPicWidthInLumaSamples() || y >= sps.getPicHeightInLumaSamples())
+  {
+    return;
+  }
 
-    // Filtered Luma Top (2N + 1)
-    ss << "\"ref_filt_top\":[";
-    if (pRefFilt) {
-        for(int i = 0; i <= 2 * cuSize; i++) ss << pRefFilt[i] << (i < 2 * cuSize ? "," : "");
-    }
-    ss << "],";
+  const UChar cuDepth = cu->getDepth(absPartIdx);
+  const Bool isSplit = (depth < cuDepth) && (depth < sps.getLog2DiffMaxMinCodingBlockSize());
+  if (!first) out << ',';
+  first = false;
 
-    // Filtered Luma Left (2N + 1)
-    ss << "\"ref_filt_left\":[";
-    if (pRefFilt) {
-        for(int i = 0; i <= 2 * cuSize; i++) ss << pRefFilt[i * refStride] << (i < 2 * cuSize ? "," : "");
-    }
-    ss << "],";
+  out << "{\"depth\":" << depth
+      << ",\"x\":" << x
+      << ",\"y\":" << y
+      << ",\"width\":" << width
+      << ",\"height\":" << height
+      << ",\"split\":" << (isSplit ? "true" : "false");
 
-    Int cSize = cuSize / 2;
-    Int rStrideC = (refStrideC > 0) ? refStrideC : (2 * cSize + 1);
+  if (!isSplit)
+  {
+    const PredMode mode = cu->getPredictionMode(absPartIdx);
+    const char* modeName = mode == MODE_INTRA ? "INTRA" : (mode == MODE_INTER ? "INTER" : "SKIP");
+    out << ",\"mode\":\"" << modeName << '\"';
+    if (mode == MODE_INTRA)
+    {
+      out << ",\"intra_dir\":" << static_cast<Int>(cu->getIntraDir(CHANNEL_TYPE_LUMA, absPartIdx));
+    }
+    out << ",\"qp\":" << static_cast<Int>(cu->getQP(absPartIdx));
+    out << ",\"cost\":" << cu->getTotalCost();
+  }
+  out << '}';
 
-    // Chroma U Unfiltered Top / Left
-    ss << "\"ref_unfilt_top_u\":[";
-    if (pRefUnfiltU) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefUnfiltU[i] << (i < 2 * cSize ? "," : "");
+  if (isSplit)
+  {
+    const UInt quarterParts = (cu->getPic()->getNumPartitionsInCtu() >> (depth << 1)) >> 2;
+    for (UInt child = 0; child < 4; ++child)
+    {
+      dumpCUNode(out, cu, absPartIdx + child * quarterParts, depth + 1, first);
     }
-    ss << "],";
-    ss << "\"ref_unfilt_left_u\":[";
-    if (pRefUnfiltU) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefUnfiltU[i * rStrideC] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
+  }
+}
+}
 
-    // Chroma V Unfiltered Top / Left
-    ss << "\"ref_unfilt_top_v\":[";
-    if (pRefUnfiltV) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefUnfiltV[i] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
-    ss << "\"ref_unfilt_left_v\":[";
-    if (pRefUnfiltV) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefUnfiltV[i * rStrideC] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
+VisualDumper::VisualDumper()
+  : m_enabled(false),
+    m_targetPOC(-1),
+    m_targetCtuX(0),
+    m_targetCtuY(0),
+    m_targetCuSize(8),
+    m_filterPuPosition(false),
+    m_targetPuX(0),
+    m_targetPuY(0)
+{
+  readIntegerEnv("VISUAL_POC", m_targetPOC);
+  const Bool hasX = readIntegerEnv("VISUAL_CTU_X", m_targetCtuX);
+  const Bool hasY = readIntegerEnv("VISUAL_CTU_Y", m_targetCtuY);
+  Int requestedCuSize = m_targetCuSize;
+  const char* cuSizeText = std::getenv("VISUAL_CU_SIZE");
+  const Bool validCuSize = cuSizeText == NULL
+                        || (readIntegerEnv("VISUAL_CU_SIZE", requestedCuSize) && requestedCuSize >= 0);
+  const char* puXText = std::getenv("VISUAL_PU_X");
+  const char* puYText = std::getenv("VISUAL_PU_Y");
+  const Bool hasPuX = readIntegerEnv("VISUAL_PU_X", m_targetPuX);
+  const Bool hasPuY = readIntegerEnv("VISUAL_PU_Y", m_targetPuY);
+  const Bool validPuX = puXText == NULL || hasPuX;
+  const Bool validPuY = puYText == NULL || hasPuY;
+  m_enabled = hasX && hasY && validCuSize && validPuX && validPuY && (hasPuX == hasPuY);
+  if (!m_enabled)
+  {
+    return;
+  }
+  m_filterPuPosition = hasPuX && hasPuY;
+  m_targetCuSize = requestedCuSize;
 
-    // Chroma U Filtered Top / Left
-    ss << "\"ref_filt_top_u\":[";
-    if (pRefFiltU) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefFiltU[i] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
-    ss << "\"ref_filt_left_u\":[";
-    if (pRefFiltU) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefFiltU[i * rStrideC] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
+  const char* configuredOutputDir = std::getenv("VISUAL_OUTPUT_DIR");
+  std::string outputDir = (configuredOutputDir != NULL && *configuredOutputDir != '\0')
+                        ? configuredOutputDir : "dump_data";
+  if (outputDir[outputDir.length() - 1] != '/')
+  {
+    outputDir += '/';
+  }
+  mkdir(outputDir.c_str(), 0777);
+  m_outFile.open((outputDir + "trace.jsonl").c_str(), std::ios::out | std::ios::trunc);
+  m_enabled = m_outFile.is_open();
+}
 
-    // Chroma V Filtered Top / Left
-    ss << "\"ref_filt_top_v\":[";
-    if (pRefFiltV) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefFiltV[i] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
-    ss << "\"ref_filt_left_v\":[";
-    if (pRefFiltV) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefFiltV[i * rStrideC] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "]";
-
-    ss << "}\n";
-    m_outFile << ss.str();
+VisualDumper::~VisualDumper()
+{
+  if (m_outFile.is_open())
+  {
     m_outFile.flush();
-    m_intraRefDumped = true;
+    m_outFile.close();
+  }
 }
 
-Void VisualDumper::dumpIntraSearchStep(Int cuSize, Int mode, Double cost, Bool bUseFilter,
-                                       const Pel* pOrg, const Pel* pPred, const Pel* pResi, Int stride,
-                                       const Pel* pRef, Int refStride,
-                                       const Pel* pOrgU, const Pel* pOrgV,
-                                       const Pel* pPredU, const Pel* pPredV,
-                                       Int strideC, Int predStrideC,
-                                       const Pel* pRefU, const Pel* pRefV) {
-    if (!m_enabled || !m_outFile.is_open() || !pOrg || !pPred) return;
-    
-    std::stringstream ss;
-    ss << "{";
-    ss << "\"poc\":" << m_currentPOC << ",";
-    ss << "\"ctu_x\":" << m_currentCtuX << ",";
-    ss << "\"ctu_y\":" << m_currentCtuY << ",";
-    ss << "\"cu_size\":" << cuSize << ",";
-    ss << "\"event\":\"RDO_INTRA_SEARCH\",";
-    ss << "\"mode\":" << mode << ",";
-    ss << "\"cost\":" << cost << ",";
-    ss << "\"b_use_filter\":" << (bUseFilter ? "true" : "false") << ",";
-    
-    // Dump Original
-    ss << "\"org_data\":[";
-    for(Int y=0; y<cuSize; y++) {
-        for(Int x=0; x<cuSize; x++) {
-            ss << pOrg[y*stride + x];
-            if(y != cuSize-1 || x != cuSize-1) ss << ",";
-        }
-    }
-    ss << "],";
-    
-    // Dump Prediction
-    ss << "\"pred_data\":[";
-    for(Int y=0; y<cuSize; y++) {
-        for(Int x=0; x<cuSize; x++) {
-            ss << pPred[y*stride + x];
-            if(y != cuSize-1 || x != cuSize-1) ss << ",";
-        }
-    }
-    ss << "],";
-    
-    // Dump Residual (Org - Pred or use pResi if available)
-    ss << "\"resi_data\":[";
-    for(Int y=0; y<cuSize; y++) {
-        for(Int x=0; x<cuSize; x++) {
-            Int resi = pResi ? pResi[y*stride + x] : (pOrg[y*stride + x] - pPred[y*stride + x]);
-            ss << resi;
-            if(y != cuSize-1 || x != cuSize-1) ss << ",";
-        }
-    }
-    ss << "],";
-
-    // Dump Reference Pixels (Top)
-    ss << "\"ref_top\":[";
-    if (pRef) {
-        for(int i = 0; i <= 2 * cuSize; i++) {
-            ss << pRef[i] << (i < 2 * cuSize ? "," : "");
-        }
-    }
-    ss << "],";
-
-    // Dump Reference Pixels (Left)
-    ss << "\"ref_left\":[";
-    if (pRef) {
-        for(int i = 0; i <= 2 * cuSize; i++) {
-            ss << pRef[i * refStride] << (i < 2 * cuSize ? "," : "");
-        }
-    }
-    ss << "],";
-    
-    Int cSize = cuSize / 2;
-    Int pStrideC = (predStrideC > 0) ? predStrideC : strideC;
-
-    // Dump Original U (Cb)
-    ss << "\"org_u\":[";
-    if (pOrgU) {
-        for(Int y=0; y<cSize; y++) {
-            for(Int x=0; x<cSize; x++) {
-                ss << pOrgU[y*strideC + x];
-                if(y != cSize-1 || x != cSize-1) ss << ",";
-            }
-        }
-    }
-    ss << "],";
-    
-    // Dump Original V (Cr)
-    ss << "\"org_v\":[";
-    if (pOrgV) {
-        for(Int y=0; y<cSize; y++) {
-            for(Int x=0; x<cSize; x++) {
-                ss << pOrgV[y*strideC + x];
-                if(y != cSize-1 || x != cSize-1) ss << ",";
-            }
-        }
-    }
-    ss << "],";
-    
-    // Dump Prediction U (Cb)
-    ss << "\"pred_u\":[";
-    if (pPredU) {
-        for(Int y=0; y<cSize; y++) {
-            for(Int x=0; x<cSize; x++) {
-                ss << pPredU[y*pStrideC + x];
-                if(y != cSize-1 || x != cSize-1) ss << ",";
-            }
-        }
-    }
-    ss << "],";
-    
-    // Dump Prediction V (Cr)
-    ss << "\"pred_v\":[";
-    if (pPredV) {
-        for(Int y=0; y<cSize; y++) {
-            for(Int x=0; x<cSize; x++) {
-                ss << pPredV[y*pStrideC + x];
-                if(y != cSize-1 || x != cSize-1) ss << ",";
-            }
-        }
-    }
-    ss << "],";
-    
-    // Dump Residual U (Cb)
-    ss << "\"resi_u\":[";
-    if (pOrgU && pPredU) {
-        for(Int y=0; y<cSize; y++) {
-            for(Int x=0; x<cSize; x++) {
-                ss << (pOrgU[y*strideC + x] - pPredU[y*pStrideC + x]);
-                if(y != cSize-1 || x != cSize-1) ss << ",";
-            }
-        }
-    }
-    ss << "],";
-    
-    // Dump Residual V (Cr)
-    ss << "\"resi_v\":[";
-    if (pOrgV && pPredV) {
-        for(Int y=0; y<cSize; y++) {
-            for(Int x=0; x<cSize; x++) {
-                ss << (pOrgV[y*strideC + x] - pPredV[y*pStrideC + x]);
-                if(y != cSize-1 || x != cSize-1) ss << ",";
-            }
-        }
-    }
-    ss << "],";
-    
-    // Dump Ref U Top
-    ss << "\"ref_top_u\":[";
-    if (pRefU) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefU[i] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
-    
-    // Dump Ref U Left
-    ss << "\"ref_left_u\":[";
-    if (pRefU) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefU[i * (2 * cSize + 1)] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
-    
-    // Dump Ref V Top
-    ss << "\"ref_top_v\":[";
-    if (pRefV) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefV[i] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "],";
-    
-    // Dump Ref V Left
-    ss << "\"ref_left_v\":[";
-    if (pRefV) {
-        for(int i = 0; i <= 2 * cSize; i++) ss << pRefV[i * (2 * cSize + 1)] << (i < 2 * cSize ? "," : "");
-    }
-    ss << "]";
-    
-    ss << "}\n";
-    
-    m_outFile << ss.str();
-    m_outFile.flush(); // ensure it's written immediately
-
-    m_intraSearchCount++;
+Void VisualDumper::dumpFrameGOP(Int poc, Int sliceType, Int qp, Int temporalId,
+                                Int numRefL0, const Int* pRefL0,
+                                Int numRefL1, const Int* pRefL1)
+{
+  if (!m_enabled || !m_outFile.is_open())
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  const char* sliceTypeName = (sliceType == B_SLICE ? "B" : (sliceType == P_SLICE ? "P" : "I"));
+  m_outFile << "{\"event\":\"FRAME_GOP\",\"stage\":\"CP_00_FRAME_GOP\""
+            << ",\"poc\":" << poc
+            << ",\"slice_type\":\"" << sliceTypeName << '\"'
+            << ",\"qp\":" << qp
+            << ",\"temporal_id\":" << temporalId
+            << ",\"ref_l0\":";
+  writeArray(m_outFile, pRefL0, numRefL0, 1, numRefL0);
+  m_outFile << ",\"ref_l1\":";
+  writeArray(m_outFile, pRefL1, numRefL1, 1, numRefL1);
+  m_outFile << "}\n";
 }
 
-static Void dumpCUNode(std::stringstream& ss, TComDataCU* pcCU, UInt absPartIdx, UInt depth, Bool& first) {
-    const TComSPS& sps = *(pcCU->getSlice()->getSPS());
-    UInt maxCUWidth = sps.getMaxCUWidth();
-    UInt maxCUHeight = sps.getMaxCUHeight();
-    UInt curW = maxCUWidth >> depth;
-    UInt curH = maxCUHeight >> depth;
-    UInt x = pcCU->getCUPelX() + g_auiRasterToPelX[ g_auiZscanToRaster[absPartIdx] ];
-    UInt y = pcCU->getCUPelY() + g_auiRasterToPelY[ g_auiZscanToRaster[absPartIdx] ];
-
-    if (x >= sps.getPicWidthInLumaSamples() || y >= sps.getPicHeightInLumaSamples()) return;
-
-    UChar cuDepth = pcCU->getDepth(absPartIdx);
-    Bool isSplit = (depth < cuDepth) && (depth < sps.getLog2DiffMaxMinCodingBlockSize());
-
-    if (!first) ss << ",";
-    first = false;
-
-    ss << "{";
-    ss << "\"depth\":" << depth << ",";
-    ss << "\"x\":" << x << ",";
-    ss << "\"y\":" << y << ",";
-    ss << "\"width\":" << curW << ",";
-    ss << "\"height\":" << curH << ",";
-    ss << "\"split\":" << (isSplit ? "true" : "false");
-
-    if (!isSplit) {
-        PredMode predMode = pcCU->getPredictionMode(absPartIdx);
-        const char* modeStr = (predMode == MODE_INTRA) ? "INTRA" : ((predMode == MODE_INTER) ? "INTER" : "SKIP");
-        ss << ",\"mode\":\"" << modeStr << "\"";
-        if (predMode == MODE_INTRA) {
-            ss << ",\"intra_dir\":" << (Int)pcCU->getIntraDir(CHANNEL_TYPE_LUMA, absPartIdx);
-        }
-        ss << ",\"qp\":" << (Int)pcCU->getQP(absPartIdx);
-        ss << ",\"cost\":" << pcCU->getTotalCost();
-    }
-    ss << "}";
-
-    if (isSplit) {
-        UInt qNumParts = ( pcCU->getPic()->getNumPartitionsInCtu() >> (depth << 1) ) >> 2;
-        for (UInt i = 0; i < 4; i++) {
-            dumpCUNode(ss, pcCU, absPartIdx + i * qNumParts, depth + 1, first);
-        }
-    }
+Void VisualDumper::dumpCuRdoDecision(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
+                                     Double costNoSplit, Double costSplit, Bool splitDecision,
+                                     Int bestMode)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"CU_RDO_DECISION\",\"stage\":\"CP_01_CU_QUADTREE_RDO\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"cu_x\":" << cuX << ",\"cu_y\":" << cuY
+            << ",\"cu_size\":" << cuSize << ",\"depth\":" << depth
+            << ",\"cost_nosplit\":" << costNoSplit
+            << ",\"cost_split\":" << costSplit
+            << ",\"split_decision\":" << (splitDecision ? "true" : "false")
+            << ",\"best_mode\":" << bestMode
+            << "}\n";
 }
 
-Void VisualDumper::dumpPartitionTree(TComDataCU* pcCU) {
-    if (!m_enabled || !m_outFile.is_open() || !pcCU) return;
-    const TComSPS& sps = *(pcCU->getSlice()->getSPS());
-    UInt maxCUWidth = sps.getMaxCUWidth();
-    Int poc = pcCU->getSlice()->getPOC();
-    Int ctuX = pcCU->getCUPelX() / maxCUWidth;
-    Int ctuY = pcCU->getCUPelY() / maxCUWidth;
+Void VisualDumper::dumpIntraRefSamples(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                                       const Pel* refUnfiltered, const Pel* refFiltered,
+                                       Int refStride, Bool strongSmoothingEligible,
+                                       const Pel* pRefUnfiltU, const Pel* pRefFiltU,
+                                       const Pel* pRefUnfiltV, const Pel* pRefFiltV,
+                                       Int refStrideC)
+{
+  if (!isActive(poc, ctuX, ctuY, puX, puY, puSize) || refStride <= 0)
+  {
+    return;
+  }
 
-    if (poc != m_targetPOC) return;
+  const Int cSize = (puSize >> 1);
+  const Int cStride = (refStrideC > 0 ? refStrideC : (2 * cSize + 1));
 
-    std::stringstream ss;
-    ss << "{";
-    ss << "\"poc\":" << poc << ",";
-    ss << "\"ctu_x\":" << ctuX << ",";
-    ss << "\"ctu_y\":" << ctuY << ",";
-    ss << "\"cu_size\":" << maxCUWidth << ",";
-    ss << "\"event\":\"CTU_PARTITION\",";
-    ss << "\"nodes\":[";
-    Bool first = true;
-    dumpCUNode(ss, pcCU, 0, 0, first);
-    ss << "]}\n";
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"INTRA_REF_SAMPLES\",\"stage\":\"CP_02_INTRA_REF\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_size\":" << puSize
+            << ",\"cu_size\":" << puSize
+            << ",\"strong_smoothing_eligible\":" << (strongSmoothingEligible ? "true" : "false")
+            << ",\"ref_unfilt_top\":";
+  writeArray(m_outFile, refUnfiltered, 2 * puSize + 1, 1, 2 * puSize + 1);
+  m_outFile << ",\"ref_unfilt_left\":";
+  writeArray(m_outFile, refUnfiltered, 1, 2 * puSize + 1, refStride);
+  m_outFile << ",\"ref_filt_top\":";
+  writeArray(m_outFile, refFiltered, 2 * puSize + 1, 1, 2 * puSize + 1);
+  m_outFile << ",\"ref_filt_left\":";
+  writeArray(m_outFile, refFiltered, 1, 2 * puSize + 1, refStride);
 
-    m_outFile << ss.str();
-    m_outFile.flush();
+  if (pRefUnfiltU != NULL && pRefFiltU != NULL)
+  {
+    m_outFile << ",\"ref_unfilt_top_u\":";
+    writeArray(m_outFile, pRefUnfiltU, 2 * cSize + 1, 1, 2 * cSize + 1);
+    m_outFile << ",\"ref_unfilt_left_u\":";
+    writeArray(m_outFile, pRefUnfiltU, 1, 2 * cSize + 1, cStride);
+    m_outFile << ",\"ref_filt_top_u\":";
+    writeArray(m_outFile, pRefFiltU, 2 * cSize + 1, 1, 2 * cSize + 1);
+    m_outFile << ",\"ref_filt_left_u\":";
+    writeArray(m_outFile, pRefFiltU, 1, 2 * cSize + 1, cStride);
+  }
+  if (pRefUnfiltV != NULL && pRefFiltV != NULL)
+  {
+    m_outFile << ",\"ref_unfilt_top_v\":";
+    writeArray(m_outFile, pRefUnfiltV, 2 * cSize + 1, 1, 2 * cSize + 1);
+    m_outFile << ",\"ref_unfilt_left_v\":";
+    writeArray(m_outFile, pRefUnfiltV, 1, 2 * cSize + 1, cStride);
+    m_outFile << ",\"ref_filt_top_v\":";
+    writeArray(m_outFile, pRefFiltV, 2 * cSize + 1, 1, 2 * cSize + 1);
+    m_outFile << ",\"ref_filt_left_v\":";
+    writeArray(m_outFile, pRefFiltV, 1, 2 * cSize + 1, cStride);
+  }
+  m_outFile << "}\n";
 }
 
-Void VisualDumper::dumpTransformQuant(Int poc, Int ctuX, Int ctuY, Int tuX, Int tuY, Int tuWidth, Int tuHeight,
-                                     Int compID, Int qp,
-                                     const Pel* pResi, Int resiStride,
-                                     const TCoeff* pDctCoeff, const TCoeff* pQCoeff) {
-    if (!m_enabled || !m_outFile.is_open()) return;
-    if (poc != m_targetPOC || ctuX != m_targetCtuX || ctuY != m_targetCtuY) return;
-    Int expectedWidth = (compID == 0) ? m_targetCuSize : (m_targetCuSize >> 1);
-    if (tuWidth != expectedWidth) return;
+Void VisualDumper::dumpIntraSearchStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                                       Int mode, Double fastCost, Bool useFilter,
+                                       const Pel* org, const Pel* pred, Int stride,
+                                       const Pel* ref, Int refStride,
+                                       const Pel* pOrgU, const Pel* pPredU,
+                                       const Pel* pOrgV, const Pel* pPredV,
+                                       Int strideC)
+{
+  if (!isActive(poc, ctuX, ctuY, puX, puY, puSize) || org == NULL || pred == NULL || stride < puSize)
+  {
+    return;
+  }
 
-    std::stringstream ss;
-    ss << "{";
-    ss << "\"poc\":" << poc << ",";
-    ss << "\"ctu_x\":" << ctuX << ",";
-    ss << "\"ctu_y\":" << ctuY << ",";
-    ss << "\"tu_x\":" << tuX << ",";
-    ss << "\"tu_y\":" << tuY << ",";
-    ss << "\"width\":" << tuWidth << ",";
-    ss << "\"height\":" << tuHeight << ",";
-    ss << "\"cu_size\":" << m_targetCuSize << ",";
-    ss << "\"event\":\"TRANSFORM_QUANT\",";
-    const char* compNames[] = {"Y", "Cb", "Cr"};
-    ss << "\"component\":\"" << (compID >= 0 && compID < 3 ? compNames[compID] : "Y") << "\",";
-    ss << "\"qp\":" << qp << ",";
+  const Int cSize = (puSize >> 1);
+  const Int effStrideC = (strideC > 0 ? strideC : cSize);
 
-    ss << "\"resi_matrix\":[";
-    if (pResi) {
-        for (Int y = 0; y < tuHeight; y++) {
-            for (Int x = 0; x < tuWidth; x++) {
-                ss << pResi[y * resiStride + x];
-                if (y != tuHeight - 1 || x != tuWidth - 1) ss << ",";
-            }
-        }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"RDO_INTRA_SEARCH\",\"event_type\":\"INTRA_FAST_MODE\",\"stage\":\"CP_02_INTRA_SEARCH\",\"sub_stage\":\"RMD\","
+            << "\"distortion\":\"Hadamard\",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_size\":" << puSize
+            << ",\"cu_size\":" << puSize
+            << ",\"mode\":" << mode
+            << ",\"cost\":" << fastCost
+            << ",\"fast_cost\":" << fastCost
+            << ",\"b_use_filter\":" << (useFilter ? "true" : "false")
+            << ",\"use_filtered_references\":" << (useFilter ? "true" : "false")
+            << ",\"org_data\":";
+  writeArray(m_outFile, org, puSize, puSize, stride);
+  m_outFile << ",\"pred_data\":";
+  writeArray(m_outFile, pred, puSize, puSize, stride);
+  m_outFile << ",\"org_y\":";
+  writeArray(m_outFile, org, puSize, puSize, stride);
+  m_outFile << ",\"pred_y\":";
+  writeArray(m_outFile, pred, puSize, puSize, stride);
+  m_outFile << ",\"resi_data\":[";
+  Bool first = true;
+  for (Int y = 0; y < puSize; ++y)
+  {
+    for (Int x = 0; x < puSize; ++x)
+    {
+      if (!first) m_outFile << ',';
+      m_outFile << (static_cast<Int>(org[y * stride + x]) - static_cast<Int>(pred[y * stride + x]));
+      first = false;
     }
-    ss << "],";
-
-    Int sigCount = 0;
-    ss << "\"dct_coeff\":[";
-    if (pDctCoeff) {
-        for (Int i = 0; i < tuWidth * tuHeight; i++) {
-            ss << pDctCoeff[i];
-            if (i < tuWidth * tuHeight - 1) ss << ",";
-        }
+  }
+  m_outFile << "],\"residual_y\":[";
+  first = true;
+  for (Int y = 0; y < puSize; ++y)
+  {
+    for (Int x = 0; x < puSize; ++x)
+    {
+      if (!first) m_outFile << ',';
+      m_outFile << (static_cast<Int>(org[y * stride + x]) - static_cast<Int>(pred[y * stride + x]));
+      first = false;
     }
-    ss << "],";
+  }
+  m_outFile << "],\"ref_top\":";
+  writeArray(m_outFile, ref, 2 * puSize + 1, 1, 2 * puSize + 1);
+  m_outFile << ",\"ref_left\":";
+  writeArray(m_outFile, ref, 1, 2 * puSize + 1, refStride);
 
-    ss << "\"quant_coeff\":[";
-    if (pQCoeff) {
-        for (Int i = 0; i < tuWidth * tuHeight; i++) {
-            ss << pQCoeff[i];
-            if (pQCoeff[i] != 0) sigCount++;
-            if (i < tuWidth * tuHeight - 1) ss << ",";
-        }
+  if (pOrgU != NULL && pPredU != NULL && cSize >= 2)
+  {
+    m_outFile << ",\"org_u\":";
+    writeArray(m_outFile, pOrgU, cSize, cSize, effStrideC);
+    m_outFile << ",\"pred_u\":";
+    writeArray(m_outFile, pPredU, cSize, cSize, effStrideC);
+    m_outFile << ",\"resi_u\":[";
+    first = true;
+    for (Int y = 0; y < cSize; ++y)
+    {
+      for (Int x = 0; x < cSize; ++x)
+      {
+        if (!first) m_outFile << ',';
+        m_outFile << (static_cast<Int>(pOrgU[y * effStrideC + x]) - static_cast<Int>(pPredU[y * effStrideC + x]));
+        first = false;
+      }
     }
-    ss << "],";
-    ss << "\"sig_coeff_count\":" << sigCount;
-    ss << "}\n";
-
-    m_outFile << ss.str();
-    m_outFile.flush();
+    m_outFile << ']';
+  }
+  if (pOrgV != NULL && pPredV != NULL && cSize >= 2)
+  {
+    m_outFile << ",\"org_v\":";
+    writeArray(m_outFile, pOrgV, cSize, cSize, effStrideC);
+    m_outFile << ",\"pred_v\":";
+    writeArray(m_outFile, pPredV, cSize, cSize, effStrideC);
+    m_outFile << ",\"resi_v\":[";
+    first = true;
+    for (Int y = 0; y < cSize; ++y)
+    {
+      for (Int x = 0; x < cSize; ++x)
+      {
+        if (!first) m_outFile << ',';
+        m_outFile << (static_cast<Int>(pOrgV[y * effStrideC + x]) - static_cast<Int>(pPredV[y * effStrideC + x]));
+        first = false;
+      }
+    }
+    m_outFile << ']';
+  }
+  m_outFile << "}\n";
 }
 
+Void VisualDumper::dumpIntraMpm(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                                Int mpm0, Int mpm1, Int mpm2, Int leftMode, Int aboveMode,
+                                const UInt* pTopKModes, Int numTopK,
+                                const UInt* pFullCandModes, Int numFullCand)
+{
+  if (!isActive(poc, ctuX, ctuY, puX, puY, puSize))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"INTRA_MPM_DERIVATION\",\"stage\":\"CP_02_INTRA_SEARCH\",\"sub_stage\":\"MPM\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_size\":" << puSize
+            << ",\"mpm_modes\":[" << mpm0 << ',' << mpm1 << ',' << mpm2 << ']'
+            << ",\"left_mode\":" << leftMode
+            << ",\"above_mode\":" << aboveMode
+            << ",\"top_k_modes\":";
+  writeArray(m_outFile, pTopKModes, numTopK, 1, numTopK);
+  m_outFile << ",\"candidate_modes\":";
+  writeArray(m_outFile, pFullCandModes, numFullCand, 1, numFullCand);
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                                        Int candRank, Int mode, Double cost, Distortion dist, Double bits,
+                                        Bool isWinner,
+                                        const Pel* pReco, const Pel* pResi, const Pel* pOrg, const Pel* pPred,
+                                        Int stride)
+{
+  if (!isActive(poc, ctuX, ctuY, puX, puY, puSize))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"INTRA_FULL_RDO\",\"stage\":\"CP_02_INTRA_SEARCH\",\"sub_stage\":\"FULL_RDO\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_size\":" << puSize
+            << ",\"mode\":" << mode
+            << ",\"rank_rdo\":" << candRank
+            << ",\"cost_rdo\":" << cost
+            << ",\"sse\":" << dist
+            << ",\"bits\":" << bits
+            << ",\"is_winner\":" << (isWinner ? "true" : "false");
+  if (pReco != NULL && stride >= puSize)
+  {
+    m_outFile << ",\"reconstructed_data\":";
+    writeArray(m_outFile, pReco, puSize, puSize, stride);
+  }
+  if (pResi != NULL && stride >= puSize)
+  {
+    m_outFile << ",\"reconstructed_resi\":";
+    writeArray(m_outFile, pResi, puSize, puSize, stride);
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpIntraChromaSearch(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                                         Int bestLumaMode, Int numModes,
+                                         const UInt* pModeList, const Double* pCosts,
+                                         const Distortion* pDists, const UInt* pBits,
+                                         Int bestChromaMode, Double bestChromaCost, Distortion bestChromaDist,
+                                         const Pel* pOrgU, const Pel* pPredU, const Pel* pResiU, const Pel* pRecoU,
+                                         const Pel* pOrgV, const Pel* pPredV, const Pel* pResiV, const Pel* pRecoV,
+                                         Int strideC, Int cWidth, Int cHeight)
+{
+  if (!isActive(poc, ctuX, ctuY, puX, puY, puSize))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"INTRA_CHROMA_SEARCH\",\"stage\":\"CP_02_INTRA_SEARCH\",\"sub_stage\":\"CHROMA\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_size\":" << puSize
+            << ",\"best_luma_mode\":" << bestLumaMode
+            << ",\"best_chroma_mode\":" << bestChromaMode
+            << ",\"best_chroma_cost\":" << bestChromaCost
+            << ",\"best_chroma_dist\":" << bestChromaDist
+            << ",\"candidates\":[";
+  for (Int i = 0; i < numModes; ++i)
+  {
+    if (i > 0) m_outFile << ',';
+    m_outFile << "{\"mode\":" << pModeList[i]
+              << ",\"cost\":" << pCosts[i]
+              << ",\"dist\":" << pDists[i]
+              << ",\"bits\":" << pBits[i]
+              << ",\"rank\":" << (i + 1)
+              << '}';
+  }
+  m_outFile << ']';
+
+  if (pRecoU != NULL && strideC >= cWidth)
+  {
+    m_outFile << ",\"reco_u\":";
+    writeArray(m_outFile, pRecoU, cWidth, cHeight, strideC);
+  }
+  if (pRecoV != NULL && strideC >= cWidth)
+  {
+    m_outFile << ",\"reco_v\":";
+    writeArray(m_outFile, pRecoV, cWidth, cHeight, strideC);
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpPartitionTree(TComDataCU* cu)
+{
+  if (!m_enabled || !m_outFile.is_open() || cu == NULL)
+  {
+    return;
+  }
+
+  const TComSPS& sps = *(cu->getSlice()->getSPS());
+  const Int ctuX = cu->getCUPelX() / sps.getMaxCUWidth();
+  const Int ctuY = cu->getCUPelY() / sps.getMaxCUHeight();
+  const Int poc = cu->getSlice()->getPOC();
+  if (m_targetPOC >= 0 && poc != m_targetPOC)
+  {
+    return;
+  }
+
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"CTU_PARTITION\",\"stage\":\"CP_01_CU_QUADTREE_RDO\",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"ctu_size\":" << sps.getMaxCUWidth() << ",\"nodes\":[";
+  Bool first = true;
+  dumpCUNode(m_outFile, cu, 0, 0, first);
+  m_outFile << "]}\n";
+}
+
+Void VisualDumper::dumpTransformQuant(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY,
+                                      Int cuWidth, Int cuHeight, Int cuDepth, Int predMode, Int intraMode,
+                                      Int tuX, Int tuY, Int tuWidth, Int tuHeight, Int tuDepth, Int compID,
+                                      ChromaFormat chromaFormat, Int qp,
+                                      const Pel* residual, Int residualStride,
+                                      const TCoeff* transformCoeff, const TCoeff* quantCoeff,
+                                      const TCoeff* dequantCoeff,
+                                      const Pel* invResidual, Int invResidualStride,
+                                      Bool isDST, Bool isTransformSkip)
+{
+  const ComponentID componentId = static_cast<ComponentID>(compID);
+  const Int maxTransformWidth = m_targetCuSize >> getComponentScaleX(componentId, chromaFormat);
+  const Int maxTransformHeight = m_targetCuSize >> getComponentScaleY(componentId, chromaFormat);
+  if (!m_enabled || !m_outFile.is_open()
+      || (m_targetPOC >= 0 && poc != m_targetPOC)
+      || (m_targetCtuX >= 0 && ctuX != m_targetCtuX)
+      || (m_targetCtuY >= 0 && ctuY != m_targetCtuY)
+      || cuWidth != m_targetCuSize || cuHeight != m_targetCuSize
+      || tuWidth <= 0 || tuHeight <= 0
+      || (m_targetCuSize > 0 && (tuWidth > maxTransformWidth || tuHeight > maxTransformHeight)))
+  {
+    return;
+  }
+  if (m_filterPuPosition)
+  {
+    if (cuX != m_targetPuX || cuY != m_targetPuY)
+    {
+      return;
+    }
+    const Int puX = m_targetPuX >> getComponentScaleX(componentId, chromaFormat);
+    const Int puY = m_targetPuY >> getComponentScaleY(componentId, chromaFormat);
+    if (tuX < puX || tuY < puY || tuX + tuWidth > puX + maxTransformWidth
+        || tuY + tuHeight > puY + maxTransformHeight)
+    {
+      return;
+    }
+  }
+
+  const char* componentName = compID == 0 ? "Y" : (compID == 1 ? "Cb" : "Cr");
+  const char* predictionModeName = predMode == MODE_INTRA ? "INTRA"
+                                 : (predMode == MODE_INTER ? "INTER" : "OTHER");
+  
+  // Calculate significant coefficients count and DC energy
+  Int sigCount = 0;
+  Double totalEnergy = 0.0;
+  Double dcEnergy = 0.0;
+  if (transformCoeff != NULL)
+  {
+    dcEnergy = static_cast<Double>(transformCoeff[0]) * static_cast<Double>(transformCoeff[0]);
+    for (Int i = 0; i < tuWidth * tuHeight; ++i)
+    {
+      if (quantCoeff != NULL && quantCoeff[i] != 0)
+      {
+        sigCount++;
+      }
+      totalEnergy += static_cast<Double>(transformCoeff[i]) * static_cast<Double>(transformCoeff[i]);
+    }
+  }
+
+  Double energyCompaction = (totalEnergy > 0.0 ? (dcEnergy / totalEnergy) : 0.0);
+
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"TRANSFORM_QUANT\",\"stage\":\"CP_04_TRANSFORM_RQT\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"cu_x\":" << cuX << ",\"cu_y\":" << cuY
+            << ",\"cu_width\":" << cuWidth << ",\"cu_height\":" << cuHeight
+            << ",\"cu_depth\":" << cuDepth
+            << ",\"pred_mode\":\"" << predictionModeName << '\"'
+            << ",\"intra_mode\":" << intraMode
+            << ",\"tu_x\":" << tuX << ",\"tu_y\":" << tuY
+            << ",\"width\":" << tuWidth << ",\"height\":" << tuHeight << ",\"tu_depth\":" << tuDepth
+            << ",\"cu_size\":" << m_targetCuSize
+            << ",\"component\":\"" << componentName << "\",\"qp\":" << qp
+            << ",\"is_dst\":" << (isDST ? "true" : "false")
+            << ",\"is_transform_skip\":" << (isTransformSkip ? "true" : "false")
+            << ",\"sig_coeff_count\":" << sigCount
+            << ",\"energy_compaction_ratio\":" << energyCompaction
+            << ",\"residual\":";
+  writeArray(m_outFile, residual, tuWidth, tuHeight, residualStride);
+  m_outFile << ",\"resi_matrix\":";
+  writeArray(m_outFile, residual, tuWidth, tuHeight, residualStride);
+  m_outFile << ",\"transform_coeff\":";
+  writeArray(m_outFile, transformCoeff, tuWidth, tuHeight, tuWidth);
+  m_outFile << ",\"dct_coeff\":";
+  writeArray(m_outFile, transformCoeff, tuWidth, tuHeight, tuWidth);
+  m_outFile << ",\"quant_coeff\":";
+  writeArray(m_outFile, quantCoeff, tuWidth, tuHeight, tuWidth);
+  if (dequantCoeff != NULL)
+  {
+    m_outFile << ",\"dequant_coeff\":";
+    writeArray(m_outFile, dequantCoeff, tuWidth, tuHeight, tuWidth);
+  }
+  if (invResidual != NULL && invResidualStride >= tuWidth)
+  {
+    m_outFile << ",\"inv_residual\":";
+    writeArray(m_outFile, invResidual, tuWidth, tuHeight, invResidualStride);
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpReconPicture(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize,
+                                    const Pel* pRecY, Int strideY,
+                                    const Pel* pRecU, const Pel* pRecV, Int strideC)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  const Int cSize = (cuSize >> 1);
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"RECON_PICTURE\",\"stage\":\"CP_05_RECON_PICTURE\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"cu_x\":" << cuX << ",\"cu_y\":" << cuY
+            << ",\"cu_size\":" << cuSize;
+  if (pRecY != NULL && strideY >= cuSize)
+  {
+    m_outFile << ",\"reco_y\":";
+    writeArray(m_outFile, pRecY, cuSize, cuSize, strideY);
+  }
+  if (pRecU != NULL && strideC >= cSize)
+  {
+    m_outFile << ",\"reco_u\":";
+    writeArray(m_outFile, pRecU, cSize, cSize, strideC);
+  }
+  if (pRecV != NULL && strideC >= cSize)
+  {
+    m_outFile << ",\"reco_v\":";
+    writeArray(m_outFile, pRecV, cSize, cSize, strideC);
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpInterSearch(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
+                                   Int puIdx, Int puX, Int puY, Int puW, Int puH,
+                                   Int refPicList, Int refIdx, Int mvpIdx,
+                                   Int mvX, Int mvY, Int mvdX, Int mvdY,
+                                   Double cost, Distortion dist, UInt bits,
+                                   Int numMergeCand, const Int* pMergeCandX, const Int* pMergeCandY,
+                                   Int numAmvpCand, const Int* pAmvpCandX, const Int* pAmvpCandY)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"INTER_SEARCH\",\"stage\":\"CP_03_INTER_SEARCH\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"cu_x\":" << cuX << ",\"cu_y\":" << cuY
+            << ",\"cu_size\":" << cuSize << ",\"depth\":" << depth
+            << ",\"pu_idx\":" << puIdx << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_w\":" << puW << ",\"pu_h\":" << puH
+            << ",\"ref_list\":" << refPicList << ",\"ref_idx\":" << refIdx << ",\"mvp_idx\":" << mvpIdx
+            << ",\"mv_x\":" << mvX << ",\"mv_y\":" << mvY
+            << ",\"mvd_x\":" << mvdX << ",\"mvd_y\":" << mvdY
+            << ",\"cost\":" << cost << ",\"dist\":" << dist << ",\"bits\":" << bits;
+
+  if (numMergeCand > 0 && pMergeCandX != NULL && pMergeCandY != NULL)
+  {
+    m_outFile << ",\"merge_candidates\":[";
+    for (Int i = 0; i < numMergeCand; ++i)
+    {
+      m_outFile << (i > 0 ? ",{" : "{") << "\"idx\":" << i << ",\"mv_x\":" << pMergeCandX[i] << ",\"mv_y\":" << pMergeCandY[i] << "}";
+    }
+    m_outFile << "]";
+  }
+
+  if (numAmvpCand > 0 && pAmvpCandX != NULL && pAmvpCandY != NULL)
+  {
+    m_outFile << ",\"amvp_candidates\":[";
+    for (Int i = 0; i < numAmvpCand; ++i)
+    {
+      m_outFile << (i > 0 ? ",{" : "{") << "\"idx\":" << i << ",\"mv_x\":" << pAmvpCandX[i] << ",\"mv_y\":" << pAmvpCandY[i] << "}";
+    }
+    m_outFile << "]";
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpDeblockingEdge(Int poc, Int ctuX, Int ctuY, Int edgeX, Int edgeY,
+                                      Int edgeType, Int bS, Int beta, Int tc,
+                                      const Pel* pSamples, const Pel* qSamples, Int stride)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"DEBLOCKING_EDGE\",\"stage\":\"CP_06_INLOOP_FILTER\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"edge_x\":" << edgeX << ",\"edge_y\":" << edgeY
+            << ",\"edge_type\":" << edgeType
+            << ",\"bS\":" << bS
+            << ",\"beta\":" << beta
+            << ",\"tc\":" << tc;
+  if (pSamples != NULL && qSamples != NULL && stride > 0)
+  {
+    m_outFile << ",\"p_samples\":[";
+    for (Int i = 0; i < 4; ++i)
+    {
+      m_outFile << (i > 0 ? "," : "") << pSamples[i * stride];
+    }
+    m_outFile << "],\"q_samples\":[";
+    for (Int i = 0; i < 4; ++i)
+    {
+      m_outFile << (i > 0 ? "," : "") << qSamples[i * stride];
+    }
+    m_outFile << "]";
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpSaoDecision(Int poc, Int ctuX, Int ctuY,
+                                   Int saoTypeY, const Int* pOffsetsY,
+                                   Int saoTypeU, const Int* pOffsetsU,
+                                   Int saoTypeV, const Int* pOffsetsV)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"SAO_DECISION\",\"stage\":\"CP_06_INLOOP_FILTER\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"sao_type_y\":" << saoTypeY;
+  if (pOffsetsY != NULL)
+  {
+    m_outFile << ",\"offsets_y\":";
+    writeArray(m_outFile, pOffsetsY, 5, 1, 5);
+  }
+  m_outFile << ",\"sao_type_u\":" << saoTypeU;
+  if (pOffsetsU != NULL)
+  {
+    m_outFile << ",\"offsets_u\":";
+    writeArray(m_outFile, pOffsetsU, 5, 1, 5);
+  }
+  m_outFile << ",\"sao_type_v\":" << saoTypeV;
+  if (pOffsetsV != NULL)
+  {
+    m_outFile << ",\"offsets_v\":";
+    writeArray(m_outFile, pOffsetsV, 5, 1, 5);
+  }
+  m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpCabacBin(Int poc, Int ctuX, Int ctuY,
+                                const char* syntaxName, UInt binValue,
+                                UInt ctxIdx, UInt pStateIdx, UInt valMPS,
+                                UInt writtenBits)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"CABAC_BIN\",\"stage\":\"CP_07_CABAC_ENTROPY\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"syntax_element\":\"" << (syntaxName ? syntaxName : "UNKNOWN") << '\"'
+            << ",\"bin\":" << binValue
+            << ",\"ctx_idx\":" << ctxIdx
+            << ",\"p_state_idx\":" << pStateIdx
+            << ",\"val_mps\":" << valMPS
+            << ",\"bits\":" << writtenBits
+            << "}\n";
+}

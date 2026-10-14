@@ -22,7 +22,7 @@ const MatrixCell = memo(function MatrixCell({
   x,
   y,
   isSelected,
-  isDC,
+  _isDC,
   style,
   displayVal,
   cellSize = 36,
@@ -34,6 +34,10 @@ const MatrixCell = memo(function MatrixCell({
       style={{
         width: `${cellSize}px`,
         height: `${cellSize}px`,
+        minWidth: `${cellSize}px`,
+        minHeight: `${cellSize}px`,
+        maxWidth: `${cellSize}px`,
+        maxHeight: `${cellSize}px`,
         backgroundColor: style.bg,
         color: style.color,
         display: 'flex',
@@ -41,19 +45,19 @@ const MatrixCell = memo(function MatrixCell({
         justifyContent: 'center',
         fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
         fontFamily: 'JetBrains Mono, monospace',
+        fontVariantNumeric: 'tabular-nums',
         fontWeight: style.fontWeight || 700,
         letterSpacing: '-0.3px',
-        minWidth: 0,
         overflow: 'hidden',
         whiteSpace: 'nowrap',
         textOverflow: 'clip',
-        padding: '1px',
+        padding: '0',
         borderRadius: 0,
         boxSizing: 'border-box',
         outline: isSelected
           ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}`
-          : (isDC ? '1.5px solid var(--apple-blue)' : 'none'),
-        zIndex: isSelected ? 10 : (isDC ? 2 : 1),
+          : 'none',
+        zIndex: isSelected ? 10 : 1,
         cursor: 'pointer',
         userSelect: 'none'
       }}
@@ -170,7 +174,9 @@ function BlockMatrixGrid({
   // Small blocks (<= 8x8): direct grid with fixed, large, legible cells
   // ---------------------------------------------------------------------------
   if (width <= 8) {
-    const cellSize = width === 4 ? 48 : microCellSize;
+    const cellSize = microCellSize ?? (width === 4 ? 40 : 32);
+    // Explicit pixel dimensions lock the grid size and completely eliminate layout jittering
+    const gridDim = width * cellSize + (width - 1) + 4; // cells + 1px gaps + 1px padding*2 + 1px border*2
     return (
       <div
         style={{
@@ -178,7 +184,7 @@ function BlockMatrixGrid({
           overflowX: 'auto',
           overflowY: 'hidden',
           display: 'flex',
-          justifyContent: 'center',
+          justifyContent: 'safe center',
           padding: '2px 0'
         }}
       >
@@ -193,9 +199,15 @@ function BlockMatrixGrid({
             border: '1px solid var(--apple-hairline)',
             borderRadius: 0,
             overflow: 'hidden',
-            width: 'fit-content',
+            width: `${gridDim}px`,
+            height: `${gridDim}px`,
+            minWidth: `${gridDim}px`,
+            minHeight: `${gridDim}px`,
+            maxWidth: `${gridDim}px`,
+            maxHeight: `${gridDim}px`,
             margin: '0 auto',
-            flexShrink: 0
+            flexShrink: 0,
+            boxSizing: 'border-box'
           }}
         >
           {data.map((val, idx) => {
@@ -235,7 +247,7 @@ function BlockMatrixGrid({
         flexWrap: 'wrap',
         gap: '0.85rem',
         alignItems: 'flex-start',
-        justifyContent: 'center',
+        justifyContent: 'safe center',
         width: '100%',
         maxWidth: '100%',
         overflowX: 'auto',

@@ -64,7 +64,7 @@ export default function IntraPipelineStepper({
             textTransform: 'uppercase',
             fontFamily: 'JetBrains Mono'
           }}>
-            HM-16.0 Intra Search Call-Stack Stepper
+            HM-18.0 Intra Search Call-Stack Stepper
           </span>
           <span style={{
             fontSize: '0.70rem',

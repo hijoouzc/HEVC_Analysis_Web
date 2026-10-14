@@ -68,7 +68,7 @@ assert(!step2Code.includes('onMouseEnter'), 'Step2RmdFunnelView has zero onMouse
 assert(!step2Code.includes('onMouseOver'), 'Step2RmdFunnelView has zero onMouseOver listeners');
 assert(!step2Code.includes('scale-105') && !step2Code.includes('scale-110'), 'Step2RmdFunnelView has zero hover bounce animations');
 
-assert(step2Code.includes('TEncSearch::estIntraPredLumaQT'), 'Step2RmdFunnelView references HM-16.0 estIntraPredLumaQT');
+assert(step2Code.includes('TEncSearch::estIntraPredLumaQT'), 'Step2RmdFunnelView references HM-18.0 estIntraPredLumaQT');
 assert(step2Code.includes('PRUNING THRESHOLD CUTOFF'), 'Step2RmdFunnelView renders Top K pruning cutoff threshold divider');
 assert(step2Code.includes('Sort by Rank (Funnel)'), 'Step2RmdFunnelView provides Funnel sorting by ascending cost');
 assert(step2Code.includes('Sort by Mode ID'), 'Step2RmdFunnelView provides sequential sorting by Mode ID (0..34)');

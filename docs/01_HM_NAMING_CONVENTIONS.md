@@ -1,10 +1,10 @@
-# Technical Specification of Identifier Conventions and Hungarian Notation in HEVC Reference Software (HM-16.0)
+# Technical Specification of Identifier Conventions and Hungarian Notation in HEVC Reference Software (HM-18.0)
 
 > [!NOTE]
 > **IEEE Standard Technical Specification**  
 > Document Identifier: `IEEE-HEVC-SPEC-01` • Status: Approved Specification  
 > Base Standard: ITU-T Recommendation H.265 | ISO/IEC 23008-2 (HEVC)  
-> Implementation Reference: Joint Collaborative Team on Video Coding (JCT-VC) HM-16.0 Test Model  
+> Implementation Reference: Joint Collaborative Team on Video Coding (JCT-VC) HM-18.0 Test Model  
 > Master Index: [HEVC Documentation System](./README.md)
 
 ---
@@ -16,7 +16,7 @@
   - [A. Primitive and Pointer Data Types](#a-primitive-and-pointer-data-types)
   - [B. Compound Identifier Decoding Logic](#b-compound-identifier-decoding-logic)
 - [IV. Video Coding Acronyms and Technical Nomenclature](#iv-video-coding-acronyms-and-technical-nomenclature)
-- [V. Key Data Structures and Variables in HM-16.0](#v-key-data-structures-and-variables-in-hm-160)
+- [V. Key Data Structures and Variables in HM-18.0](#v-key-data-structures-and-variables-in-hm-180)
   - [A. CU and CTU Data Representation in `TComDataCU`](#a-cu-and-ctu-data-representation-in-tcomdatacu)
   - [B. RDO Optimization and Search Variables in `TEncCu` and `TEncSearch`](#b-rdo-optimization-and-search-variables-in-tenccu-and-tencsearch)
 - [VI. Core Execution Functions in HM Encoder Pipeline](#vi-core-execution-functions-in-hm-encoder-pipeline)
@@ -28,7 +28,7 @@
 
 The Joint Collaborative Team on Video Coding (JCT-VC) established strict coding guidelines for the reference implementation of High Efficiency Video Coding (HEVC), known as the HEVC Test Model (HM) [1], [2]. To ensure rigorous maintainability, cross-platform portability, and architectural transparency across thousands of source files, HM adopts a modified version of Hungarian notation coupled with standardized scope and type prefixes.
 
-This document serves as the formal IEEE-style specification for naming conventions, variable decoding logic, data structures, and core execution routines in the HM-16.0 reference software.
+This document serves as the formal IEEE-style specification for naming conventions, variable decoding logic, data structures, and core execution routines in the HM-18.0 reference software.
 
 ---
 
@@ -127,7 +127,7 @@ $$\text{Identifier} = \text{Prefix}_{\text{PassMode}} + \text{Prefix}_{\text{Poi
 
 ---
 
-## V. Key Data Structures and Variables in HM-16.0
+## V. Key Data Structures and Variables in HM-18.0
 
 ### A. CU and CTU Data Representation in `TComDataCU`
 The [`TComDataCU`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibCommon/TComDataCU.h#L64) class serves as the comprehensive in-memory model storing coding parameters for an entire CTU and its recursive subdivisions:
@@ -187,6 +187,6 @@ The encoding optimization engine in [`TEncCu`](file:///home/hoinguyen/Documents/
 ## References
 
 * [1] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, "Overview of the High Efficiency Video Coding (HEVC) Standard," *IEEE Transactions on Circuits and Systems for Video Technology*, vol. 22, no. 12, pp. 1649–1668, Dec. 2012.
-* [2] *High Efficiency Video Coding (HEVC) Reference Software HM-16.0*, Joint Collaborative Team on Video Coding (JCT-VC) of ITU-T SG 16 WP 3 and ISO/IEC JTC 1/SC 29/WG 11, 2014.
+* [2] *High Efficiency Video Coding (HEVC) Reference Software HM-18.0*, Joint Collaborative Team on Video Coding (JCT-VC) of ITU-T SG 16 WP 3 and ISO/IEC JTC 1/SC 29/WG 11, 2014.
 * [3] I.-K. Kim et al., "High Efficiency Video Coding (HEVC) Test Model 16 (HM 16) Encoder Description," Joint Collaborative Team on Video Coding (JCT-VC), document JCTVC-S1002, Strasbourg, France, Oct. 2014.
 * [4] V. Sze, M. Budagavi, and G. J. Sullivan, Eds., *High Efficiency Video Coding (HEVC): Algorithms and Architectures*, Springer, 2014.

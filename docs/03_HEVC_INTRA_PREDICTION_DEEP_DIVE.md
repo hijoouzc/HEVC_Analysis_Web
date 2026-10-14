@@ -1,7 +1,7 @@
 # 03. Đặc Tả Kỹ Thuật Toàn Diện Về Intra Prediction trong HEVC (HM Reference Software)
 
 > [!NOTE]
-> Tài liệu kỹ thuật chi tiết nhất về toàn bộ cấu trúc toán học, bảng biến số, bộ nhớ, thuật toán dự đoán 35 mode và mã nguồn C++ của **Intra Prediction** trong bộ mã hóa tham chiếu **HM-16.0 (HEVC Test Model)**.
+> Tài liệu kỹ thuật chi tiết nhất về toàn bộ cấu trúc toán học, bảng biến số, bộ nhớ, thuật toán dự đoán 35 mode và mã nguồn C++ của **Intra Prediction** trong bộ mã hóa tham chiếu **HM-18.0 (HEVC Test Model)**.
 > 
 > * **Thuộc bộ tài liệu:** [HEVC Documentation System](./README.md)
 > * **Tài liệu trước:** [02. Phân Tích Luồng Mã Hóa Xử Lý Theo Khối](./02_HEVC_BLOCK_BASED_HYBRID_FLOW.md)

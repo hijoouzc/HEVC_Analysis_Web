@@ -99,7 +99,7 @@ assert(!step4Code.includes('onMouseEnter'), 'Step4FullRdoView has zero onMouseEn
 assert(!step4Code.includes('onMouseOver'), 'Step4FullRdoView has zero onMouseOver listeners');
 assert(!step4Code.includes('scale-105') && !step4Code.includes('scale-110'), 'Step4FullRdoView has zero hover bounce animations');
 
-assert(step4Code.includes('xRecurIntraCodingLumaQT'), 'Step4FullRdoView references HM-16.0 xRecurIntraCodingLumaQT');
+assert(step4Code.includes('xRecurIntraCodingLumaQT'), 'Step4FullRdoView references HM-18.0 xRecurIntraCodingLumaQT');
 assert(step4Code.includes('6-STAGE DOMAIN TRANSFORMATION STRIP'), 'Step4FullRdoView renders 6-Stage Domain Transformation title');
 assert(step4Code.includes('1. ORIGINAL S(x, y)'), 'Step4FullRdoView renders Domain 1: Original S');
 assert(step4Code.includes('2. PREDICTION P(x, y)'), 'Step4FullRdoView renders Domain 2: Prediction P');

@@ -5,7 +5,7 @@ import { HM_TRANSFORM_QUANT_SNIPPET } from '../constants/hmSourceSnippets';
 import { Button, SegmentedControl } from './apple';
 
 /**
- * TransformQuantVisualizer (CP_06_TRANSFORM & CP_07_QUANT)
+ * TransformQuantVisualizer (CP_04_TRANSFORM_QUANT)
  * Displays:
  *  1. Spatial Residual Matrix R(x, y)
  *  2. 2D DCT/DST Frequency Spectrum & Energy Compaction Ratio
@@ -49,7 +49,7 @@ export default function TransformQuantVisualizer({
   if (!activeEvent) {
     return (
       <div className="apple-card" style={{ padding: '2rem', textAlign: 'center', background: 'var(--apple-canvas)' }}>
-        <h3 style={{ marginBottom: '0.5rem' }}>CP_06 & CP_07: Transform & Quantization</h3>
+        <h3 style={{ marginBottom: '0.5rem' }}>CP_04: Residual Transform &amp; RQT Hierarchy</h3>
         <p style={{ color: '#666', fontSize: '0.9rem' }}>
           No Transform or Quantization trace events found for component {activeComp}.
         </p>
@@ -178,7 +178,7 @@ export default function TransformQuantVisualizer({
             >
               {filteredEvents.map((ev, idx) => (
                 <option key={idx} value={idx}>
-                  TU #{idx + 1} @ ({ev.tu_x}, {ev.tu_y}) — {ev.width}×{ev.height} px
+                  TU #{idx + 1} @ ({ev.tu_x}, {ev.tu_y}) — {ev.width}×{ev.height} samples
                 </option>
               ))}
             </select>
@@ -209,7 +209,7 @@ export default function TransformQuantVisualizer({
             variant="gray"
             size="small"
             onClick={() => setShowHmModal(true)}
-            title="Inspect HM-16.0 C++ Source Code for transformNxN & quant"
+            title="Inspect HM-18.0 C++ Source Code for transformNxN & quant"
           >
             &lt;&gt; Show HM Code
           </Button>
@@ -398,19 +398,21 @@ export default function TransformQuantVisualizer({
         </div>
       </div>
 
-      {/* Selected Pixel Inspector Readout */}
+      {/* Selected Sample Inspector Readout */}
       <div style={{
         background: selectedCell ? 'var(--apple-orange-subtle, rgba(255, 149, 0, 0.1))' : 'var(--apple-card-bg)',
         border: selectedCell ? '1px solid var(--system-orange, #FF9500)' : '1px solid var(--apple-hairline)',
         borderRadius: '4px',
         padding: '0.65rem 1rem',
+        minHeight: '48px',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: '0.75rem',
         fontFamily: 'JetBrains Mono, monospace',
-        fontSize: '0.8rem'
+        fontSize: '0.8rem',
+        boxSizing: 'border-box'
       }}>
         {selectedCell ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', flexWrap: 'wrap', gap: '0.75rem' }}>
@@ -432,12 +434,12 @@ export default function TransformQuantVisualizer({
           </div>
         ) : (
           <div style={{ color: 'var(--apple-label-secondary)', fontSize: '0.76rem' }}>
-            Click any cell or region to inspect synchronized values across Residual, Transform, and Quantization
+            Click any sample to inspect synchronized values across Residual, Transform, and Quantization
           </div>
         )}
       </div>
 
-      {/* HM-16.0 Source Code Inspector Modal for TU Transform & Quantization */}
+      {/* HM-18.0 Source Code Inspector Modal for TU Transform & Quantization */}
       <HmSourceCodeModal
         isOpen={showHmModal}
         onClose={() => setShowHmModal(false)}

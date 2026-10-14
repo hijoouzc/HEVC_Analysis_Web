@@ -47,7 +47,14 @@ class TransformQuantParser(BaseCheckpointParser):
             sig_coeff_count=raw_data.get("sig_coeff_count", sum(1 for q in quant if q != 0)),
             dc_coeff=dc_val,
             energy_compaction_ratio=energy_ratio,
-            sparsity_ratio=sparsity
+            sparsity_ratio=sparsity,
+            is_dst=raw_data.get("is_dst", False),
+            is_transform_skip=raw_data.get("is_transform_skip", False),
+            tu_depth=raw_data.get("tu_depth", 0),
+            intra_mode=raw_data.get("intra_mode"),
+            pred_mode=raw_data.get("pred_mode", "INTRA"),
+            dequant_coeff=raw_data.get("dequant_coeff", []),
+            reco_resi=raw_data.get("reco_resi", [])
         )
 
 transform_parser = TransformQuantParser(StageEnum.CP_06_TRANSFORM.value)

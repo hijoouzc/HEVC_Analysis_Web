@@ -13,7 +13,7 @@
 
 > **Tài liệu tối ưu hóa kiến trúc, thuật toán và hiệu năng hiển thị 60 FPS**  
 > Dành riêng cho dự án: `/home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/web_app`  
-> Tham chiếu trực tiếp: Mã nguồn gốc **HM-16.0 (C++)** trong thư mục [`source/Lib/`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/).
+> Tham chiếu trực tiếp: Mã nguồn gốc **HM-18.0 (C++)** trong thư mục [`source/Lib/`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/).
 
 ---
 

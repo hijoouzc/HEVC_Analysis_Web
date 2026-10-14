@@ -2261,6 +2261,23 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
     const UInt uiPartOffset=tuRecurseWithPU.GetAbsPartIdxTU();
 //  for( UInt uiPU = 0, uiPartOffset=0; uiPU < uiNumPU; uiPU++, uiPartOffset += uiQNumParts )
   //{
+
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const TComRectangle &dumpPuRect = tuRecurseWithPU.getRect(COMPONENT_Y);
+    const UInt dumpAbsPartIdx = uiPartOffset;
+    const Int dumpPoc = pcCU->getSlice()->getPOC();
+    const Int dumpCtuX = pcCU->getCUPelX() / sps.getMaxCUWidth();
+    const Int dumpCtuY = pcCU->getCUPelY() / sps.getMaxCUHeight();
+    const Int dumpPuX = pcCU->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[dumpAbsPartIdx]];
+    const Int dumpPuY = pcCU->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[dumpAbsPartIdx]];
+    const Bool dumpThisPu = pDumper->isActive(dumpPoc, dumpCtuX, dumpCtuY,
+                                               dumpPuX, dumpPuY, dumpPuRect.width);
+    Pel* piOrgDump         = pcOrgYuv ->getAddr( COMPONENT_Y, dumpAbsPartIdx );
+    Pel* piPredDump        = pcPredYuv->getAddr( COMPONENT_Y, dumpAbsPartIdx );
+    UInt uiStrideDump      = pcPredYuv->getStride( COMPONENT_Y );
+#endif
+
     //===== init pattern for luma prediction =====
     DEBUG_STRING_NEW(sTemp2)
 
@@ -2288,45 +2305,33 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
       const UInt uiAbsPartIdx=tuRecurseWithPU.GetAbsPartIdxTU();
 
 #if ENABLE_VISUAL_DUMP
-      VisualDumper* pDumperInit = VisualDumper::getInstance();
-      if (pDumperInit->isEnabled())
+      if (dumpThisPu)
       {
-        UInt maxCUWidth = sps.getMaxCUWidth();
-        Int poc = pcCU->getSlice()->getPOC();
-        Int ctuX = pcCU->getCUPelX() / maxCUWidth;
-        Int ctuY = pcCU->getCUPelY() / maxCUWidth;
-        pDumperInit->setContext(poc, ctuX, ctuY);
+        const Pel* pRefUnfilt = getPredictorPtr(COMPONENT_Y, false);
+        const Pel* pRefFilt = getPredictorPtr(COMPONENT_Y, true);
+        const Int refStride = 2 * puRect.width + 1;
+        const Bool strongSmoothingEligible = (puRect.width == 32) && sps.getUseStrongIntraSmoothing();
 
-        if (pDumperInit->isActive(puRect.width))
+        const Pel* pRefUnfiltU = NULL;
+        const Pel* pRefFiltU = NULL;
+        const Pel* pRefUnfiltV = NULL;
+        const Pel* pRefFiltV = NULL;
+        Int refStrideC = 0;
+        if (chFmt != CHROMA_400 && puRect.width >= 8 && tuRecurseWithPU.getRect(COMPONENT_Cb).width >= 4)
         {
-          const Pel* pRefUnfilt = getPredictorPtr(COMPONENT_Y, false);
-          const Pel* pRefFilt = getPredictorPtr(COMPONENT_Y, true);
-          Int refStride = 2 * puRect.width + 1;
-          Bool strongSmoothing = (puRect.width == 32) && sps.getUseStrongIntraSmoothing();
-
-          const ChromaFormat chFmt = sps.getChromaFormatIdc();
-          const Bool hasChroma = (chFmt != CHROMA_400);
-          const Pel* pRefUnfiltU = NULL;
-          const Pel* pRefUnfiltV = NULL;
-          const Pel* pRefFiltU = NULL;
-          const Pel* pRefFiltV = NULL;
-          Int refStrideC = 0;
-
-          if (hasChroma && puRect.width >= 8 && tuRecurseWithPU.getRect(COMPONENT_Cb).width >= 4)
-          {
-            DEBUG_STRING_NEW(sTempRefC)
-            initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cb, true DEBUG_STRING_PASS_INTO(sTempRefC) );
-            initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cr, true DEBUG_STRING_PASS_INTO(sTempRefC) );
-            pRefUnfiltU = getPredictorPtr(COMPONENT_Cb, false);
-            pRefUnfiltV = getPredictorPtr(COMPONENT_Cr, false);
-            pRefFiltU = getPredictorPtr(COMPONENT_Cb, true);
-            pRefFiltV = getPredictorPtr(COMPONENT_Cr, true);
-            refStrideC = puRect.width + 1;
-          }
-
-          pDumperInit->dumpIntraRefSamples(puRect.width, pRefUnfilt, pRefFilt, refStride, strongSmoothing,
-                                           pRefUnfiltU, pRefUnfiltV, pRefFiltU, pRefFiltV, refStrideC);
+          DEBUG_STRING_NEW(sTempRefC)
+          initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cb, true DEBUG_STRING_PASS_INTO(sTempRefC) );
+          initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cr, true DEBUG_STRING_PASS_INTO(sTempRefC) );
+          pRefUnfiltU = getPredictorPtr(COMPONENT_Cb, false);
+          pRefFiltU = getPredictorPtr(COMPONENT_Cb, true);
+          pRefUnfiltV = getPredictorPtr(COMPONENT_Cr, false);
+          pRefFiltV = getPredictorPtr(COMPONENT_Cr, true);
+          refStrideC = puRect.width + 1;
         }
+
+        pDumper->dumpIntraRefSamples(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, puRect.width,
+                                     pRefUnfilt, pRefFilt, refStride, strongSmoothingEligible,
+                                     pRefUnfiltU, pRefFiltU, pRefUnfiltV, pRefFiltV, refStrideC);
       }
 #endif
 
@@ -2357,60 +2362,37 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
         Double cost      = (Double)uiSad + (Double)iModeBits * sqrtLambdaForFirstPass;
 
 #if ENABLE_VISUAL_DUMP
-        VisualDumper* pDumper = VisualDumper::getInstance();
-        if (pDumper->isEnabled())
+        if (dumpThisPu)
         {
-          UInt maxCUWidth = sps.getMaxCUWidth();
-          Int poc = pcCU->getSlice()->getPOC();
-          Int ctuX = pcCU->getCUPelX() / maxCUWidth;
-          Int ctuY = pcCU->getCUPelY() / maxCUWidth;
-          pDumper->setContext(poc, ctuX, ctuY);
-
-          if (pDumper->isActive(puRect.width))
+          const Pel* pRef = getPredictorPtr(COMPONENT_Y, bUseFilter);
+          const Int refStride = 2 * puRect.width + 1;
+          Pel* pOrgU = NULL;
+          Pel* pOrgV = NULL;
+          UInt strideC = 0;
+          Pel localPredU[32 * 32];
+          Pel localPredV[32 * 32];
+          Pel* pPredU = NULL;
+          Pel* pPredV = NULL;
+          if (chFmt != CHROMA_400 && puRect.width >= 8 && tuRecurseWithPU.getRect(COMPONENT_Cb).width >= 4)
           {
-            const Pel* pRef = getPredictorPtr(COMPONENT_Y, bUseFilter);
-            Int refStride = 2 * puRect.width + 1;
+            pOrgU = pcOrgYuv->getAddr( COMPONENT_Cb, uiAbsPartIdx );
+            pOrgV = pcOrgYuv->getAddr( COMPONENT_Cr, uiAbsPartIdx );
+            strideC = pcOrgYuv->getStride( COMPONENT_Cb );
+            Int cSize = puRect.width >> 1;
 
-            const ChromaFormat chFmt = sps.getChromaFormatIdc();
-            const Bool hasChroma = (chFmt != CHROMA_400);
+            DEBUG_STRING_NEW(sTempC)
+            initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cb, true DEBUG_STRING_PASS_INTO(sTempC) );
+            initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cr, true DEBUG_STRING_PASS_INTO(sTempC) );
 
-            Pel* pOrgU = NULL;
-            Pel* pOrgV = NULL;
-            UInt strideC = 0;
-            Pel localPredU[32 * 32];
-            Pel localPredV[32 * 32];
-            Pel* pPredU = NULL;
-            Pel* pPredV = NULL;
-            const Pel* pRefU = NULL;
-            const Pel* pRefV = NULL;
-            Int predStrideC = 0;
-
-            if (hasChroma && puRect.width >= 8 && tuRecurseWithPU.getRect(COMPONENT_Cb).width >= 4)
-            {
-              pOrgU = pcOrgYuv->getAddr( COMPONENT_Cb, uiAbsPartIdx );
-              pOrgV = pcOrgYuv->getAddr( COMPONENT_Cr, uiAbsPartIdx );
-              strideC = pcOrgYuv->getStride( COMPONENT_Cb );
-              Int cSize = puRect.width >> 1;
-              predStrideC = cSize;
-
-              DEBUG_STRING_NEW(sTempC)
-              initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cb, true DEBUG_STRING_PASS_INTO(sTempC) );
-              initIntraPatternChType( tuRecurseWithPU, COMPONENT_Cr, true DEBUG_STRING_PASS_INTO(sTempC) );
-
-              pRefU = getPredictorPtr(COMPONENT_Cb, false);
-              pRefV = getPredictorPtr(COMPONENT_Cr, false);
-
-              const Bool bUseFilterC = false;
-              predIntraAng( COMPONENT_Cb, uiMode, pOrgU, strideC, localPredU, predStrideC, tuRecurseWithPU, bUseFilterC, false );
-              predIntraAng( COMPONENT_Cr, uiMode, pOrgV, strideC, localPredV, predStrideC, tuRecurseWithPU, bUseFilterC, false );
-
-              pPredU = localPredU;
-              pPredV = localPredV;
-            }
-
-            pDumper->dumpIntraSearchStep(puRect.width, uiMode, cost, bUseFilter, piOrg, piPred, NULL, uiStride, pRef, refStride,
-                                        pOrgU, pOrgV, pPredU, pPredV, strideC, predStrideC, pRefU, pRefV);
+            predIntraAng( COMPONENT_Cb, uiMode, pOrgU, strideC, localPredU, cSize, tuRecurseWithPU, false, false );
+            predIntraAng( COMPONENT_Cr, uiMode, pOrgV, strideC, localPredV, cSize, tuRecurseWithPU, false, false );
+            pPredU = localPredU;
+            pPredV = localPredV;
           }
+          pDumper->dumpIntraSearchStep(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, puRect.width,
+                                       uiMode, cost, bUseFilter,
+                                       piOrg, piPred, uiStride, pRef, refStride,
+                                       pOrgU, pPredU, pOrgV, pPredV, strideC);
         }
 #endif
 
@@ -2445,6 +2427,30 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
             uiRdModeList[numModesForFullRD++] = mostProbableMode;
           }
         }
+
+#if ENABLE_VISUAL_DUMP
+        if (dumpThisPu)
+        {
+          Int leftMode = -1;
+          Int aboveMode = -1;
+          UInt uiLeftPartIdx = 0;
+          const TComDataCU* pcCULeft = pcCU->getPULeft(uiLeftPartIdx, pcCU->getZorderIdxInCtu() + uiPartOffset);
+          if (pcCULeft && pcCULeft->isIntra(uiLeftPartIdx))
+          {
+            leftMode = pcCULeft->getIntraDir(CHANNEL_TYPE_LUMA, uiLeftPartIdx);
+          }
+          UInt uiAbovePartIdx = 0;
+          const TComDataCU* pcCUAbove = pcCU->getPUAbove(uiAbovePartIdx, pcCU->getZorderIdxInCtu() + uiPartOffset);
+          if (pcCUAbove && pcCUAbove->isIntra(uiAbovePartIdx))
+          {
+            aboveMode = pcCUAbove->getIntraDir(CHANNEL_TYPE_LUMA, uiAbovePartIdx);
+          }
+          pDumper->dumpIntraMpm(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, puRect.width,
+                                uiPreds[0], uiPreds[1], uiPreds[2], leftMode, aboveMode,
+                                uiRdModeList, (numModesForFullRD > CandNum ? CandNum : numModesForFullRD),
+                                uiRdModeList, numModesForFullRD);
+        }
+#endif
       }
     }
     else
@@ -2493,6 +2499,20 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
       xRecurIntraCodingLumaQT( pcOrgYuv, pcPredYuv, pcResiYuv, resiLumaPU, uiPUDistY, true, dPUCost, tuRecurseWithPU DEBUG_STRING_PASS_INTO(sMode) );
 #else
       xRecurIntraCodingLumaQT( pcOrgYuv, pcPredYuv, pcResiYuv, resiLumaPU, uiPUDistY, dPUCost, tuRecurseWithPU DEBUG_STRING_PASS_INTO(sMode) );
+#endif
+
+#if ENABLE_VISUAL_DUMP
+      if (dumpThisPu)
+      {
+        const Pel* pCandReco = pcPredYuv->getAddr(COMPONENT_Y, dumpAbsPartIdx);
+        const Pel* pCandResi = pcResiYuv->getAddr(COMPONENT_Y, dumpAbsPartIdx);
+        const Double lambda = m_pcRdCost->getLambda();
+        const Double estBits = (lambda > 0.0 && dPUCost >= uiPUDistY) ? ((dPUCost - uiPUDistY) / lambda) : 0.0;
+        pDumper->dumpIntraFullRdoStep(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, dumpPuRect.width,
+                                      uiMode + 1, uiOrgMode, dPUCost, uiPUDistY, estBits,
+                                      (dPUCost < dBestPUCost),
+                                      pCandReco, pCandResi, piOrgDump, piPredDump, uiStrideDump);
+      }
 #endif
 
 #if DEBUG_INTRA_SEARCH_COSTS
@@ -2723,6 +2743,22 @@ TEncSearch::estIntraPredChromaQT(TComDataCU* pcCU,
         //----- check chroma modes -----
         pcCU->getAllowedChromaDir( uiPartOffset, uiModeList );
 
+#if ENABLE_VISUAL_DUMP
+        VisualDumper* pDumperChroma = VisualDumper::getInstance();
+        const TComSPS& spsChroma = *(pcCU->getSlice()->getSPS());
+        const Int dumpPoc = pcCU->getSlice()->getPOC();
+        const Int dumpCtuX = pcCU->getCUPelX() / spsChroma.getMaxCUWidth();
+        const Int dumpCtuY = pcCU->getCUPelY() / spsChroma.getMaxCUHeight();
+        const Int dumpPuX = pcCU->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[uiPartOffset]];
+        const Int dumpPuY = pcCU->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[uiPartOffset]];
+        const TComRectangle &tuRectCb = tuRecurseWithPU.getRect(COMPONENT_Cb);
+        const Int puWidthLuma = tuRectCb.width << 1;
+        const Bool dumpThisChroma = pDumperChroma->isActive(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, puWidthLuma);
+        Double chromaCosts[FAST_UDI_MAX_RDMODE_NUM] = {0};
+        Distortion chromaDists[FAST_UDI_MAX_RDMODE_NUM] = {0};
+        UInt chromaBits[FAST_UDI_MAX_RDMODE_NUM] = {0};
+#endif
+
 #if ENVIRONMENT_VARIABLE_DEBUG_AND_TEST
         if (DebugOptionList::ForceChromaMode.isSet())
         {
@@ -2756,6 +2792,15 @@ TEncSearch::estIntraPredChromaQT(TComDataCU* pcCU,
           UInt    uiBits = xGetIntraBitsQT( tuRecurseWithPU, false, true, false );
           Double  dCost  = m_pcRdCost->calcRdCost( uiBits, uiDist );
 
+#if ENABLE_VISUAL_DUMP
+          if (dumpThisChroma && uiMode < FAST_UDI_MAX_RDMODE_NUM)
+          {
+            chromaCosts[uiMode] = dCost;
+            chromaDists[uiMode] = uiDist;
+            chromaBits[uiMode] = uiBits;
+          }
+#endif
+
           //----- compare -----
           if( dCost < dBestCost )
           {
@@ -2785,6 +2830,29 @@ TEncSearch::estIntraPredChromaQT(TComDataCU* pcCU,
           ::memcpy( pcCU->getTransformSkip( compID )+uiPartOffset, m_puhQTTempTransformSkipFlag[compID], uiQPartNum * sizeof( UChar ) );
           ::memcpy( pcCU->getCrossComponentPredictionAlpha(compID)+uiPartOffset, m_phQTTempCrossComponentPredictionAlpha[compID], uiQPartNum * sizeof( SChar ) );
         }
+
+#if ENABLE_VISUAL_DUMP
+        if (dumpThisChroma)
+        {
+          const Pel* pOrgU = pcOrgYuv->getAddr(COMPONENT_Cb, uiPartOffset);
+          const Pel* pPredU = pcPredYuv->getAddr(COMPONENT_Cb, uiPartOffset);
+          const Pel* pResiU = pcResiYuv->getAddr(COMPONENT_Cb, uiPartOffset);
+          const Pel* pRecoU = pcRecoYuv->getAddr(COMPONENT_Cb, uiPartOffset);
+          const Pel* pOrgV = pcOrgYuv->getAddr(COMPONENT_Cr, uiPartOffset);
+          const Pel* pPredV = pcPredYuv->getAddr(COMPONENT_Cr, uiPartOffset);
+          const Pel* pResiV = pcResiYuv->getAddr(COMPONENT_Cr, uiPartOffset);
+          const Pel* pRecoV = pcRecoYuv->getAddr(COMPONENT_Cr, uiPartOffset);
+          const UInt strideC = pcOrgYuv->getStride(COMPONENT_Cb);
+          const Int bestLumaMode = static_cast<Int>(pcCU->getIntraDir(CHANNEL_TYPE_LUMA, uiPartOffset));
+          pDumperChroma->dumpIntraChromaSearch(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, puWidthLuma,
+                                               bestLumaMode, (uiMaxMode - uiMinMode),
+                                               uiModeList, chromaCosts, chromaDists, chromaBits,
+                                               uiBestMode, dBestCost, uiBestDist,
+                                               pOrgU, pPredU, pResiU, pRecoU,
+                                               pOrgV, pPredV, pResiV, pRecoV,
+                                               strideC, tuRectCb.width, tuRectCb.height);
+        }
+#endif
       }
 
       if( ! tuRecurseWithPU.IsLastSection() )
@@ -3477,6 +3545,37 @@ Void TEncSearch::predInterSearch( TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv* 
     }
 #if AMP_MRG
     } // end if bTestNormalMC
+#endif
+
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const Int dumpPoc = pcCU->getSlice()->getPOC();
+    const UInt maxCuW = pcCU->getSlice()->getSPS()->getMaxCUWidth();
+    const UInt maxCuH = pcCU->getSlice()->getSPS()->getMaxCUHeight();
+    const Int dumpCtuX = pcCU->getCUPelX() / maxCuW;
+    const Int dumpCtuY = pcCU->getCUPelY() / maxCuH;
+    const Int dumpCuX = pcCU->getCUPelX();
+    const Int dumpCuY = pcCU->getCUPelY();
+    const Int dumpCuSize = pcCU->getWidth(0);
+    const Int dumpPuX = dumpCuX + g_auiRasterToPelX[g_auiZscanToRaster[uiPartAddr]];
+    const Int dumpPuY = dumpCuY + g_auiRasterToPelY[g_auiZscanToRaster[uiPartAddr]];
+
+    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+    {
+      Int chosenRefList = (uiLastMode == 2 ? 2 : (uiLastMode == 0 ? 0 : 1));
+      Int chosenRefIdx = (uiLastMode == 1 ? iRefIdx[1] : (uiLastMode == 0 ? iRefIdx[0] : iRefIdxBi[0]));
+      TComMv chosenMv = (uiLastMode == 1 ? cMv[1] : (uiLastMode == 0 ? cMv[0] : cMvBi[0]));
+      TComMv chosenMvd = (uiLastMode == 1 ? (cMv[1] - cMvPred[1][iRefIdx[1]]) : (uiLastMode == 0 ? (cMv[0] - cMvPred[0][iRefIdx[0]]) : (cMvBi[0] - cMvPredBi[0][iRefIdxBi[0]])));
+      Int chosenMvpIdx = (uiLastMode == 1 ? aaiMvpIdx[1][iRefIdx[1]] : (uiLastMode == 0 ? aaiMvpIdx[0][iRefIdx[0]] : aaiMvpIdxBi[0][iRefIdxBi[0]]));
+      Double chosenCost = (uiLastMode == 2 ? uiCostBi : (uiLastMode == 0 ? uiCost[0] : uiCost[1]));
+
+      pDumper->dumpInterSearch(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY, dumpCuSize, pcCU->getDepth(0),
+                              iPartIdx, dumpPuX, dumpPuY, iRoiWidth, iRoiHeight,
+                              chosenRefList, chosenRefIdx, chosenMvpIdx,
+                              chosenMv.getHor(), chosenMv.getVer(),
+                              chosenMvd.getHor(), chosenMvd.getVer(),
+                              chosenCost, 0, uiMEBits);
+    }
 #endif
 
     if ( pcCU->getPartitionSize( uiPartAddr ) != SIZE_2Nx2N )

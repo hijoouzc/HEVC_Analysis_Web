@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Button, Badge, SegmentedControl, Card } from '../apple';
 
-// Official C++ tokens for HEVC HM-16.0 Reference Software syntax highlighting
+// Official C++ tokens for HEVC HM-18.0 Reference Software syntax highlighting
 const C_TYPES = new Set([
   'Void', 'UInt', 'Int', 'Bool', 'Double', 'Pel', 'Char', 'UChar',
   'TComDataCU', 'TComPic', 'TCoeff', 'ComponentID', 'QpParam',
@@ -110,7 +110,7 @@ function renderCodeTokens(text) {
 /**
  * HmSourceCodeModal
  * Refined Apple HIG / macOS Tahoe style modal window linking active pipeline stages
- * directly to official ITU-T H.265 / HEVC HM-16.0 C++ reference software implementations.
+ * directly to official ITU-T H.265 / HEVC HM-18.0 C++ reference software implementations.
  */
 export default function HmSourceCodeModal({
   isOpen,
@@ -196,7 +196,7 @@ export default function HmSourceCodeModal({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             <Badge variant="blue" style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px' }}>
-              HM-16.0 C++
+              HM-18.0 C++
             </Badge>
             <div style={{ minWidth: 0 }}>
               <div style={{
@@ -336,7 +336,7 @@ export default function HmSourceCodeModal({
                     <span style={{ color: 'var(--apple-label-tertiary)' }}>file:</span>
                     <strong style={{ color: 'var(--apple-label)' }}>{sourceFile}</strong>
                   </div>
-                  <span>HM-16.0 • C++11</span>
+                  <span>HM-18.0 • C++11</span>
                 </div>
 
                 {/* Editor Content Area */}
@@ -429,7 +429,7 @@ export default function HmSourceCodeModal({
                 color: 'var(--apple-label-secondary)',
                 lineHeight: 1.5
               }}>
-                The parameters below reflect the actual runtime execution state inside HM-16.0 for the current active coding unit and target coordinates:
+                The parameters below reflect the actual runtime execution state inside HM-18.0 for the current active coding unit and target coordinates:
               </div>
 
               <div
@@ -503,7 +503,7 @@ export default function HmSourceCodeModal({
                   Normative Compliance & Decoder Guarantees
                 </div>
                 <div style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', lineHeight: 1.55 }}>
-                  Any standard-compliant HEVC decoder (such as FFmpeg, Apple VideoToolbox, or libde265) mirrors this exact logical state when decoding the generated NAL units. The decision outputs in HM-16.0 ensure bit-exact cross-platform decoding interoperability.
+                  Any standard-compliant HEVC decoder (such as FFmpeg, Apple VideoToolbox, or libde265) mirrors this exact logical state when decoding the generated NAL units. The decision outputs in HM-18.0 ensure bit-exact cross-platform decoding interoperability.
                 </div>
               </Card>
             </div>
@@ -529,7 +529,7 @@ export default function HmSourceCodeModal({
             <span style={{ color: 'var(--apple-label-tertiary)' }}>•</span>
             <span>ISO/IEC 23008-2</span>
             <span style={{ color: 'var(--apple-label-tertiary)' }}>•</span>
-            <span>HM-16.0 Reference Software</span>
+            <span>HM-18.0 Reference Software</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

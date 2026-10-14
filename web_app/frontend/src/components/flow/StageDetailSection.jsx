@@ -87,7 +87,7 @@ const StageDetailSection = ({
                         height: '32px',
                         background: bg,
                         color: color,
-                        border: border || (isCorner ? '1.5px solid var(--apple-label)' : isExtended ? '1px dashed #94A3B8' : '1px solid #64748B'),
+                        border: border || (isCorner ? '1.5px solid var(--apple-label)' : '1px solid #64748B'),
                         borderRadius: '3px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -132,7 +132,7 @@ const StageDetailSection = ({
                         height: '32px',
                         background: bg,
                         color: color,
-                        border: border || (isCorner ? '1.5px solid var(--apple-label)' : isExtended ? '1px dashed #94A3B8' : '1px solid #64748B'),
+                        border: border || (isCorner ? '1.5px solid var(--apple-label)' : '1px solid #64748B'),
                         borderRadius: '3px',
                         display: 'flex',
                         flexDirection: 'column',
@@ -358,7 +358,7 @@ const StageDetailSection = ({
 
           <div style={{ background: 'var(--apple-canvas)', padding: '14px', borderRadius: '8px', border: '1px solid var(--apple-hairline)', marginBottom: '16px' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--apple-label-secondary)', marginBottom: '8px' }}>
-              ITU-T H.265 / HM-16.0 Mathematical Formula
+              ITU-T H.265 / HM-18.0 Mathematical Formula
             </div>
 
             {isPlanar && (
@@ -429,7 +429,7 @@ const StageDetailSection = ({
           </div>
 
           <p style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-            HM-16.0 evaluates all candidate intra modes through Rate-Distortion Optimization (RDO) minimizing the Lagrangian cost:
+            HM-18.0 evaluates all candidate intra modes through Rate-Distortion Optimization (RDO) minimizing the Lagrangian cost:
             <code style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--apple-label)' }}> J = D + λ·R</code>.
             Click any row to inspect that mode.
           </p>

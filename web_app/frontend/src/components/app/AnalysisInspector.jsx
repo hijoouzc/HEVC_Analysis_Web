@@ -55,7 +55,7 @@ const AnalysisInspector = ({
   const cachedPart = ctuPartitionsMap[`${ctuX}_${ctuY}`] || partitionData;
   const leafCount = cachedPart?.leaf_nodes || cachedPart?.nodes?.filter(n => !n.split).length || 1;
 
-  // Spatial Reference Availability (ITU-T H.265 Section 8.4.4.2 & HM-16.0 getCuAbove/getCuLeft)
+  // Spatial Reference Availability (ITU-T H.265 Section 8.4.4.2 & HM-18.0 getCuAbove/getCuLeft)
   const neighbors = useMemo(() => {
     const x = ctuX ?? 0;
     const y = ctuY ?? 0;
@@ -112,7 +112,7 @@ const AnalysisInspector = ({
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>CTU Size:</span>
-            <span style={{ color: 'var(--apple-label)' }}>{ctuPw} × {ctuPh} px</span>
+            <span style={{ color: 'var(--apple-label)' }}>{ctuPw} × {ctuPh} samples</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>Leaf Partitions:</span>
@@ -175,12 +175,12 @@ const AnalysisInspector = ({
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>CU Size:</span>
             <strong style={{ color: 'var(--apple-label)' }}>
-              {cuW} × {cuH} px
+              {cuW} × {cuH} samples
             </strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>Tree Depth:</span>
-            <strong style={{ color: depthConf.text }}>Depth {cuDepth} (64 → {cuW})</strong>
+            <strong style={{ color: depthConf.text }}>Depth {cuDepth} (64×64 → {cuW}×{cuH})</strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>Intra Mode:</span>
@@ -269,7 +269,7 @@ const AnalysisInspector = ({
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>Reference Codec:</span>
-            <span style={{ color: 'var(--apple-label)' }}>HM-16.0 Reference</span>
+            <span style={{ color: 'var(--apple-label)' }}>HM-18.0 Reference</span>
           </div>
         </div>
       </Card>
