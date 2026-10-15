@@ -19,54 +19,54 @@ Designed with **Apple macOS Tahoe (applecn)** aesthetics and **ITU-R pixel-accur
 
 ---
 
-## Key Features (10-Stage Inspection Pipeline)
+## Key Features (9-Stage Inspection Pipeline)
 
-The platform organizes microarchitectural inspection into 10 specialized stages with **Persistent DOM Shells** (fixed/min-height containers) guaranteeing **zero layout shift (CLS)** and immediate responsiveness:
+The platform organizes microarchitectural inspection into 9 specialized stages with **Persistent DOM Shells** (fixed/min-height containers) guaranteeing **zero layout shift (CLS)** and immediate responsiveness:
 
-### 0. GOP & Inter-Frame Temporal Structure (`Stage 0: GOP Reference`, `CP_00`)
+### 0. GOP & Inter-Frame Temporal Structure (`Stage 0: Frame & GOP`, `CP_00_FRAME_GOP`)
 - **Temporal Layer Hierarchy**: Visualizes GOP structures, Picture Order Count (POC), slice types (I, P, B), and temporal ID levels.
 - **Reference Picture Lists**: Detailed breakdown of L0 and L1 active reference frames and QP modulation.
 
-### 1. Interactive Full-Frame CTU Grid Navigator (`Stage 1: CTU Grid`, `CP_01`)
+### 1. Interactive Full-Frame CTU Grid Navigator (`Stage 1: CU QuadTree`, `CP_01_PARTITION`)
 - **Hierarchical QuadTree Map**: Visualizes the recursive QuadTree partitioning across the entire frame ($64\times 64 \rightarrow 32\times 32 \rightarrow 16\times 16 \rightarrow 8\times 8$).
 - **Picture Boundary Handling**: Validates sample bounds, forced splits, and out-of-bounds cross-hatch shading.
 - **Direct Spatial Selection**: Click directly on any CTU in the frame to lock focus and inspect block parameters with a persistent inspector HUD (`min-height: 430px`).
 - **C++ HM Source Code Inspector**: Modal viewer for `TEncSlice::compressSlice` and `xCompressCU` boundary checking.
 
-### 2. Deep Intra Prediction Flow (`Stage 2: Intra Prediction`, `CP_02` / `CP_03`)
+### 2. Deep Intra Prediction Flow (`Stage 2: Intra Search`, `CP_02_INTRA_REF` / `CP_03_INTRA_SEARCH`)
 - **5-Stage Sequential Stepper** (`min-height: 560px`):
   - **Step 1: Reference Boundary & MDIS**: 4N+1 perimeter reference samples, 3-tap $[1, 2, 1]/4$ smoothing filter, and boundary padding.
   - **Step 2: RMD Funnel**: 35-mode fast Hadamard cost funnel with Top K pruning and fixed list height (`380px`).
   - **Step 3: MPM Derivation**: Most Probable Modes derivation from Left and Above spatial neighbors with Planar/DC/Vertical fallback rules.
   - **Step 4: Full RDO & 6-Stage Domain Strip**: Visual domain strip ($S \to P \to R \to C \to Q \to S'$) with Lagrangian cost $J = D + \lambda \cdot R$.
   - **Step 5: Chroma Search & Winner Commitment**: Cb/Cr planar matrices, DM_CHROMA mode, Mode 34 replacement rule, and CABAC syntax elements.
+- **Studio Mode**: Interactive directional ray-tracing across all 33 angular modes (2 to 34), DC (1), and Planar (0).
 
-### 3. Inter Search & Motion Estimation (`Stage 3: Inter Search`, `CP_04`)
-- **Block Matching & Motion Vectors**: Visualizes Motion Vectors (MV), integer/sub-pel search windows, and SAD/Lagrangian costs.
+### 3. Inter Search & Motion Estimation (`Stage 3: Inter Search`, `CP_03_INTER_SEARCH`)
+- **Block Matching & Motion Vectors**: Visualizes Motion Vectors (MV), integer/sub-pel search windows, SAD/Lagrangian costs, and AMVP candidate lists.
 
-### 4. 2D Transform & RDOQ Quantization Engine (`Stage 4: Transform & Quant`, `CP_06` / `CP_07`)
+### 4. Residual Transform & RQT Hierarchy (`Stage 4: Transform RQT`, `CP_04_TRANSFORM_RQT`)
 - **2D DCT-II & 2D DST-VII**: Exact mathematical core transforms for $4\times 4$ intra luma (DST-VII) and $8\times 8$ to $32\times 32$ transform blocks (DCT-II).
 - **Frequency Spectrum & Sparsity**: Energy compaction ratio, DC harmonic energy, zero sparsity ratio, and Coded Block Flags (CBF).
 
-### 5. Reconstruction Picture Buffer (`Stage 5: Reconstruction`, `CP_05`)
-- **ITU-R BT.709 Colorimetry**: Strict mathematical color conversion (BT.709 YUV $\to$ RGB) with 4-Way synchronized matrix inspection.
-- **Discrete Planar Inspection**: Independent exploration of Luma ($Y$), Chroma Cb ($U$), and Chroma Cr ($V$) with mathematical verification: $S' = \text{Clip}(P + R')$.
+### 5. Reconstructed Picture Buffer (`Stage 5: Recon Picture`, `CP_05_RECON_PICTURE`)
+- **Full-Frame Split Slider**: Interactive before/after split wipe comparison between pristine source ($S$) and reconstructed buffer ($S'$).
+- **CU Planar Inspection**: Discrete planar exploration of Luma ($Y$), Chroma Cb ($U$), and Chroma Cr ($V$) pre-in-loop filtering.
+- **Mathematical Sample Verification**: Exact reconstructed sample equation: $S' = \text{Clip}(P + R')$.
+- **4-Way Synchronized Matrix Inspection**: Original ($S$), Prediction ($P$), Residual ($R$), and Reconstructed ($S'$).
 
-### 6. In-Loop Filtering (`Stage 6: In-Loop Filtering`, `CP_07`)
-- **Deblocking Filter (DBF)**: Boundary filter strength ($Bs \in \{0, 1, 2\}$) and cross-section pixel plot (`min-height: 190px`).
-- **Sample Adaptive Offset (SAO)**: Edge offset and Band offset sample correction.
+### 6. In-Loop Filtering (`Stage 6: In-Loop Filter`, `CP_06_INLOOP_FILTER`)
+- **Deblocking Filter (DBF)**: Boundary filter strength ($bS \in \{0, 1, 2\}$), threshold parameters ($\beta, t_C$), and cross-section sample plots (`min-height: 190px`).
+- **Sample Adaptive Offset (SAO)**: Edge offset (EO categories 1-4) and Band offset (BO band position) sample correction.
 
-### 7. CABAC Entropy Coding (`Stage 7: CABAC Entropy`, `CP_08`)
-- **Binary Arithmetic Coding**: Context models, MPS/LPS state transitions, Range and Offset probability intervals.
+### 7. CABAC Entropy Coding (`Stage 7: CABAC Entropy`, `CP_07_CABAC_ENTROPY`)
+- **Binary Arithmetic Coding**: Context models, `ctxIdx`, FSM probability state transitions (`pStateIdx: 0..62`), `valMPS`, Range and Offset probability intervals.
 
-### 8. Interactive RDO Simulator (`Stage 8: RDO Simulator`)
+### 8. Interactive RDO Simulator (`Stage 8: RDO Simulator`, `RDO_SIM`)
 - **HM xCompressCU In-Browser Simulator**: Pure JavaScript simulation of HEVC QuadTree partitioning and Rate-Distortion Optimization ($J = D + \lambda \cdot R$).
 - **Live Variable Controls**: Interactive **QP Slider** (10–51) with dynamic **$\lambda$ multiplier badge** ($\lambda = 0.57 \times 2^{(QP-12)/3}$) and **Speed Slider** (150–1500ms).
 - **Persistent DOM Containers**: Candidate Modes Table (`min-height: 210px`) and 192×192px Pixel Microscope matrix cards with zero layout flickering.
 - **Draw.io XML Export**: One-click generation and clipboard copy of professional hierarchical XML trees.
-
-### 9. 4-Way Comparison (`Stage 9: 4-Way Comparison`)
-- **Split Wipe Comparison**: Compare Original ($S$), Prediction ($P$), Residual ($R = S - P$), and Reconstructed ($S' = P + R'$) with an interactive draggable Split Wipe slider and residual error gain boosters ($1\times, 2\times, 4\times, 8\times$).
 
 ---
 
@@ -81,7 +81,7 @@ The platform organizes microarchitectural inspection into 10 specialized stages 
 
 | Shortcut | Action |
 | :--- | :--- |
-| `0` – `9` | Switch directly between Stages 0 through 9 |
+| `0` – `8` | Switch directly between Stages 0 through 8 |
 | `I` / `i` | Toggle Unified Analysis Inspector panel |
 | `D` / `d` | Toggle Dark / Light theme |
 | `Space` | Toggle auto-play / pause timeline animation |
@@ -97,11 +97,11 @@ The platform organizes microarchitectural inspection into 10 specialized stages 
 │                   React 19 + Vite Frontend                      │
 │   (Apple Minimalist Design, Zero CLS, Responsive Pixel Canvas)   │
 └───────────────────────────────▲──────────────────────────────────┘
-                                │ HTTP / REST JSON (Async Job & CP_00..08)
+                                │ HTTP / REST JSON (Async Job & CP_00..07, RDO_SIM)
 ┌───────────────────────────────▼──────────────────────────────────┐
 │                     FastAPI Python Backend                       │
 │  • Job Manager & Session Isolation (UUID Workspace)              │
-│  • Checkpoint Parsing Pipeline (CP_00 to CP_08 Checkpoints)      │
+│  • Checkpoint Parsing Pipeline (CP_00 to CP_07 Checkpoints)      │
 │  • FFmpeg Native YUV420p Color Conversion & Scaling Adapter       │
 └───────────────────────────────▲──────────────────────────────────┘
                                 │ Subprocess Execution + Trace Pipes
@@ -226,7 +226,7 @@ HEVC_reference_software/
 │   │   └── requirements.txt      # Python dependencies
 │   └── frontend/                 # React 19 + Vite Application
 │       ├── src/
-│       │   ├── components/       # 10-stage Viewports, FullFrameViewer, RDO Simulator, Apple UI
+│       │   ├── components/       # 9-stage Viewports, FullFrameViewer, RDO Simulator, Apple UI
 │       │   ├── hooks/            # Session management, caching, async polling
 │       │   └── utils/            # HEVC Color utilities, RDO simulator, draw.io generator
 │       └── package.json          # Node dependencies

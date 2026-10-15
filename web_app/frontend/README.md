@@ -6,46 +6,48 @@ Implemented strictly following **Apple macOS Tahoe (applecn)** design language a
 
 ---
 
-## Workspace Tabs (10-Stage Pipeline)
+## Workspace Tabs (9-Stage Pipeline)
 
-The application organizes the analysis process into 10 dedicated, distraction-free stages with **Persistent DOM Shells** (fixed/min-height containers) that completely eliminate layout shift (CLS):
+The application organizes the analysis process into 9 dedicated, distraction-free stages with **Persistent DOM Shells** (fixed/min-height containers) that completely eliminate layout shift (CLS):
 
-0. **0. GOP Reference (`CP_00_FRAME_GOP`)**:
+0. **0. Frame & GOP (`CP_00_FRAME_GOP`)**:
    - Inter-frame reference structures, Picture Order Count (POC), slice types (I, P, B), and temporal layers.
    - Reference picture lists L0 and L1 visualization.
 
-1. **1. CTU Grid (`CP_01_PARTITION`)**:
+1. **1. CU QuadTree (`CP_01_PARTITION`)**:
    - Multi-layer high-performance SVG/Canvas renderer displaying 64×64 Coding Tree Units across the entire frame.
    - Picture boundary handling: Forced Split detection, valid pixel sample extent, and out-of-bounds cross-hatching.
    - Interactive leaf CU selection with instantaneous deselect support (<0.1ms reticle response) and persistent inspector shell (`min-height: 430px`).
    - Toggles: Original image vs Partition Map, Outline vs Depth coloring, 64×64 Grid ON/OFF, Boundary ON/OFF, and HM-18.0 `compressCtu` C++ source code inspector.
 
-2. **2. Intra Prediction Flow (`CP_02` / `CP_03`)**:
+2. **2. Intra Search (`CP_02_INTRA_REF` / `CP_03_INTRA_SEARCH`)**:
    - Deep 5-stage sequential pipeline stepper with persistent card height (`min-height: 560px`):
      - **Step 1: Boundary & MDIS**: 4N+1 perimeter reference samples, 3-tap $[1, 2, 1]/4$ smoothing filter, reference padding, and availability lines.
      - **Step 2: RMD Funnel**: 35-mode fast Hadamard cost funnel with Top K pruning and fixed list height (`380px`).
      - **Step 3: Candidates & MPM**: Most Probable Modes derivation from Left and Above neighbors with Planar/DC/Vertical fallback rules.
      - **Step 4: Full RDO**: 6-Stage Domain Strip ($S \to P \to R \to C \to Q \to S'$) with exact Lagrangian cost ($J = D + \lambda \cdot R$).
      - **Step 5: Chroma Search**: Cb/Cr planar matrices, DM_CHROMA mode, Mode 34 replacement rule, and CABAC syntax elements.
+   - Studio Mode: Directional ray-tracing and angular slope vectors across all 35 prediction modes.
 
-3. **3. Inter Search & Motion Estimation (`CP_04_INTER_SEARCH`)**:
-   - Reference frame block matching, Motion Vector (MV) search window, SAD/Lagrangian costs, and sub-pixel interpolation.
+3. **3. Inter Search (`CP_03_INTER_SEARCH`)**:
+   - Reference frame block matching, Motion Vector (MV, MVD) search window, SAD/Lagrangian costs, and AMVP candidate lists.
 
-4. **4. Transform & Quant (`CP_06` / `CP_07`)**:
+4. **4. Transform RQT (`CP_04_TRANSFORM_RQT`)**:
    - 2D DCT-II and 2D DST-VII frequency spectrum inspection for $4\times 4$ to $32\times 32$ transform blocks.
    - Quantization scaling matrices, QP shift levels, energy compaction ratio, DC harmonic energy, and Coded Block Flags (CBF).
 
-5. **5. Reconstruction (`CP_05_RECON`)**:
-   - Standard ITU-R BT.709 mathematical colorimetry with 4-Way synchronized matrix inspection (Original $S$, Prediction $P$, Residual $R$, Reconstruction $S'$).
-   - Discrete planar components Y, Cb, Cr with mathematical sample verification: $S' = \text{Clip}(P + R')$.
+5. **5. Recon Picture (`CP_05_RECON_PICTURE`)**:
+   - **Overview Mode**: Full-frame reconstructed picture buffer ($S'$) with interactive before/after split wipe comparison slider against pristine source ($S$) and residual error gain boosters ($1\times, 2\times, 4\times, 8\times$).
+   - **CU Planar Mode**: Discrete planar inspection of Luma ($Y$), Chroma Cb ($U$), and Chroma Cr ($V$) pre-in-loop filter with exact mathematical sample verification: $S' = \text{Clip}(P + R')$.
+   - 4-Way synchronized matrix inspection (Original $S$, Prediction $P$, Residual $R$, Reconstruction $S'$).
    - Persistent synchronized sample readout HUD (`min-height: 88px`).
 
-6. **6. In-Loop Filtering (`CP_07_LOOP_FILTER`)**:
-   - Deblocking Filter (DBF) boundary strength ($Bs \in \{0, 1, 2\}$) and boundary cross-section plots (`min-height: 190px`).
-   - Sample Adaptive Offset (SAO) Edge and Band offset classification.
+6. **6. In-Loop Filter (`CP_06_INLOOP_FILTER`)**:
+   - Deblocking Filter (DBF): Boundary filter strength ($bS \in \{0, 1, 2\}$), threshold parameters ($\beta, t_C$), and boundary cross-section sample plot (`min-height: 190px`).
+   - Sample Adaptive Offset (SAO): Edge offset (EO categories 1-4) and Band offset (BO band position) sample correction.
 
-7. **7. CABAC Entropy Coding (`CP_08_CABAC`)**:
-   - Binary arithmetic encoding state engine: context models, MPS/LPS transitions, Range and Offset intervals.
+7. **7. CABAC Entropy (`CP_07_CABAC_ENTROPY`)**:
+   - Binary arithmetic encoding state engine: context models, syntax element bins, context index (`ctxIdx`), FSM probability state transitions (`pStateIdx: 0..62`), `valMPS`, Range and Offset probability intervals.
 
 8. **8. RDO Simulator (`RDO_SIM`)**:
    - Pure in-browser simulation of HM Reference Software `TEncCu::xCompressCU`.
@@ -53,9 +55,6 @@ The application organizes the analysis process into 10 dedicated, distraction-fr
    - Persistent Candidate Modes Table (`min-height: 210px`) and 192×192px Pixel Microscope matrix cards (standby state during split nodes, zero layout jumps).
    - Non-Split vs Split RDO decision cards comparing SSD distortion, bit-rate estimates, and Lagrangian costs.
    - One-click Draw.io XML export and HM-18.0 C++ source code modal.
-
-9. **9. 4-Way Comparison (`FOUR_WAY_VIEW`)**:
-   - Comprehensive side-by-side comparison of Original ($S$), Prediction ($P$), Residual ($R = S - P$), and Reconstructed ($S' = P + R'$) with an interactive draggable Split Wipe slider and residual error gain boosters ($1\times, 2\times, 4\times, 8\times$).
 
 ---
 
@@ -74,7 +73,7 @@ Acts as the **Single Source of Truth** for all spatial, block, coding, and seque
 
 | Shortcut | Action |
 | :--- | :--- |
-| `0` – `9` | Switch directly between Stages 0 through 9 |
+| `0` – `8` | Switch directly between Stages 0 through 8 |
 | `I` / `i` | Toggle Unified Analysis Inspector panel |
 | `D` / `d` | Toggle Dark / Light theme |
 | `Space` | Toggle auto-play / pause timeline animation |

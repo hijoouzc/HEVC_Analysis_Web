@@ -594,14 +594,14 @@ const IntraPredictionFlow = ({
             alignItems: 'start'
           }}
         >
-          {/* LEFT COLUMN: HERO 4-WAY VISUAL MATRIX STAGE (Zero Obscuring) */}
+          {/* LEFT COLUMN: INTRA PREDICTION SAMPLE MATRIX */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
             <Card style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
               {/* Visual Stage Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                   <span style={{ fontSize: '12.5px', fontWeight: 700, fontFamily: 'JetBrains Mono', whiteSpace: 'nowrap' }}>
-                    VISUAL MATRIX STAGE ({N}×{N})
+                    Intra Prediction Matrix ({N}×{N} samples)
                   </span>
                   <Badge variant="blue" style={{ minWidth: '180px', justifyContent: 'center', flexShrink: 0 }}>
                     Mode {selectedMode}: {modeInfo.name}
@@ -737,7 +737,7 @@ const IntraPredictionFlow = ({
                     boxSizing: 'border-box'
                   }}>
                     <div style={{ fontSize: '11px', fontWeight: 700, fontFamily: 'JetBrains Mono', color: 'var(--apple-label)', height: '16px', lineHeight: '16px', whiteSpace: 'nowrap' }}>
-                      Reconstruction (S')
+                      Reconstructed (S')
                     </div>
                     <BlockMatrixGrid
                       data={recoData}
@@ -1216,7 +1216,7 @@ const IntraPredictionFlow = ({
               {/* Deck Header & Sub-Tabs */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                 <span style={{ fontSize: '12.5px', fontWeight: 700, fontFamily: 'JetBrains Mono' }}>
-                  RDO DECISION DECK
+                  RDO Decision Deck
                 </span>
                 <SegmentedControl
                   value={deckTab}
