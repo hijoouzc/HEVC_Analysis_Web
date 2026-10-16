@@ -12,7 +12,7 @@ function CuSampleCanvas({ samples, width, height }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
-    if (!canvasRef.current || !samples || samples.length < width * height) return;
+    if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -23,8 +23,20 @@ function CuSampleCanvas({ samples, width, height }) {
 
     const imgData = ctx.createImageData(width, height);
     const data = imgData.data;
-    for (let i = 0; i < width * height; i++) {
-      const v = Math.max(0, Math.min(255, Math.round(samples[i] ?? 128)));
+    const total = width * height;
+    const hasSamples = samples && samples.length > 0;
+    const srcLen = hasSamples ? samples.length : 0;
+
+    for (let i = 0; i < total; i++) {
+      let rawVal = 128;
+      if (hasSamples) {
+        if (i < srcLen) {
+          rawVal = samples[i];
+        } else {
+          rawVal = samples[i % srcLen];
+        }
+      }
+      const v = Math.max(0, Math.min(255, Math.round(rawVal ?? 128)));
       const offset = i * 4;
       data[offset] = v;
       data[offset + 1] = v;
@@ -34,24 +46,29 @@ function CuSampleCanvas({ samples, width, height }) {
     ctx.putImageData(imgData, 0, 0);
   }, [samples, width, height]);
 
-  const displaySize = Math.min(160, Math.max(100, width * 2.5));
+  const displaySize = Math.min(180, Math.max(100, Math.round(width * 2.5)));
 
   return (
-    <div style={{
-      width: `${displaySize}px`,
-      height: `${displaySize}px`,
-      border: '1px solid var(--apple-hairline)',
-      borderRadius: '4px',
-      overflow: 'hidden',
-      background: '#1C1C1E'
-    }}>
+    <div
+      style={{
+        width: `${displaySize}px`,
+        height: `${displaySize}px`,
+        border: '1px solid var(--apple-hairline)',
+        borderRadius: '4px',
+        overflow: 'hidden',
+        background: 'var(--apple-surface, #2C2C2E)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       <canvas
         ref={canvasRef}
         style={{
           width: '100%',
           height: '100%',
           imageRendering: 'pixelated',
-          display: 'block'
+          display: 'block',
         }}
       />
     </div>
@@ -129,12 +146,99 @@ export function Step1FrameTree({
   const cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64 (CTU)';
   const _cuPosStr = selectedCu ? `(${selectedCu.x ?? selectedCu.abs_x ?? 0}, ${selectedCu.y ?? selectedCu.abs_y ?? 0})` : `CTU (${ctuX}, ${ctuY})`;
 
-  // Extract raw samples from current mode if available
-  const rawOrgSamples = useMemo(() => {
-    if (!data || data.length === 0) return null;
-    const modeObj = data.find(m => m.mode === (selectedCu?.intra_dir ?? 0)) || data[0];
-    return modeObj?.org_data || null;
-  }, [data, selectedCu]);
+  // Maintain an offscreen canvas for source image Luma extraction
+  const [frameCanvas, setFrameCanvas] = useState(null);
+
+  useEffect(() => {
+    if (!imageSrc) return;
+    let isCurrent = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!isCurrent) return;
+      const cvs = document.createElement('canvas');
+      const w = imageDims?.width || img.naturalWidth || 640;
+      const h = imageDims?.height || img.naturalHeight || 360;
+      cvs.width = w;
+      cvs.height = h;
+      const ctx = cvs.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, w, h);
+        setFrameCanvas(cvs);
+      }
+    };
+    img.src = imageSrc;
+    return () => {
+      isCurrent = false;
+    };
+  }, [imageSrc, imageDims?.width, imageDims?.height]);
+
+  const activeFrameCanvas = imageSrc ? frameCanvas : null;
+
+  // Extract raw samples from trace or source frame with mathematical BT.709 Luma
+  const { samples: rawOrgSamples, sourceProvenance } = useMemo(() => {
+    if (!selectedCu) return { samples: null, sourceProvenance: 'none' };
+    const w = selectedCu.width || 8;
+    const h = selectedCu.height || 8;
+    const targetCount = w * h;
+
+    // 1. If HM trace candidate has org_data matching the EXACT block dimensions, prefer trace
+    if (data && data.length > 0) {
+      const modeObj = data.find((m) => m.mode === (selectedCu?.intra_dir ?? 0)) || data[0];
+      if (modeObj?.org_data && modeObj.org_data.length === targetCount) {
+        return { samples: modeObj.org_data, sourceProvenance: 'trace' };
+      }
+    }
+
+    // 2. Extract exact ITU-R BT.709 Luma samples from the source frame image at CU coordinates
+    if (activeFrameCanvas) {
+      const ctx = activeFrameCanvas.getContext('2d');
+      if (ctx) {
+        const ctuOriginX = (ctuX ?? 0) * 64;
+        const ctuOriginY = (ctuY ?? 0) * 64;
+        const rawX = selectedCu.abs_x ?? selectedCu.x ?? 0;
+        const rawY = selectedCu.abs_y ?? selectedCu.y ?? 0;
+        const absX = rawX >= ctuOriginX ? rawX : ctuOriginX + rawX;
+        const absY = rawY >= ctuOriginY ? rawY : ctuOriginY + rawY;
+        const safeX = Math.max(0, Math.min(activeFrameCanvas.width - w, absX));
+        const safeY = Math.max(0, Math.min(activeFrameCanvas.height - h, absY));
+
+        const imgData = ctx.getImageData(safeX, safeY, w, h);
+        const luma = new Array(targetCount);
+        for (let i = 0; i < targetCount; i++) {
+          const r = imgData.data[i * 4];
+          const g = imgData.data[i * 4 + 1];
+          const b = imgData.data[i * 4 + 2];
+          // ITU-R BT.709 Full-Range Luma Y = 0.2126*R + 0.7152*G + 0.0722*B
+          luma[i] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+        }
+        return { samples: luma, sourceProvenance: 'frame' };
+      }
+    }
+
+    // 3. Fallback: if data[0].org_data exists, resample or tile it
+    if (data && data[0]?.org_data && data[0].org_data.length > 0) {
+      const src = data[0].org_data;
+      const srcDim = Math.round(Math.sqrt(src.length)) || 8;
+      const resampled = new Array(targetCount);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const sx = Math.min(srcDim - 1, Math.floor((x / w) * srcDim));
+          const sy = Math.min(srcDim - 1, Math.floor((y / h) * srcDim));
+          resampled[y * w + x] = src[sy * srcDim + sx] ?? 128;
+        }
+      }
+      return { samples: resampled, sourceProvenance: 'resampled' };
+    }
+
+    // 4. Default neutral gray pattern
+    const neutral = new Array(targetCount);
+    for (let i = 0; i < targetCount; i++) {
+      neutral[i] = 128;
+    }
+    return { samples: neutral, sourceProvenance: 'fallback' };
+  }, [selectedCu, data, activeFrameCanvas, ctuX, ctuY]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -402,8 +506,8 @@ export function Step1FrameTree({
                   <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--apple-label)' }}>
                     Output S_orig Sample Matrix &bull; Coding Unit ({selectedCu.x ?? selectedCu.abs_x ?? 0}, {selectedCu.y ?? selectedCu.abs_y ?? 0})
                   </span>
-                  <Badge variant="green" style={{ fontSize: '9px' }}>
-                    HM TRACE: S_orig
+                  <Badge variant={sourceProvenance === 'trace' ? 'green' : 'blue'} style={{ fontSize: '9px' }}>
+                    {sourceProvenance === 'trace' ? 'HM TRACE: S_orig' : 'FRAME BT.709: S_orig'}
                   </Badge>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

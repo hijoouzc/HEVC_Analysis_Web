@@ -17,7 +17,7 @@ const MatrixCanvas = React.memo(function MatrixCanvas({ data, size, isResidual, 
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !data || data.length < size * size) return;
+    if (!canvas || !data || data.length === 0) return;
     const ctx = canvas.getContext('2d');
     const widthPx = 192;
     const heightPx = 192;
@@ -26,6 +26,7 @@ const MatrixCanvas = React.memo(function MatrixCanvas({ data, size, isResidual, 
     ctx.imageSmoothingEnabled = false;
 
     const cellSize = widthPx / size;
+    const dataLen = data.length;
 
     if (showText && size <= 16) {
       // High-performance canvas text rendering (eliminates up to 4,096 DOM divs)
@@ -36,7 +37,8 @@ const MatrixCanvas = React.memo(function MatrixCanvas({ data, size, isResidual, 
 
       for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
-          const val = data[y * size + x];
+          const idx = y * size + x;
+          const val = idx < dataLen ? data[idx] : (data[idx % dataLen] ?? 128);
           const pixelVal = isResidual ? clamp8(val + 128) : clamp8(val);
           
           // Cell background

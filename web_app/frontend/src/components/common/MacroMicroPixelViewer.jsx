@@ -102,7 +102,7 @@ function MacroMicroPixelViewer({
 
   // Draw discrete 1-sample-to-1-pixel Bitmap onto Macro Canvas (for N >= 16)
   useEffect(() => {
-    if (N < 16 || !canvasRef.current || !data || data.length < N * N) return;
+    if (N < 16 || !canvasRef.current || !data || data.length === 0) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -112,8 +112,9 @@ function MacroMicroPixelViewer({
     ctx.imageSmoothingEnabled = false;
 
     const imgData = ctx.createImageData(N, N);
+    const dataLen = data.length;
     for (let i = 0; i < N * N; i++) {
-      const val = data[i] ?? 0;
+      const val = i < dataLen ? (data[i] ?? 0) : (data[i % dataLen] ?? 0);
       let r = 128;
       let g = 128;
       let b = 128;

@@ -128,7 +128,7 @@ function BlockMatrixGrid({
 
   // Draw discrete Macro Canvas bitmap for width >= 16
   useEffect(() => {
-    if (width < 16 || !canvasRef.current || !data || data.length < width * width) return;
+    if (width < 16 || !canvasRef.current || !data || data.length === 0) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -137,10 +137,11 @@ function BlockMatrixGrid({
     canvas.height = width;
     ctx.imageSmoothingEnabled = false;
 
+    const dataLen = data.length;
     for (let y = 0; y < width; y++) {
       for (let x = 0; x < width; x++) {
         const idx = y * width + x;
-        const val = data[idx] ?? 0;
+        const val = idx < dataLen ? (data[idx] ?? 0) : (data[idx % dataLen] ?? 0);
         const isDC = (x === 0 && y === 0);
         const style = getColor ? getColor(val, isDC, x, y) : { bg: '#2C2C2E' };
         ctx.fillStyle = resolveCanvasColor(style.bg);

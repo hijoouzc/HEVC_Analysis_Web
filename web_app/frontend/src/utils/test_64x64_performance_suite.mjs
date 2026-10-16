@@ -144,6 +144,12 @@ it('Implements CuSampleCanvas in Step1FrameTree for width > 8', () => {
   assert(step1Content.includes('<CuSampleCanvas'), 'Renders CuSampleCanvas for blocks > 8');
 });
 
+it('Extracts real BT.709 Luma samples from source frame for large CU blocks in Step1FrameTree', () => {
+  assert(step1Content.includes('0.2126 * r + 0.7152 * g + 0.0722 * b'), 'Uses ITU-R BT.709 Full-Range Luma formula');
+  assert(step1Content.includes('sourceProvenance'), 'Tracks sample provenance cleanly');
+  assert(!step1Content.includes('samples.length < width * height) return'), 'Eliminates black-screen premature return safeguard in CuSampleCanvas');
+});
+
 console.log(`\n=== 64×64 PERFORMANCE & CANVAS TEST SUMMARY: ${passCount} PASSED, ${failCount} FAILED ===\n`);
 
 if (failCount > 0) {

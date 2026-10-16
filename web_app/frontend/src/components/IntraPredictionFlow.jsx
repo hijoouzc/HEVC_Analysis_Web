@@ -369,7 +369,7 @@ const IntraPredictionFlow = ({
   const orgCanvasRef = useRef(null);
 
   useEffect(() => {
-    if (N < 16 || !orgCanvasRef.current || !orgData || orgData.length < N * N) return;
+    if (N < 16 || !orgCanvasRef.current || !orgData || orgData.length === 0) return;
     const canvas = orgCanvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -380,9 +380,10 @@ const IntraPredictionFlow = ({
 
     const imgData = ctx.createImageData(N, N);
     const dataArr = imgData.data;
+    const dataLen = orgData.length;
 
     for (let i = 0; i < N * N; i++) {
-      const val = orgData[i] ?? 128;
+      const val = i < dataLen ? (orgData[i] ?? 128) : (orgData[i % dataLen] ?? 128);
       const pixelOffset = i * 4;
       if (channel === 'Y') {
         const v = Math.max(0, Math.min(255, Math.round(val)));
