@@ -287,6 +287,28 @@ export function getPixelTrace(mode, x, y, blockSize = 8, rawRefTop = [], rawRefL
 }
 
 /**
+ * Generates the full blockSize x blockSize predicted matrix for any HEVC intra mode (0..34)
+ * strictly following ITU-T H.265 Section 8.4.4.2 specifications.
+ * @param {number} mode Intra mode (0-34)
+ * @param {number} blockSize Block size (4, 8, 16, 32, 64)
+ * @param {number[]} refTop Reference samples top array (length >= 2*blockSize + 1)
+ * @param {number[]} refLeft Reference samples left array (length >= 2*blockSize + 1)
+ * @returns {number[]} 1D array of predicted samples (length blockSize * blockSize)
+ */
+export function generateIntraPredictionBlock(mode, blockSize = 8, refTop = [], refLeft = []) {
+  const N = Math.max(4, Number(blockSize ?? 8));
+  const total = N * N;
+  const pred = new Array(total);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const trace = getPixelTrace(mode, x, y, N, refTop, refLeft);
+      pred[y * N + x] = Math.max(0, Math.min(255, Math.round(trace.predictedVal ?? 128)));
+    }
+  }
+  return pred;
+}
+
+/**
  * Calculates animation stagger delay (in seconds) for a pixel based on the mode angle wavefront
  * @param {number} mode Intra mode (0-34)
  * @param {number} x Column index (0..blockSize-1)

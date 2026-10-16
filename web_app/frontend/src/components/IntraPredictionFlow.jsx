@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { INTRA_PRED_ANGLES, INV_ANGLES, getPixelTrace } from '../utils/intraTraceUtils';
+import { getPixelTrace, generateIntraPredictionBlock } from '../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../utils/metricsUtils';
 import {
@@ -121,8 +121,8 @@ const IntraPredictionFlow = ({
   refSamples = null,
   currentMode = 0,
   blockSize = 8,
-  _imagePreview = null,
-  _imageDims = { width: 640, height: 360 },
+  imagePreview = null,
+  imageDims = { width: 640, height: 360 },
   ctuX = 0,
   ctuY = 0,
   onBackToQuadTree = null,
@@ -177,6 +177,36 @@ const IntraPredictionFlow = ({
   const handleSelectPixel = useCallback((coord) => {
     setSelectedPixel(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
   }, []);
+
+  // Maintain an offscreen canvas for source image Luma extraction
+  const [frameCanvas, setFrameCanvas] = useState(null);
+
+  useEffect(() => {
+    if (!imagePreview) return;
+    let isCurrent = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!isCurrent) return;
+      const cvs = document.createElement('canvas');
+      const w = imageDims?.width || img.naturalWidth || 640;
+      const h = imageDims?.height || img.naturalHeight || 360;
+      cvs.width = w;
+      cvs.height = h;
+      const ctx = cvs.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, w, h);
+        setFrameCanvas(cvs);
+      }
+    };
+    img.src = imagePreview;
+    return () => {
+      isCurrent = false;
+    };
+  }, [imagePreview, imageDims?.width, imageDims?.height]);
+
+  const activeFrameCanvas = imagePreview ? frameCanvas : null;
 
   // Fetch full 5-stage pipeline telemetry from backend if available
   useEffect(() => {
@@ -246,36 +276,73 @@ const IntraPredictionFlow = ({
   const totalPixels = N * N;
   const refSpan = 2 * N + 1;
 
-  const orgData = useMemo(() => (rawOrg && rawOrg.length >= totalPixels) ? rawOrg.slice(0, totalPixels) : Array(totalPixels).fill(128), [rawOrg, totalPixels]);
-  const predData = useMemo(() => (rawPred && rawPred.length >= totalPixels) ? rawPred.slice(0, totalPixels) : Array(totalPixels).fill(128), [rawPred, totalPixels]);
-  const resiData = useMemo(() => (rawResi && rawResi.length >= totalPixels) ? rawResi.slice(0, totalPixels) : Array(totalPixels).fill(0), [rawResi, totalPixels]);
-  const refTopRaw = useMemo(() => (rawRefTop && rawRefTop.length >= refSpan) ? rawRefTop.slice(0, refSpan) : Array(refSpan).fill(128), [rawRefTop, refSpan]);
-  const refLeftRaw = useMemo(() => (rawRefLeft && rawRefLeft.length >= refSpan) ? rawRefLeft.slice(0, refSpan) : Array(refSpan).fill(128), [rawRefLeft, refSpan]);
+  // Extract raw reference perimeter samples (2N+1) from trace or source frame
+  const { refTopRaw, refLeftRaw } = useMemo(() => {
+    if (rawRefTop && rawRefTop.length >= refSpan && rawRefLeft && rawRefLeft.length >= refSpan) {
+      return {
+        refTopRaw: rawRefTop.slice(0, refSpan),
+        refLeftRaw: rawRefLeft.slice(0, refSpan)
+      };
+    }
 
-  // Reconstructed block S' = Clip3(0, 255, P + R)
-  const recoData = useMemo(() => {
-    return predData.map((p, i) => Math.max(0, Math.min(255, Math.round(p + (resiData[i] ?? 0)))));
-  }, [predData, resiData]);
+    if (activeFrameCanvas) {
+      const ctx = activeFrameCanvas.getContext('2d');
+      if (ctx) {
+        const ctuOriginX = (ctuX ?? 0) * 64;
+        const ctuOriginY = (ctuY ?? 0) * 64;
+        const rawX = selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX;
+        const rawY = selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY;
+        const absX = rawX >= ctuOriginX ? rawX : ctuOriginX + rawX;
+        const absY = rawY >= ctuOriginY ? rawY : ctuOriginY + rawY;
 
-  // Max residual magnitude for heatmap colormap
-  const maxResi = useMemo(() => {
-    return resiData.reduce((max, r) => Math.max(max, Math.abs(r)), 1);
-  }, [resiData]);
+        const frameW = activeFrameCanvas.width;
+        const frameH = activeFrameCanvas.height;
 
-  const getResiColor = useCallback((val) => {
-    return getResidualColorAndTextColor(val, maxResi || 64);
-  }, [maxResi]);
+        const startX = Math.max(0, Math.min(frameW - 1, absX - 1));
+        const startY = Math.max(0, Math.min(frameH - 1, absY - 1));
+        const reqW = Math.min(frameW - startX, 2 * N + 2);
+        const reqH = Math.min(frameH - startY, 2 * N + 2);
 
-  const transformEvent = useMemo(() => {
-    const events = (transformData && transformData.length > 0) ? transformData : (quantData || []);
-    if (!events || events.length === 0) return null;
-    const compEvent = events.find(e => e.component === channel && e.width === N && e.height === N);
-    return compEvent || events.find(e => e.component === channel) || events[0] || null;
-  }, [transformData, quantData, channel, N]);
+        const patch = ctx.getImageData(startX, startY, reqW, reqH);
+        const getLumaAt = (px, py) => {
+          const clampedX = Math.max(0, Math.min(reqW - 1, px - startX));
+          const clampedY = Math.max(0, Math.min(reqH - 1, py - startY));
+          const offset = (clampedY * reqW + clampedX) * 4;
+          const r = patch.data[offset];
+          const g = patch.data[offset + 1];
+          const b = patch.data[offset + 2];
+          return Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+        };
 
-  const angle = INTRA_PRED_ANGLES[selectedMode] ?? 0;
-  const invAngle = INV_ANGLES[angle] ?? 0;
-  const hasEdgeFilter = (channel === 'Y') && (selectedMode === 1 || selectedMode === 10 || selectedMode === 26) && N <= 16;
+        const corner = getLumaAt(absX - 1, absY - 1);
+        const topSamples = new Array(refSpan);
+        const leftSamples = new Array(refSpan);
+        topSamples[0] = corner;
+        leftSamples[0] = corner;
+
+        for (let i = 0; i < 2 * N; i++) {
+          topSamples[i + 1] = getLumaAt(absX + i, absY - 1);
+          leftSamples[i + 1] = getLumaAt(absX - 1, absY + i);
+        }
+
+        return { refTopRaw: topSamples, refLeftRaw: leftSamples };
+      }
+    }
+
+    const topFallback = new Array(refSpan);
+    const leftFallback = new Array(refSpan);
+    const srcTop = rawRefTop && rawRefTop.length > 0 ? rawRefTop : [128];
+    const srcLeft = rawRefLeft && rawRefLeft.length > 0 ? rawRefLeft : [128];
+
+    for (let i = 0; i < refSpan; i++) {
+      const topIdx = Math.min(srcTop.length - 1, Math.floor((i / refSpan) * srcTop.length));
+      const leftIdx = Math.min(srcLeft.length - 1, Math.floor((i / refSpan) * srcLeft.length));
+      topFallback[i] = srcTop[topIdx] ?? 128;
+      leftFallback[i] = srcLeft[leftIdx] ?? 128;
+    }
+
+    return { refTopRaw: topFallback, refLeftRaw: leftFallback };
+  }, [rawRefTop, rawRefLeft, refSpan, activeFrameCanvas, selectedCu, ctuX, ctuY, N]);
 
   const isMDISSmoothed = (channel === 'Y') && (
     (modeData && modeData.b_use_filter !== undefined)
@@ -293,11 +360,94 @@ const IntraPredictionFlow = ({
   const hasGroundTruthFiltered = gtRefTopFilt && gtRefTopFilt.length >= refSpan;
   const refTopFilt = hasGroundTruthFiltered ? gtRefTopFilt : simulatedRefs.top;
   const refLeftFilt = (gtRefLeftFilt && gtRefLeftFilt.length >= refSpan) ? gtRefLeftFilt : simulatedRefs.left;
-  const getSampleColor = useCallback((val) => {
-    return getSampleColorAndTextColor(val, channel);
-  }, [channel]);
   const refTopActive = useMemo(() => isMDISSmoothed ? refTopFilt : refTopRaw, [isMDISSmoothed, refTopFilt, refTopRaw]);
   const refLeftActive = useMemo(() => isMDISSmoothed ? refLeftFilt : refLeftRaw, [isMDISSmoothed, refLeftFilt, refLeftRaw]);
+
+  // Extract original source samples (NxN) from trace or frame canvas
+  const orgData = useMemo(() => {
+    if (rawOrg && rawOrg.length >= totalPixels) {
+      return rawOrg.slice(0, totalPixels);
+    }
+    if (activeFrameCanvas) {
+      const ctx = activeFrameCanvas.getContext('2d');
+      if (ctx) {
+        const ctuOriginX = (ctuX ?? 0) * 64;
+        const ctuOriginY = (ctuY ?? 0) * 64;
+        const rawX = selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX;
+        const rawY = selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY;
+        const absX = rawX >= ctuOriginX ? rawX : ctuOriginX + rawX;
+        const absY = rawY >= ctuOriginY ? rawY : ctuOriginY + rawY;
+        const safeX = Math.max(0, Math.min(activeFrameCanvas.width - N, absX));
+        const safeY = Math.max(0, Math.min(activeFrameCanvas.height - N, absY));
+
+        const imgData = ctx.getImageData(safeX, safeY, N, N);
+        const luma = new Array(totalPixels);
+        for (let i = 0; i < totalPixels; i++) {
+          const r = imgData.data[i * 4];
+          const g = imgData.data[i * 4 + 1];
+          const b = imgData.data[i * 4 + 2];
+          luma[i] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+        }
+        return luma;
+      }
+    }
+    if (rawOrg && rawOrg.length > 0) {
+      const srcDim = Math.round(Math.sqrt(rawOrg.length)) || 8;
+      const res = new Array(totalPixels);
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const sx = Math.min(srcDim - 1, Math.floor((x / N) * srcDim));
+          const sy = Math.min(srcDim - 1, Math.floor((y / N) * srcDim));
+          res[y * N + x] = rawOrg[sy * srcDim + sx] ?? 128;
+        }
+      }
+      return res;
+    }
+    return Array(totalPixels).fill(128);
+  }, [rawOrg, totalPixels, activeFrameCanvas, selectedCu, ctuX, ctuY, N]);
+
+  // Generate or extract prediction samples (NxN)
+  const predData = useMemo(() => {
+    if (rawPred && rawPred.length >= totalPixels) {
+      return rawPred.slice(0, totalPixels);
+    }
+    if (refTopActive && refLeftActive && refTopActive.length >= refSpan && refLeftActive.length >= refSpan) {
+      return generateIntraPredictionBlock(selectedMode, N, refTopActive, refLeftActive);
+    }
+    if (rawPred && rawPred.length > 0) {
+      const srcDim = Math.round(Math.sqrt(rawPred.length)) || 8;
+      const res = new Array(totalPixels);
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const sx = Math.min(srcDim - 1, Math.floor((x / N) * srcDim));
+          const sy = Math.min(srcDim - 1, Math.floor((y / N) * srcDim));
+          res[y * N + x] = rawPred[sy * srcDim + sx] ?? 128;
+        }
+      }
+      return res;
+    }
+    return Array(totalPixels).fill(128);
+  }, [rawPred, totalPixels, refTopActive, refLeftActive, refSpan, selectedMode, N]);
+
+  // Residual block: R = S - P
+  const resiData = useMemo(() => {
+    if (rawResi && rawResi.length >= totalPixels) {
+      return rawResi.slice(0, totalPixels);
+    }
+    return orgData.map((s, idx) => s - (predData[idx] ?? 128));
+  }, [rawResi, totalPixels, orgData, predData]);
+
+  // Reconstructed block S' = Clip3(0, 255, P + R)
+  const recoData = useMemo(() => {
+    return predData.map((p, i) => Math.max(0, Math.min(255, Math.round(p + (resiData[i] ?? 0)))));
+  }, [predData, resiData]);
+
+  const transformEvent = useMemo(() => {
+    const events = (transformData && transformData.length > 0) ? transformData : (quantData || []);
+    if (!events || events.length === 0) return null;
+    const compEvent = events.find(e => e.component === channel && e.width === N && e.height === N);
+    return compEvent || events.find(e => e.component === channel) || events[0] || null;
+  }, [transformData, quantData, channel, N]);
 
   // Static height locks prevent layout jittering across block sizes N in 4..64
   const cellSize = N <= 4 ? 40 : N <= 8 ? 32 : 36;
@@ -334,6 +484,14 @@ const IntraPredictionFlow = ({
     if (!trace) return new Set();
     return new Set(trace.refs.filter(r => r.type === 'left').map(r => r.index));
   }, [trace]);
+
+  const getSampleColor = useCallback((val) => {
+    return getSampleColorAndTextColor(val, channel);
+  }, [channel]);
+
+  const getResiColor = useCallback((val) => {
+    return getResidualColorAndTextColor(val);
+  }, []);
 
   const S = 2 * N + 1;
   const stageGridCellSize = N <= 4 ? 30 : N <= 8 ? 18 : N <= 16 ? 10 : N <= 32 ? 5 : 3;
