@@ -26,28 +26,21 @@ class PartitionParser(BaseCheckpointParser):
             raw_x = node_dict.get("x", 0)
             raw_y = node_dict.get("y", 0)
 
-            # Heuristic-free canonical resolution:
-            # If coordinate is already >= origin, it is absolute frame pixel
-            # Otherwise if coordinate is < cu_size and origin > 0, it is relative
-            if raw_x >= ctu_origin_x and raw_x < (ctu_origin_x + cu_size * 2):
+            # HM C++ VisualDumper always emits absolute frame coordinates:
+            # x = cu->getCUPelX() + rasterPelX, y = cu->getCUPelY() + rasterPelY
+            if raw_x >= ctu_origin_x:
                 abs_x = raw_x
                 rel_x = raw_x - ctu_origin_x
-            elif raw_x < cu_size and ctu_origin_x > 0:
+            else:
                 abs_x = ctu_origin_x + raw_x
                 rel_x = raw_x
-            else:
-                abs_x = raw_x
-                rel_x = raw_x % cu_size if cu_size > 0 else 0
 
-            if raw_y >= ctu_origin_y and raw_y < (ctu_origin_y + cu_size * 2):
+            if raw_y >= ctu_origin_y:
                 abs_y = raw_y
                 rel_y = raw_y - ctu_origin_y
-            elif raw_y < cu_size and ctu_origin_y > 0:
+            else:
                 abs_y = ctu_origin_y + raw_y
                 rel_y = raw_y
-            else:
-                abs_y = raw_y
-                rel_y = raw_y % cu_size if cu_size > 0 else 0
 
             node_dict["abs_x"] = abs_x
             node_dict["abs_y"] = abs_y
@@ -62,12 +55,17 @@ class PartitionParser(BaseCheckpointParser):
         max_depth = max([n.depth for n in normalized_nodes], default=0)
         split_count = sum(1 for n in normalized_nodes if n.split)
         
+        ctu_actual_bits = raw_data.get("actual_bits_ctu", raw_data.get("ctu_actual_bits"))
+        ctu_rs_addr = raw_data.get("ctu_rs_addr")
+
         return CTUPartitionCheckpoint(
             poc=raw_data.get("poc", 0),
             ctu_x=ctu_x,
             ctu_y=ctu_y,
             cu_size=cu_size,
             nodes=normalized_nodes,
+            ctu_actual_bits=int(ctu_actual_bits) if ctu_actual_bits is not None else None,
+            ctu_rs_addr=int(ctu_rs_addr) if ctu_rs_addr is not None else None,
             total_nodes=len(normalized_nodes),
             leaf_nodes=len(leaf_nodes),
             max_depth=max_depth,

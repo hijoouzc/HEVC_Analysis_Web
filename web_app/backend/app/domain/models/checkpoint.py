@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Any
 
 class BaseCheckpointEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     poc: int = Field(default=0)
     ctu_x: int = Field(default=0)
     ctu_y: int = Field(default=0)
@@ -12,6 +13,7 @@ class BaseCheckpointEvent(BaseModel):
 # CP_01_PARTITION Models
 # ==========================================
 class CUPartitionNode(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     depth: int
     x: int
     y: int
@@ -29,12 +31,15 @@ class CUPartitionNode(BaseModel):
 
 class CTUPartitionCheckpoint(BaseModel):
     """CP_01_PARTITION: Quadtree partition of the CTU into CUs"""
+    model_config = ConfigDict(extra="ignore")
     poc: int = 0
     ctu_x: int = 0
     ctu_y: int = 0
     cu_size: int = 64
     event: str = "CTU_PARTITION"
     nodes: list[CUPartitionNode] = Field(default_factory=list)
+    ctu_actual_bits: int | None = None
+    ctu_rs_addr: int | None = None
     
     # Computed QuadTree statistics
     total_nodes: int = 0
@@ -47,10 +52,15 @@ class CTUPartitionCheckpoint(BaseModel):
 # ==========================================
 class IntraRefCheckpoint(BaseModel):
     """CP_02_INTRA_REF: Raw vs Filtered reference sample arrays (4N+1)"""
+    model_config = ConfigDict(extra="ignore")
     poc: int = 0
     ctu_x: int = 0
     ctu_y: int = 0
     cu_size: int = 8
+    pu_x: int | None = None
+    pu_y: int | None = None
+    cu_x: int | None = None
+    cu_y: int | None = None
     event: str = "INTRA_REF_SAMPLES"
     strong_smoothing: bool = False
     
@@ -81,14 +91,21 @@ class IntraRefCheckpoint(BaseModel):
 # ==========================================
 class IntraModeData(BaseModel):
     """CP_03_INTRA_SEARCH: A single tested intra prediction mode"""
+    model_config = ConfigDict(extra="ignore")
     poc: int = 0
     ctu_x: int = 0
     ctu_y: int = 0
     cu_size: int = 8
+    pu_x: int | None = None
+    pu_y: int | None = None
+    cu_x: int | None = None
+    cu_y: int | None = None
     event: str = "RDO_INTRA_SEARCH"
     mode: int
     cost: float
     b_use_filter: bool = False
+    qp: int | None = None
+    trial_id: int | None = None
     
     # HEVC Angular metadata
     category: str = "ANGULAR"        # PLANAR, DC, ANGULAR
@@ -177,6 +194,9 @@ class TransformQuantCheckpoint(BaseModel):
     is_dst: bool = False
     is_transform_skip: bool = False
     tu_depth: int = 0
+    cu_x: int | None = None
+    cu_y: int | None = None
+    cu_depth: int | None = None
     intra_mode: int | None = None
     pred_mode: str = "INTRA"
     dequant_coeff: list[int] = Field(default_factory=list)
@@ -222,9 +242,16 @@ class RdoCandidateDetail(BaseModel):
     sse: int = 0
     distortion: float = 0.0
     bits: float = 0.0
+    rdo_rate_est: float = 0.0        # Rate estimate (J - D)/lambda
+    qp: int | None = None
+    trial_id: int | None = None
     tu_split: bool = False
+    pred_data: list[int] = Field(default_factory=list) # Discrete Luma Y prediction matrix
     reconstructed_data: list[int] = Field(default_factory=list)
     reconstructed_resi: list[int] = Field(default_factory=list)
+    data_source: str = "HM_TRACE"    # "HM_TRACE" or "FALLBACK_DERIVED"
+    is_fallback: bool = False
+    is_winner: bool = False
 
 class ChromaCandidateInfo(BaseModel):
     """Allowed chroma mode candidate according to HM getAllowedChromaDir"""
@@ -235,6 +262,8 @@ class ChromaCandidateInfo(BaseModel):
     dist: int = 0
     bits: float = 0.0
     rank: int = 1
+    data_source: str = "HM_TRACE"    # "HM_TRACE" or "FALLBACK_DERIVED"
+    is_fallback: bool = False
 
 class IntraPipelineFullResponse(BaseModel):
     """Complete 5-Stage Intra Prediction & RDO Search Pipeline Response"""
@@ -242,6 +271,10 @@ class IntraPipelineFullResponse(BaseModel):
     ctu_x: int = 0
     ctu_y: int = 0
     cu_size: int = 8
+    cu_x: int | None = None
+    cu_y: int | None = None
+    data_source: str = "HM_TRACE"    # "HM_TRACE" or "FALLBACK_DERIVED"
+    is_fallback: bool = False
     best_luma_mode: int = 0
     best_luma_cost: float = 0.0
     best_chroma_mode: int = 0
@@ -255,6 +288,38 @@ class IntraPipelineFullResponse(BaseModel):
     step3_candidates: CandidateSelectionStep
     step4_rdo: list[RdoCandidateDetail] = Field(default_factory=list)
     step5_chroma: list[ChromaCandidateInfo] = Field(default_factory=list)
+
+# ==========================================
+# CU_RDO_DECISION Checkpoint Model (HM xCheckBestMode)
+# ==========================================
+class BranchRdoDetail(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    cost: float = 0.0
+    dist: int = 0
+    bits: int = 0
+    qp: int = -1
+    mode: int | None = None
+
+class CuRdoDecisionCheckpoint(BaseModel):
+    """HM-18.0 Ground Truth RDO decision at a specific CU node: costNoSplit vs costSplit"""
+    model_config = ConfigDict(extra="ignore")
+    event: str = "CU_RDO_DECISION"
+    poc: int = 0
+    ctu_x: int = 0
+    ctu_y: int = 0
+    cu_x: int = 0
+    cu_y: int = 0
+    cu_size: int = 64
+    depth: int = 0
+    cost_nosplit: float = 0.0
+    cost_split: float = 0.0
+    split_decision: bool = False
+    best_mode: int = -1
+    stage: str = "CP_01_CU_QUADTREE_RDO"
+    split_evaluated: bool = True
+    winner_cost: float = 0.0
+    nosplit: BranchRdoDetail | None = None
+    split: BranchRdoDetail | None = None
 
 class CheckpointSummaryResponse(BaseModel):
     stage_id: str

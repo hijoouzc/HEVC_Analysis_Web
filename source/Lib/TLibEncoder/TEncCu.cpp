@@ -1010,6 +1010,33 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
 
   const Bool bSubBranch = bBoundary || !( m_pcEncCfg->getUseEarlyCU() && rpcBestCU->getTotalCost()!=MAX_DOUBLE && rpcBestCU->isSkipped(0) );
 
+#if ENABLE_VISUAL_DUMP
+  VisualDumper* pDumper = VisualDumper::getInstance();
+  const Int dumpPoc = rpcBestCU->getSlice()->getPOC();
+  const UInt dumpCtuWidth = sps.getMaxCUWidth();
+  const UInt dumpCtuHeight = sps.getMaxCUHeight();
+  const Int dumpCtuX = rpcBestCU->getCUPelX() / dumpCtuWidth;
+  const Int dumpCtuY = rpcBestCU->getCUPelY() / dumpCtuHeight;
+  const Int dumpCuX = rpcBestCU->getCUPelX();
+  const Int dumpCuY = rpcBestCU->getCUPelY();
+  const Int dumpCuSize = rpcBestCU->getWidth(0);
+
+  // 1. Capture Pre-Split Incumbent (Best No-Split) before split loop
+  const Double bestNoSplitCost = rpcBestCU->getTotalCost();
+  const Distortion bestNoSplitDist = rpcBestCU->getTotalDistortion();
+  const UInt bestNoSplitBits = rpcBestCU->getTotalBits();
+  const Int bestNoSplitQP = rpcBestCU->getQP(0);
+  const Int bestNoSplitMode = (rpcBestCU->getPredictionMode(0) == MODE_INTRA) ?
+                              rpcBestCU->getIntraDir(CHANNEL_TYPE_LUMA, 0) : -1;
+
+  // 2. Accumulator for Best Split across all QP trials
+  Bool bSplitEvaluated = false;
+  Double bestSplitCost = MAX_DOUBLE;
+  Distortion bestSplitDist = 0;
+  UInt bestSplitBits = 0;
+  Int bestSplitQP = -1;
+#endif
+
   if( bSubBranch && uiDepth < sps.getLog2DiffMaxMinCodingBlockSize() && (!getFastDeltaQp() || uiWidth > fastDeltaQPCuMaxSize || bBoundary))
   {
     // further split
@@ -1177,30 +1204,34 @@ Void TEncCu::xCompressCU( TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, const 
       }
 
 #if ENABLE_VISUAL_DUMP
-      VisualDumper* pDumper = VisualDumper::getInstance();
-      const Int dumpPoc = rpcBestCU->getSlice()->getPOC();
-      const UInt dumpCtuWidth = sps.getMaxCUWidth();
-      const UInt dumpCtuHeight = sps.getMaxCUHeight();
-      const Int dumpCtuX = rpcBestCU->getCUPelX() / dumpCtuWidth;
-      const Int dumpCtuY = rpcBestCU->getCUPelY() / dumpCtuHeight;
-      const Int dumpCuX = rpcBestCU->getCUPelX();
-      const Int dumpCuY = rpcBestCU->getCUPelY();
-      const Int dumpCuSize = rpcBestCU->getWidth(0);
-      const Double costNoSplit = rpcBestCU->getTotalCost();
-      const Double costSplit = rpcTempCU->getTotalCost();
-      const Bool splitCuFlag = (costSplit < costNoSplit);
-      const Int bestMode = (rpcBestCU->getPredictionMode(0) == MODE_INTRA) ?
-                           rpcBestCU->getIntraDir(CHANNEL_TYPE_LUMA, 0) : -1;
-
-      pDumper->dumpCuRdoDecision(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY,
-                                 dumpCuSize, uiDepth,
-                                 costNoSplit, costSplit, splitCuFlag, bestMode);
+      bSplitEvaluated = true;
+      const Double currentSplitCost = rpcTempCU->getTotalCost();
+      if (currentSplitCost < bestSplitCost)
+      {
+        bestSplitCost = currentSplitCost;
+        bestSplitDist = rpcTempCU->getTotalDistortion();
+        bestSplitBits = rpcTempCU->getTotalBits();
+        bestSplitQP   = iQP;
+      }
 #endif
 
       xCheckBestMode( rpcBestCU, rpcTempCU, uiDepth DEBUG_STRING_PASS_INTO(sDebug) DEBUG_STRING_PASS_INTO(sTempDebug) DEBUG_STRING_PASS_INTO(false) ); // RD compare current larger prediction
-                                                                                                                                                       // with sub partitioned prediction.
+                                                                                                                                                        // with sub partitioned prediction.
     }
   }
+
+#if ENABLE_VISUAL_DUMP
+  if (pDumper && pDumper->isEnabled())
+  {
+    const Bool finalIsSplit = (rpcBestCU->getDepth(0) > uiDepth);
+    const Double winnerCost = rpcBestCU->getTotalCost();
+    pDumper->dumpCuRdoDecisionVerified(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY, dumpCuSize, uiDepth,
+                                       bSplitEvaluated,
+                                       bestNoSplitCost, bestNoSplitDist, bestNoSplitBits, bestNoSplitQP, bestNoSplitMode,
+                                       bestSplitCost, bestSplitDist, bestSplitBits, bestSplitQP,
+                                       finalIsSplit, winnerCost);
+  }
+#endif
 
   DEBUG_STRING_APPEND(sDebug_, sDebug);
 

@@ -1,5 +1,4 @@
 import asyncio
-from datetime import datetime, timezone
 from app.domain.models.job import JobInfo, get_utc_now_iso
 from app.domain.models.roi import ROICoordinates, FrameMetadata
 from app.domain.enums import JobStatus

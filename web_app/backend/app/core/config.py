@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class Settings(BaseModel):
     PROJECT_NAME: str = "HEVC Data-Flow Analysis Tool"

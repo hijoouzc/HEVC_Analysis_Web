@@ -135,15 +135,10 @@ it('BlockMatrixGrid cells have zero title hover tooltip attributes', () => {
   assert(!code.includes('getTooltip'), 'No getTooltip prop found in BlockMatrixGrid');
 });
 
-it('ResidualMatrix cells have zero title hover tooltip attributes', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../components/flow/ResidualMatrix.jsx'), 'utf-8');
-  assert(!code.includes('title='), 'No title attribute found in ResidualMatrix');
-});
-
-it('Synchronized4WayViewport has zero onMouseEnter or onMouseOver listeners', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../components/Synchronized4WayViewport.jsx'), 'utf-8');
-  assert(!code.includes('onMouseEnter'), 'No onMouseEnter found in Synchronized4WayViewport');
-  assert(!code.includes('onMouseOver'), 'No onMouseOver found in Synchronized4WayViewport');
+it('FourPictureComparison has zero onMouseEnter or onMouseOver listeners', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/FourPictureComparison.jsx'), 'utf-8');
+  assert(!code.includes('onMouseEnter'), 'No onMouseEnter found in FourPictureComparison');
+  assert(!code.includes('onMouseOver'), 'No onMouseOver found in FourPictureComparison');
 });
 
 it('TransformQuantVisualizer has zero onMouseEnter or onMouseOver listeners', () => {
@@ -169,11 +164,10 @@ it('BlockMatrixGrid supports showValues prop and omits text when showValues=fals
   assert(code.includes('showValues ?'), 'BlockMatrixGrid conditionally renders text based on showValues');
 });
 
-it('Synchronized4WayViewport provides Values and Zoom toolbar controls', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../components/Synchronized4WayViewport.jsx'), 'utf-8');
-  assert(code.includes('showValues'), 'Synchronized4WayViewport manages showValues state');
-  assert(code.includes('zoomPreset'), 'Synchronized4WayViewport manages zoomPreset state');
-  assert(code.includes('showValues={showValues}'), 'Synchronized4WayViewport passes showValues to viewer');
+it('FourPictureComparison provides Values toggle control', () => {
+  const code = fs.readFileSync(path.join(__dirname, '../components/FourPictureComparison.jsx'), 'utf-8');
+  assert(code.includes('showValues'), 'FourPictureComparison manages showValues state');
+  assert(code.includes('setShowValues'), 'FourPictureComparison allows toggling showValues');
 });
 
 it('TransformQuantVisualizer provides Values and Zoom toolbar controls', () => {
@@ -185,11 +179,11 @@ it('TransformQuantVisualizer provides Values and Zoom toolbar controls', () => {
 
 it('All visualizer matrix containers enforce safe horizontal scroll and max-width bounds', () => {
   const flowCode = fs.readFileSync(path.join(__dirname, '../components/IntraPredictionFlow.jsx'), 'utf-8');
-  const syncCode = fs.readFileSync(path.join(__dirname, '../components/Synchronized4WayViewport.jsx'), 'utf-8');
+  const fourPicCode = fs.readFileSync(path.join(__dirname, '../components/FourPictureComparison.jsx'), 'utf-8');
   const tqCode = fs.readFileSync(path.join(__dirname, '../components/TransformQuantVisualizer.jsx'), 'utf-8');
 
   assert(flowCode.includes('overflowX: \'auto\''), 'IntraPredictionFlow wraps grids with overflowX auto');
-  assert(syncCode.includes('overflowX: \'auto\''), 'Synchronized4WayViewport wraps grids with overflowX auto');
+  assert(fourPicCode.includes('overflowX: \'auto\''), 'FourPictureComparison wraps grids with overflowX auto');
   assert(tqCode.includes('overflowX: \'auto\''), 'TransformQuantVisualizer wraps grids with overflowX auto');
 });
 

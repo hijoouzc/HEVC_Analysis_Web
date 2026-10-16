@@ -165,6 +165,8 @@ def test_modern_job_and_checkpoint_api(client, dummy_png_bytes, sample_trace_fil
     assert pipe_res.status_code == 200
     pipe_data = pipe_res.json()
     assert pipe_data["cu_size"] == 8
+    assert "data_source" in pipe_data
+    assert "is_fallback" in pipe_data
     assert len(pipe_data["step1_reference"]["ref_unfilt_top"]) == 17
     assert len(pipe_data["step2_rmd"]) == 35
     assert pipe_data["step3_candidates"]["k_threshold"] == 8
@@ -206,3 +208,8 @@ def test_modern_job_and_checkpoint_api(client, dummy_png_bytes, sample_trace_fil
     intra_pipe_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_02_INTRA_SEARCH/pipeline")
     assert intra_pipe_res.status_code == 200
     assert "step1_reference" in intra_pipe_res.json()
+
+    # 14. Check Real HM RDO decisions endpoint
+    rdo_dec_res = client.get(f"/api/v1/checkpoints/{job_id}/rdo-decisions")
+    assert rdo_dec_res.status_code == 200
+    assert isinstance(rdo_dec_res.json(), list)

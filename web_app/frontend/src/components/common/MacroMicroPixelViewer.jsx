@@ -3,7 +3,54 @@ import {
   getSampleColorAndTextColor,
   getResidualColorAndTextColor,
   SELECTION_HIGHLIGHT_COLOR,
+  bt709YuvToRgb,
 } from '../../utils/colorUtils';
+
+/**
+ * Memoized MicroPixelCell for 60FPS fluid rendering and zero DOM thrashing
+ */
+const MicroPixelCell = React.memo(function MicroPixelCell({
+  gx,
+  gy,
+  val,
+  cellSize,
+  isSelected,
+  bg,
+  color,
+  text,
+  onSelectPixel
+}) {
+  return (
+    <div
+      onClick={() => onSelectPixel && onSelectPixel({ x: gx, y: gy, val })}
+      style={{
+        width: `${cellSize}px`,
+        height: `${cellSize}px`,
+        backgroundColor: bg,
+        color: color,
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
+        fontWeight: 700,
+        letterSpacing: '-0.4px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        userSelect: 'none',
+        boxSizing: 'border-box',
+        outline: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
+        border: 'none',
+        zIndex: isSelected ? 10 : 1,
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        textOverflow: 'clip',
+        padding: '0 1px'
+      }}
+    >
+      {text}
+    </div>
+  );
+});
 
 /**
  * MacroMicroPixelViewer
@@ -14,7 +61,7 @@ import {
  * - 100% Click-Only interaction (zero hover flutter, zero hover listeners)
  * - Large, comfortable 36px cells with zero text clipping for any block size (4 to 64)
  */
-export default function MacroMicroPixelViewer({
+function MacroMicroPixelViewer({
   data = [],
   N = 8,
   channel = 'Y',
@@ -78,17 +125,17 @@ export default function MacroMicroPixelViewer({
         g = offsetVal;
         b = offsetVal;
       } else if (channel === 'U') {
-        // Chroma Cb: blue tint
-        const offsetVal = Math.max(0, Math.min(255, Math.round(val)));
-        r = Math.round(offsetVal * 0.4);
-        g = Math.round(offsetVal * 0.7);
-        b = offsetVal;
+        // Chroma Cb: ITU-R BT.709 Blue <-> Yellow spectrum with neutral Y=128
+        const rgb = bt709YuvToRgb(128, val, 128);
+        r = rgb.r;
+        g = rgb.g;
+        b = rgb.b;
       } else if (channel === 'V') {
-        // Chroma Cr: red tint
-        const offsetVal = Math.max(0, Math.min(255, Math.round(val)));
-        r = offsetVal;
-        g = Math.round(offsetVal * 0.4);
-        b = Math.round(offsetVal * 0.5);
+        // Chroma Cr: ITU-R BT.709 Red <-> Green spectrum with neutral Y=128
+        const rgb = bt709YuvToRgb(128, 128, val);
+        r = rgb.r;
+        g = rgb.g;
+        b = rgb.b;
       } else {
         // Luma Y: Monochromatic grayscale R=Y, G=Y, B=Y
         const yVal = Math.max(0, Math.min(255, Math.round(val)));
@@ -184,30 +231,18 @@ export default function MacroMicroPixelViewer({
             const text = showValues ? (type === 'residual' ? (val > 0 ? `+${val}` : `${val}`) : `${val}`) : '';
 
             return (
-              <div
+              <MicroPixelCell
                 key={`cell-${gx}-${gy}`}
-                onClick={() => onSelectPixel && onSelectPixel({ x: gx, y: gy, val })}
-                style={{
-                  width: `${cellSize}px`,
-                  height: `${cellSize}px`,
-                  backgroundColor: bg,
-                  color: color,
-                  fontFamily: 'JetBrains Mono, monospace',
-                  fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
-                  fontWeight: 700,
-                  letterSpacing: '-0.4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  boxSizing: 'border-box',
-                  border: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
-                  zIndex: isSelected ? 10 : 1,
-                }}
-              >
-                {text}
-              </div>
+                gx={gx}
+                gy={gy}
+                val={val}
+                cellSize={cellSize}
+                isSelected={isSelected}
+                bg={bg}
+                color={color}
+                text={text}
+                onSelectPixel={onSelectPixel}
+              />
             );
           })}
         </div>
@@ -225,7 +260,7 @@ export default function MacroMicroPixelViewer({
         flexWrap: 'wrap',
         gap: '0.85rem',
         alignItems: 'flex-start',
-        justifyContent: 'center',
+        justifyContent: 'safe center',
         width: '100%',
         maxWidth: '100%',
         overflowX: 'auto',
@@ -467,30 +502,18 @@ export default function MacroMicroPixelViewer({
             const text = showValues ? (type === 'residual' ? (val > 0 ? `+${val}` : `${val}`) : `${val}`) : '';
 
             return (
-              <div
+              <MicroPixelCell
                 key={`micro-${gx}-${gy}`}
-                onClick={() => onSelectPixel && onSelectPixel({ x: gx, y: gy, val })}
-                style={{
-                  width: `${microCellSize}px`,
-                  height: `${microCellSize}px`,
-                  backgroundColor: bg,
-                  color: color,
-                  fontFamily: 'JetBrains Mono, monospace',
-                  fontSize: '0.70rem',
-                  fontWeight: 700,
-                  letterSpacing: '-0.4px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  boxSizing: 'border-box',
-                  border: isSelected ? `2.5px solid ${SELECTION_HIGHLIGHT_COLOR}` : 'none',
-                  zIndex: isSelected ? 10 : 1,
-                }}
-              >
-                {text}
-              </div>
+                gx={gx}
+                gy={gy}
+                val={val}
+                cellSize={microCellSize}
+                isSelected={isSelected}
+                bg={bg}
+                color={color}
+                text={text}
+                onSelectPixel={onSelectPixel}
+              />
             );
           })}
         </div>
@@ -498,3 +521,5 @@ export default function MacroMicroPixelViewer({
     </div>
   );
 }
+
+export default React.memo(MacroMicroPixelViewer);

@@ -19,61 +19,82 @@ Designed with **Apple macOS Tahoe (applecn)** aesthetics and **ITU-R pixel-accur
 
 ---
 
-## Key Features (9-Stage Inspection Pipeline)
+## Dual-Mode Architecture
 
-The platform organizes microarchitectural inspection into 9 specialized stages with **Persistent DOM Shells** (fixed/min-height containers) guaranteeing **zero layout shift (CLS)** and immediate responsiveness:
+The platform features a seamless dual-mode architecture tailored for both structured pedagogical walkthroughs and deep-dive microarchitectural telemetry:
 
-### 0. GOP & Inter-Frame Temporal Structure (`Stage 0: Frame & GOP`, `CP_00_FRAME_GOP`)
-- **Temporal Layer Hierarchy**: Visualizes GOP structures, Picture Order Count (POC), slice types (I, P, B), and temporal ID levels.
-- **Reference Picture Lists**: Detailed breakdown of L0 and L1 active reference frames and QP modulation.
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        HEVC Video Analyzer                             │
+├───────────────────────────────────┬────────────────────────────────────┤
+│  Mode 1: 5-Step Guided Journey    │  Mode 2: 9-Tab Expert Telemetry    │
+│  (Sequential HM xCompressCU Flow) │  (Granular VisualDumper Checkpoints)│
+├───────────────────────────────────┼────────────────────────────────────┤
+│ 1. Frame & CU Partition           │  0. Frame & GOP (CP_00)            │
+│ 2. Intra Prediction               │  1. CU QuadTree (CP_01)            │
+│ 3. Transform & Quantization       │  2. Intra Search (CP_02)           │
+│ 4. Reconstruction                 │  3. Inter Search (CP_03)           │
+│ 5. RDO Decision                   │  4. Transform & Quant (CP_04)      │
+│                                   │  5. Recon Picture (CP_05)          │
+│                                   │  6. In-Loop Filter (CP_06)         │
+│                                   │  7. CABAC Entropy (CP_07)          │
+│                                   │  8. RDO Simulator (RDO_SIM)        │
+└───────────────────────────────────┴────────────────────────────────────┘
+         (Press 'M' key to toggle between Guided and Expert modes)
+```
 
-### 1. Interactive Full-Frame CTU Grid Navigator (`Stage 1: CU QuadTree`, `CP_01_PARTITION`)
-- **Hierarchical QuadTree Map**: Visualizes the recursive QuadTree partitioning across the entire frame ($64\times 64 \rightarrow 32\times 32 \rightarrow 16\times 16 \rightarrow 8\times 8$).
-- **Picture Boundary Handling**: Validates sample bounds, forced splits, and out-of-bounds cross-hatch shading.
-- **Direct Spatial Selection**: Click directly on any CTU in the frame to lock focus and inspect block parameters with a persistent inspector HUD (`min-height: 430px`).
-- **C++ HM Source Code Inspector**: Modal viewer for `TEncSlice::compressSlice` and `xCompressCU` boundary checking.
+---
 
-### 2. Deep Intra Prediction Flow (`Stage 2: Intra Search`, `CP_02_INTRA_REF` / `CP_03_INTRA_SEARCH`)
-- **5-Stage Sequential Stepper** (`min-height: 560px`):
-  - **Step 1: Reference Boundary & MDIS**: 4N+1 perimeter reference samples, 3-tap $[1, 2, 1]/4$ smoothing filter, and boundary padding.
-  - **Step 2: RMD Funnel**: 35-mode fast Hadamard cost funnel with Top K pruning and fixed list height (`380px`).
-  - **Step 3: MPM Derivation**: Most Probable Modes derivation from Left and Above spatial neighbors with Planar/DC/Vertical fallback rules.
-  - **Step 4: Full RDO & 6-Stage Domain Strip**: Visual domain strip ($S \to P \to R \to C \to Q \to S'$) with Lagrangian cost $J = D + \lambda \cdot R$.
-  - **Step 5: Chroma Search & Winner Commitment**: Cb/Cr planar matrices, DM_CHROMA mode, Mode 34 replacement rule, and CABAC syntax elements.
-- **Studio Mode**: Interactive directional ray-tracing across all 33 angular modes (2 to 34), DC (1), and Planar (0).
+## Key Features
 
-### 3. Inter Search & Motion Estimation (`Stage 3: Inter Search`, `CP_03_INTER_SEARCH`)
-- **Block Matching & Motion Vectors**: Visualizes Motion Vectors (MV), integer/sub-pel search windows, SAD/Lagrangian costs, and AMVP candidate lists.
+### 1. 5-Step Guided Journey (`Guided Flow`)
+Organized chronologically following the exact encoder decision lifecycle inside HM `TEncCu::xCompressCU`:
+- **Step 1: Frame & CU Partition**:
+  - **Incremental Trace Playback**: Full-frame CTU transport bar (`Start Encode`, `Prev/Next CTU`, `Prev/Next CU`, `Reset`, and speed controls `0.5s`, `1.0s`, `2.0s`).
+  - **Split CU vs Leaf CU Inspection**: Seamless inspection of parent split nodes ($64\times 64$, $32\times 32$) vs final leaf coding units.
+  - **Playhead Decoupling**: Inspecting any CU node preserves the playback state without altering the current CTU playhead.
+- **Step 2: Intra Prediction**:
+  - **4N+1 Perimeter & MDIS**: Reconstructs top, left, and corner reference samples with Mode Dependent Intra Smoothing (3-tap $[1, 2, 1]/4$ filter).
+  - **35 Prediction Modes**: Planar (0), DC (1), and 33 Angular modes (2–34) with exact $1/32$-pel projection rays.
+  - **RMD Funnel & 3 MPMs**: Rough Mode Decision SATD pre-screening and Most Probable Mode derivation from spatial neighbors.
+- **Step 3: Transform & Quantization**:
+  - **RQT Hierarchy & Call Stack**: Interactive Transform Unit tree visualization with execution call stack stepper.
+  - **2D Core Transforms**: Exact integer DCT-II for $8\times 8$–$32\times 32$ and DST-VII for $4\times 4$ luma intra blocks.
+  - **Quantization & Sparsity**: Quantized levels $Q(u, v)$, $QP$ / $Q_{\text{step}}$ indicators, and energy compaction metrics.
+- **Step 4: Reconstruction**:
+  - **Picture Buffer & 4-Way Comparison**: Original ($S$), Prediction ($P$), Residual ($R$), and Reconstruction ($S'$).
+  - **Mathematical Verification**: Confirms $S' = \text{Clip3}(0, 255, P + R')$.
+  - **In-Loop Filtering**: Deblocking Filter (boundary strength $bS \in \{0, 1, 2\}$) and Sample Adaptive Offset (SAO Edge/Band offsets).
+- **Step 5: RDO Decision**:
+  - **Lagrangian Cost Comparison**: Benchmarks Best No-Split Cost ($J_{\text{nosplit}}$) vs Best Split Cost ($J_{\text{split}}$) with verified HM provenance.
+  - **Actual CTU Bits**: Displays ground-truth bitstream output measured directly after `encodeCtu()`.
+  - **Interactive RDO Simulator**: Sandbox simulation with live $QP$ slider, $\lambda$ multiplier, and Draw.io export.
 
-### 4. Residual Transform & RQT Hierarchy (`Stage 4: Transform RQT`, `CP_04_TRANSFORM_RQT`)
-- **2D DCT-II & 2D DST-VII**: Exact mathematical core transforms for $4\times 4$ intra luma (DST-VII) and $8\times 8$ to $32\times 32$ transform blocks (DCT-II).
-- **Frequency Spectrum & Sparsity**: Energy compaction ratio, DC harmonic energy, zero sparsity ratio, and Coded Block Flags (CBF).
+### 2. 9-Tab Expert Telemetry Checkpoints (`Expert Mode`)
+Provides unconstrained, deep-dive access to all raw telemetry streams:
+- `CP_00 Frame & GOP`: Temporal GOP hierarchy, POC, slice types (I, P, B), and L0/L1 reference lists.
+- `CP_01 CU QuadTree`: Multi-layer SVG/Canvas partition map with boundary forced-split detection.
+- `CP_02 Intra Search`: 5-phase intra search stepper, candidate leaderboard, and chroma modes.
+- `CP_03 Inter Search`: Motion vector estimation (MV, MVD), search windows, and AMVP candidates.
+- `CP_04 Transform & Quant`: Tri-matrix comparison (Residual $R$, DCT Spectrum $C$, Quantized $Q$).
+- `CP_05 Recon Picture`: Full-frame before/after split slider and discrete CU planar inspection ($Y, Cb, Cr$).
+- `CP_06 In-Loop Filter`: Boundary edge profiles ($\beta, t_C$) and SAO classification offsets.
+- `CP_07 CABAC Entropy`: Context modeling (`ctxIdx`), state transitions (`pStateIdx`), and bitrate allocation.
+- `RDO_SIM`: Standalone in-browser HM `xCompressCU` QuadTree simulator.
 
-### 5. Reconstructed Picture Buffer (`Stage 5: Recon Picture`, `CP_05_RECON_PICTURE`)
-- **Full-Frame Split Slider**: Interactive before/after split wipe comparison between pristine source ($S$) and reconstructed buffer ($S'$).
-- **CU Planar Inspection**: Discrete planar exploration of Luma ($Y$), Chroma Cb ($U$), and Chroma Cr ($V$) pre-in-loop filtering.
-- **Mathematical Sample Verification**: Exact reconstructed sample equation: $S' = \text{Clip}(P + R')$.
-- **4-Way Synchronized Matrix Inspection**: Original ($S$), Prediction ($P$), Residual ($R$), and Reconstructed ($S'$).
+---
 
-### 6. In-Loop Filtering (`Stage 6: In-Loop Filter`, `CP_06_INLOOP_FILTER`)
-- **Deblocking Filter (DBF)**: Boundary filter strength ($bS \in \{0, 1, 2\}$), threshold parameters ($\beta, t_C$), and cross-section sample plots (`min-height: 190px`).
-- **Sample Adaptive Offset (SAO)**: Edge offset (EO categories 1-4) and Band offset (BO band position) sample correction.
-
-### 7. CABAC Entropy Coding (`Stage 7: CABAC Entropy`, `CP_07_CABAC_ENTROPY`)
-- **Binary Arithmetic Coding**: Context models, `ctxIdx`, FSM probability state transitions (`pStateIdx: 0..62`), `valMPS`, Range and Offset probability intervals.
-
-### 8. Interactive RDO Simulator (`Stage 8: RDO Simulator`, `RDO_SIM`)
-- **HM xCompressCU In-Browser Simulator**: Pure JavaScript simulation of HEVC QuadTree partitioning and Rate-Distortion Optimization ($J = D + \lambda \cdot R$).
-- **Live Variable Controls**: Interactive **QP Slider** (10–51) with dynamic **$\lambda$ multiplier badge** ($\lambda = 0.57 \times 2^{(QP-12)/3}$) and **Speed Slider** (150–1500ms).
-- **Persistent DOM Containers**: Candidate Modes Table (`min-height: 210px`) and 192×192px Pixel Microscope matrix cards with zero layout flickering.
-- **Draw.io XML Export**: One-click generation and clipboard copy of professional hierarchical XML trees.
+### 3. Real HM-18.0 Prediction & Verified RDO Telemetry
+- **Bit-Exact Prediction Capture**: VisualDumper hooks capture `INTRA_TU_PRED` immediately after `predIntraAng()`, eliminating heuristic approximations.
+- **Pre-Split Incumbent Preservation**: Records incumbent non-split cost before split search recursion to avoid overwrites.
+- **Best-Split Accumulator**: Dedicated tracking ensures `cost_split` reliably reflects the true optimal split decision across multi-QP evaluations.
+- **CTU Actual Bitstream Metric**: Anchors total bits to `TEncSlice::compressSlice` post-`encodeCtu()`.
 
 ---
 
 ### Unified Analysis Inspector (Right Panel)
-- **Single Source of Truth**: Replaced fragmented HUD bars with a unified Apple Photos/Inspector-style panel.
-- Displays Target CTU Geometry, Active CU Block Dimensions & Depth, Selected Intra Mode & Category, RDO Cost $J$, Neighbor Line Buffers (A, B, C, D availability per ITU-T H.265 Section 6.4.1), and Sequence Telemetry.
-- Built-in CTU re-analysis button and automatic desynchronization guards.
+- **Single Source of Truth**: Unified panel displaying target CTU coordinates, CU dimensions, QuadTree depth, selected Intra mode, RDO cost $J$, line buffer availability ($A, B, C, D$), and sequence telemetry.
+- Toggle visibility anytime via the header button or keyboard shortcut `I`.
 
 ---
 
@@ -81,12 +102,14 @@ The platform organizes microarchitectural inspection into 9 specialized stages w
 
 | Shortcut | Action |
 | :--- | :--- |
-| `0` – `8` | Switch directly between Stages 0 through 8 |
+| `M` / `m` | Toggle View Mode (Guided Journey vs Expert Checkpoints) |
+| `1` – `5` | Switch between Steps 1 through 5 (in Guided Journey mode) |
+| `0` – `8` | Switch directly between Stages 0 through 8 (in Expert mode) |
 | `I` / `i` | Toggle Unified Analysis Inspector panel |
 | `D` / `d` | Toggle Dark / Light theme |
-| `Space` | Toggle auto-play / pause timeline animation |
-| `ArrowLeft` / `ArrowRight` | Step backward / forward through modes or simulation |
-| `Escape` | Deselect active pixel / stop animation |
+| `Space` | Toggle playback / pause timeline animation |
+| `ArrowLeft` / `ArrowRight` | Step backward / forward through modes or CTUs |
+| `Escape` | Deselect active pixel / dismiss overlays |
 
 ---
 
@@ -166,7 +189,7 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Run automated test suite (39 tests)
+# Run automated test suite (48 tests)
 pytest -v
 
 # Start backend server
@@ -180,10 +203,10 @@ cd web_app/frontend
 # Install dependencies
 npm install
 
-# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 59 files)
+# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 84+ files)
 npm run lint
 
-# Run automated test suite (458 tests across 8 suites)
+# Run automated test suite (816 tests across 18 comprehensive test suites)
 npm test
 
 # Start development server
@@ -222,7 +245,7 @@ HEVC_reference_software/
 ├── web_app/                      # Fullstack Analysis Platform
 │   ├── backend/                  # FastAPI Application
 │   │   ├── app/                  # Application core, API routers, parsers, engine
-│   │   ├── tests/                # Unit & Integration test suite (39 tests)
+│   │   ├── tests/                # Unit & Integration test suite (48 tests)
 │   │   └── requirements.txt      # Python dependencies
 │   └── frontend/                 # React 19 + Vite Application
 │       ├── src/

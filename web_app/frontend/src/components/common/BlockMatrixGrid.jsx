@@ -43,15 +43,15 @@ const MatrixCell = memo(function MatrixCell({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
+        fontSize: cellSize >= 40 ? '0.78rem' : cellSize >= 32 ? '0.66rem' : cellSize >= 26 ? '0.56rem' : '0.48rem',
         fontFamily: 'JetBrains Mono, monospace',
         fontVariantNumeric: 'tabular-nums',
         fontWeight: style.fontWeight || 700,
-        letterSpacing: '-0.3px',
+        letterSpacing: '-0.35px',
         overflow: 'hidden',
         whiteSpace: 'nowrap',
         textOverflow: 'clip',
-        padding: '0',
+        padding: '0 1px',
         borderRadius: 0,
         boxSizing: 'border-box',
         outline: isSelected
@@ -93,8 +93,18 @@ function BlockMatrixGrid({
   const canvasRef = useRef(null);
   const [internalWindow, setInternalWindow] = useState({ wx: 0, wy: 0 });
 
-  const currentWindow = activeWindow ?? internalWindow;
   const maxWindows = Math.max(1, Math.floor(width / 8));
+  const selectedCellWindow = useMemo(() => {
+    if (selectedCell && Number.isFinite(selectedCell.x) && Number.isFinite(selectedCell.y)) {
+      return {
+        wx: Math.min(maxWindows - 1, Math.max(0, Math.floor(selectedCell.x / 8))),
+        wy: Math.min(maxWindows - 1, Math.max(0, Math.floor(selectedCell.y / 8)))
+      };
+    }
+    return null;
+  }, [selectedCell, maxWindows]);
+
+  const currentWindow = activeWindow ?? (selectedCellWindow ?? internalWindow);
   const wx = Math.min(Math.max(0, currentWindow?.wx ?? 0), maxWindows - 1);
   const wy = Math.min(Math.max(0, currentWindow?.wy ?? 0), maxWindows - 1);
   const winX0 = wx * 8;
@@ -174,17 +184,22 @@ function BlockMatrixGrid({
   // Small blocks (<= 8x8): direct grid with fixed, large, legible cells
   // ---------------------------------------------------------------------------
   if (width <= 8) {
-    const cellSize = microCellSize ?? (width === 4 ? 40 : 32);
+    const cellSize = microCellSize ?? (width === 4 ? 42 : 34);
     // Explicit pixel dimensions lock the grid size and completely eliminate layout jittering
     const gridDim = width * cellSize + (width - 1) + 4; // cells + 1px gaps + 1px padding*2 + 1px border*2
     return (
       <div
         style={{
           width: '100%',
+          height: '360px',
+          minHeight: '360px',
+          maxHeight: '360px',
           overflowX: 'auto',
           overflowY: 'hidden',
           display: 'flex',
+          alignItems: 'center',
           justifyContent: 'safe center',
+          boxSizing: 'border-box',
           padding: '2px 0'
         }}
       >
@@ -205,7 +220,7 @@ function BlockMatrixGrid({
             minHeight: `${gridDim}px`,
             maxWidth: `${gridDim}px`,
             maxHeight: `${gridDim}px`,
-            margin: '0 auto',
+            margin: 'auto',
             flexShrink: 0,
             boxSizing: 'border-box'
           }}
@@ -244,13 +259,17 @@ function BlockMatrixGrid({
     <div
       style={{
         display: 'flex',
-        flexWrap: 'wrap',
+        flexWrap: 'nowrap',
         gap: '0.85rem',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         justifyContent: 'safe center',
         width: '100%',
         maxWidth: '100%',
+        height: '360px',
+        minHeight: '360px',
+        maxHeight: '360px',
         overflowX: 'auto',
+        overflowY: 'hidden',
         boxSizing: 'border-box',
         padding: '2px 0'
       }}
@@ -261,12 +280,16 @@ function BlockMatrixGrid({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: '0.35rem',
           background: 'var(--apple-canvas)',
           border: '1px solid var(--apple-hairline)',
           borderRadius: '4px',
           padding: '0.5rem',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          height: '350px',
+          maxHeight: '350px',
+          flexShrink: 0
         }}
       >
         <div
@@ -389,12 +412,16 @@ function BlockMatrixGrid({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: '0.35rem',
           background: 'var(--apple-canvas)',
           border: '1px solid var(--apple-hairline)',
           borderRadius: '4px',
           padding: '0.5rem',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          height: '350px',
+          maxHeight: '350px',
+          flexShrink: 0
         }}
       >
         <div
@@ -498,4 +525,4 @@ function BlockMatrixGrid({
   );
 }
 
-export default memo(BlockMatrixGrid);
+export default React.memo(BlockMatrixGrid);

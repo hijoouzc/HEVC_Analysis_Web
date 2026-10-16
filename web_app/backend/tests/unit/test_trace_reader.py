@@ -50,3 +50,25 @@ def test_trace_reader_caching(sample_trace_file):
     # Cache clear resets
     TraceReader.clear_cache()
     assert len(TraceReader._cache) == 0
+
+def test_trace_reader_has_event(sample_trace_file):
+    assert TraceReader.has_event(sample_trace_file, "RDO_INTRA_SEARCH") is True
+    assert TraceReader.has_event(sample_trace_file, "CTU_PARTITION") is True
+    assert TraceReader.has_event(sample_trace_file, "NON_EXISTENT_EVENT") is False
+
+def test_trace_reader_ctu_indexing(sample_trace_file):
+    events_ctu00 = TraceReader.read_all(
+        sample_trace_file,
+        event_filter="RDO_INTRA_SEARCH",
+        ctu_x=0,
+        ctu_y=0
+    )
+    assert len(events_ctu00) == 35
+
+    events_ctu99 = TraceReader.read_all(
+        sample_trace_file,
+        event_filter="RDO_INTRA_SEARCH",
+        ctu_x=99,
+        ctu_y=99
+    )
+    assert len(events_ctu99) == 0

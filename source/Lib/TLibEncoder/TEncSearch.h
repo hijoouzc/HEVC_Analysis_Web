@@ -118,6 +118,7 @@ protected:
   TComMv          m_integerMv2Nx2N[NUM_REF_PIC_LIST_01][MAX_NUM_REF];
 
   Bool            m_isInitialized;
+  UInt            m_trialSeq;
 public:
   TEncSearch();
   virtual ~TEncSearch();

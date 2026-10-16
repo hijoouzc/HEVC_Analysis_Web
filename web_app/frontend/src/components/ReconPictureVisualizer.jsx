@@ -9,7 +9,7 @@ import { bt709YuvToRgb } from '../utils/colorUtils';
  * PIC_YUV_REC stores discrete planar components Y, Cb, Cr (not RGB).
  * Design standard: Apple Pro-Grade, 100% English, no emoji icons, zero overflow.
  */
-export default function ReconPictureVisualizer({
+function ReconPictureVisualizer({
   currentMode,
   reconPictureData = [],
   ctuX = 0,
@@ -20,8 +20,12 @@ export default function ReconPictureVisualizer({
   _imageDims = null,
   jobId = null,
   API_BASE_URL = '',
+  component: propsComponent = undefined,
+  onSelectComponent = null,
 }) {
-  const [component, setComponent] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
+  const [internalComp, setInternalComp] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
+  const component = propsComponent !== undefined ? propsComponent : internalComp;
+  const setComponent = onSelectComponent || setInternalComp;
   const [selectedPixel, setSelectedPixel] = useState(null);
   const [extractedSamples, setExtractedSamples] = useState(null);
 
@@ -331,7 +335,7 @@ export default function ReconPictureVisualizer({
       </div>
 
       {/* Synchronized 4-Way View: S, P, R, S' in Planar Sample Representation */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', width: '100%' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 190px), 1fr))', gap: '12px', width: '100%' }}>
         {/* Card 1: Original (S) */}
         <Card style={{ padding: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', fontWeight: 600, fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>
@@ -344,13 +348,13 @@ export default function ReconPictureVisualizer({
               vData={recoV}
               rgbData={extractedSamples?.rgb}
               size={activeSize}
-              mode="grayscale"
+              mode={component === 'Cb' ? 'chroma_u' : component === 'Cr' ? 'chroma_v' : 'grayscale'}
               selectedPixel={selectedPixel}
               onClickPixel={handleSelectPixel}
             />
           </div>
           <span style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)', marginTop: '6px' }}>
-            Pristine Source
+            {component === 'Y' ? 'Pristine Luma (Grayscale)' : component === 'Cb' ? 'Pristine Cb (Blue/Yellow)' : 'Pristine Cr (Red/Green)'}
           </span>
         </Card>
 
@@ -363,13 +367,13 @@ export default function ReconPictureVisualizer({
             <MatrixMiniCanvas
               data={activePred}
               size={activeSize}
-              mode="grayscale"
+              mode={component === 'Cb' ? 'chroma_u' : component === 'Cr' ? 'chroma_v' : 'grayscale'}
               selectedPixel={selectedPixel}
               onClickPixel={handleSelectPixel}
             />
           </div>
           <span style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)', marginTop: '6px' }}>
-            Spatial Predictor
+            {component === 'Y' ? 'Spatial Luma Predictor' : component === 'Cb' ? 'Spatial Cb Predictor' : 'Spatial Cr Predictor'}
           </span>
         </Card>
 
@@ -404,7 +408,7 @@ export default function ReconPictureVisualizer({
               vData={recoV}
               rgbData={extractedSamples?.rgb}
               size={activeSize}
-              mode="grayscale"
+              mode={component === 'Cb' ? 'chroma_u' : component === 'Cr' ? 'chroma_v' : 'grayscale'}
               selectedPixel={selectedPixel}
               onClickPixel={handleSelectPixel}
             />
@@ -426,7 +430,7 @@ export default function ReconPictureVisualizer({
           </span>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '10px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 110px), 1fr))', gap: '8px', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', padding: '6px 8px', background: 'var(--fill-4)', borderRadius: '4px' }}>
             <span style={{ fontSize: '10px', color: 'var(--apple-label-tertiary)', textTransform: 'uppercase' }}>Position</span>
             <span style={{ fontWeight: 700, color: selectedSampleData ? 'var(--apple-label)' : 'var(--apple-label-tertiary)' }}>
@@ -479,7 +483,7 @@ export default function ReconPictureVisualizer({
   );
 }
 
-function MatrixMiniCanvas({
+const MatrixMiniCanvas = React.memo(function MatrixMiniCanvas({
   data,
   uData = [],
   vData = [],
@@ -534,6 +538,20 @@ function MatrixMiniCanvas({
           pixels[offset + 1] = v;
           pixels[offset + 2] = v;
           pixels[offset + 3] = 255;
+        } else if (mode === 'chroma_u') {
+          const uVal = (Array.isArray(data) && data[i] !== undefined) ? data[i] : 128;
+          const rgb = bt709YuvToRgb(128, uVal, 128);
+          pixels[offset] = rgb.r;
+          pixels[offset + 1] = rgb.g;
+          pixels[offset + 2] = rgb.b;
+          pixels[offset + 3] = 255;
+        } else if (mode === 'chroma_v') {
+          const vVal = (Array.isArray(data) && data[i] !== undefined) ? data[i] : 128;
+          const rgb = bt709YuvToRgb(128, 128, vVal);
+          pixels[offset] = rgb.r;
+          pixels[offset + 1] = rgb.g;
+          pixels[offset + 2] = rgb.b;
+          pixels[offset + 3] = 255;
         } else {
           // Grayscale / Planar sample intensity (0-255)
           const v = (Array.isArray(data) && data[i] !== undefined) ? data[i] : 128;
@@ -581,4 +599,6 @@ function MatrixMiniCanvas({
       }}
     />
   );
-}
+});
+
+export default React.memo(ReconPictureVisualizer);

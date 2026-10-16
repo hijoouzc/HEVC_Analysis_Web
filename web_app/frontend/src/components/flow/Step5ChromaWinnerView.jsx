@@ -185,7 +185,7 @@ export default function Step5ChromaWinnerView({
     }
   };
 
-  const cellSize = zoomLevel === 'zoom' ? (Nc <= 4 ? 42 : 32) : (Nc <= 4 ? 28 : 22);
+  const cellSize = zoomLevel === 'zoom' ? (Nc <= 4 ? 44 : 34) : (Nc <= 4 ? 32 : 24);
 
   // Top competitor modes for leaderboard comparison
   const topCompetitors = useMemo(() => {
@@ -436,8 +436,9 @@ export default function Step5ChromaWinnerView({
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 100px), 1fr))',
-              gap: '0.5rem'
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))',
+              gap: '0.75rem',
+              justifyContent: 'safe center'
             }}>
               {/* Cb Org */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>
@@ -515,8 +516,9 @@ export default function Step5ChromaWinnerView({
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 100px), 1fr))',
-              gap: '0.5rem'
+              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 160px), 1fr))',
+              gap: '0.75rem',
+              justifyContent: 'safe center'
             }}>
               {/* Cr Org */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }}>

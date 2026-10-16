@@ -72,3 +72,5 @@ deploy/
 .vs/
 .agents/
 .antigravity/
+.agent
+agent

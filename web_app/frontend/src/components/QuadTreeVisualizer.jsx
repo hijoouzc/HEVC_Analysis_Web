@@ -9,7 +9,7 @@ import { HM_QUADTREE_RDO_SNIPPET } from '../constants/hmSourceSnippets';
  * QuadTreeVisualizer (CP_01_PARTITION)
  * Renders the recursive CTU Quadtree partitioning structure down to leaf CUs
  */
-export default function QuadTreeVisualizer({
+function QuadTreeVisualizer({
   partitionData = null,
   ctuX = 0,
   ctuY = 0,
@@ -91,19 +91,51 @@ export default function QuadTreeVisualizer({
   const activeNode = (() => {
     if (selectedNode !== undefined) {
       if (selectedNode === null) return null; // Explicitly deselected
-      const found = leafNodes.find(n => n.x === selectedNode.x && n.y === selectedNode.y && n.width === selectedNode.width);
-      return found || null;
+      const found = nodes.find(n =>
+        n.x === selectedNode.x &&
+        n.y === selectedNode.y &&
+        (n.width === selectedNode.width || n.width === selectedNode.size) &&
+        (selectedNode.depth === undefined || n.depth === selectedNode.depth)
+      );
+      if (found) return found;
+      const foundRel = nodes.find(n => {
+        const nrX = getSafeRelCoord(n.x, ctuPixelX);
+        const nrY = getSafeRelCoord(n.y, ctuPixelY);
+        const srX = getSafeRelCoord(selectedNode.x, ctuPixelX);
+        const srY = getSafeRelCoord(selectedNode.y, ctuPixelY);
+        return nrX === srX && nrY === srY && (n.width === selectedNode.width || n.width === selectedNode.size) &&
+          (selectedNode.depth === undefined || n.depth === selectedNode.depth);
+      });
+      return foundRel || null;
     }
     if (selectedCU) {
-      const found = leafNodes.find(n => n.x === selectedCU.x && n.y === selectedCU.y && n.width === selectedCU.width);
+      const found = nodes.find(n =>
+        n.x === selectedCU.x &&
+        n.y === selectedCU.y &&
+        (n.width === selectedCU.width || n.width === selectedCU.size) &&
+        (selectedCU.depth === undefined || n.depth === selectedCU.depth)
+      );
       if (found) return found;
+      const foundRel = nodes.find(n => {
+        const nrX = getSafeRelCoord(n.x, ctuPixelX);
+        const nrY = getSafeRelCoord(n.y, ctuPixelY);
+        const srX = getSafeRelCoord(selectedCU.x, ctuPixelX);
+        const srY = getSafeRelCoord(selectedCU.y, ctuPixelY);
+        return nrX === srX && nrY === srY && (n.width === selectedCU.width || n.width === selectedCU.size) &&
+          (selectedCU.depth === undefined || n.depth === selectedCU.depth);
+      });
+      if (foundRel) return foundRel;
     }
-    return leafNodes.find(n => n.width === 8) || leafNodes[0] || null;
+    return leafNodes.find(n => n.width === 8) || leafNodes[0] || nodes[0] || null;
   })();
 
   // Click handler: click once to select, click again to deselect
   const handleCuClick = (node) => {
-    const isCurrentlyActive = activeNode && activeNode.x === node.x && activeNode.y === node.y && activeNode.width === node.width;
+    const isCurrentlyActive = activeNode &&
+      activeNode.x === node.x &&
+      activeNode.y === node.y &&
+      (activeNode.width === node.width || activeNode.width === node.size) &&
+      (node.depth === undefined || activeNode.depth === node.depth);
     if (isCurrentlyActive) {
       setSelectedNode(null);
       if (onSelectCU) onSelectCU(null);
@@ -210,22 +242,16 @@ export default function QuadTreeVisualizer({
               <button
                 type="button"
                 className="apple-btn-primary"
-                onClick={() => {
-                  if (activeNode.width === 8) {
-                    onNavigateToIntra(activeNode);
-                  }
-                }}
-                disabled={activeNode.width !== 8}
+                onClick={() => onNavigateToIntra(activeNode)}
                 style={{
                   minWidth: '160px',
                   justifyContent: 'center',
-                  background: activeNode.width === 8 ? 'var(--apple-purple, #AF52DE)' : '#94A3B8',
-                  cursor: activeNode.width === 8 ? 'pointer' : 'not-allowed',
-                  opacity: activeNode.width === 8 ? 1 : 0.7
+                  background: 'var(--apple-purple, #AF52DE)',
+                  cursor: 'pointer'
                 }}
-                title={activeNode.width === 8 ? "Inspect 8×8 Intra Prediction Flow" : "Intra prediction pipeline is strictly available for 8×8 block inspection"}
+                title={`Proceed to ${activeW}×${activeH} Intra Prediction`}
               >
-                {activeNode.width === 8 ? 'Inspect Intra (8×8) →' : `8×8 Only (${activeW}×${activeH})`}
+                {activeNode.split ? `Candidate Prediction (${activeW}×${activeH}) →` : `Intra Prediction (${activeW}×${activeH}) →`}
               </button>
             ) : (
               <span style={{ fontSize: '0.75rem', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono', fontWeight: 700 }}>
@@ -426,6 +452,43 @@ export default function QuadTreeVisualizer({
               );
             })}
 
+            {/* Active Parent/Split CU Bounding Box Overlay */}
+            {activeNode && activeNode.split && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: `${(activeSafeRelX / 64) * 100}%`,
+                  top: `${(activeSafeRelY / 64) * 100}%`,
+                  width: `${(activeW / 64) * 100}%`,
+                  height: `${(activeH / 64) * 100}%`,
+                  border: '2.5px dashed var(--apple-purple, #AF52DE)',
+                  backgroundColor: 'rgba(175, 82, 222, 0.16)',
+                  pointerEvents: 'none',
+                  boxSizing: 'border-box',
+                  zIndex: 15,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
+                  padding: '4px'
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '9px',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontWeight: 800,
+                    color: '#FFFFFF',
+                    backgroundColor: 'rgba(175, 82, 222, 0.9)',
+                    padding: '1px 5px',
+                    borderRadius: '3px',
+                    letterSpacing: '0.04em'
+                  }}
+                >
+                  SPLIT CU {activeW}×{activeH} (D{activeNode.depth})
+                </span>
+              </div>
+            )}
+
             {/* Leaf CUs */}
             {leafNodes.map((node, idx) => {
               const safeRelX = getSafeRelCoord(node.x, ctuPixelX);
@@ -435,7 +498,7 @@ export default function QuadTreeVisualizer({
               const w = ((node.width || 64) / 64) * 100;
               const h = ((node.height || 64) / 64) * 100;
 
-              const isSelected = activeNode && activeNode.x === node.x && activeNode.y === node.y && activeNode.width === node.width;
+              const isSelected = activeNode && !activeNode.split && activeNode.x === node.x && activeNode.y === node.y && activeNode.width === node.width;
 
               const depthStyle = depthColors[node.depth] || depthColors[3];
               const modeStyle = modeColors[(node.mode || 'INTRA').toUpperCase()] || modeColors.INTRA;
@@ -610,10 +673,25 @@ export default function QuadTreeVisualizer({
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--apple-hairline)', paddingBottom: '0.65rem', marginBottom: '0.85rem' }}>
               <div>
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 800, textTransform: 'uppercase', margin: 0, color: 'var(--apple-label)' }}>CU Inspector</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <h3 style={{ fontSize: '0.95rem', fontWeight: 800, textTransform: 'uppercase', margin: 0, color: 'var(--apple-label)' }}>CU Inspector</h3>
+                  {activeNode && (
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 800,
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      backgroundColor: activeNode.split ? 'rgba(175, 82, 222, 0.2)' : 'rgba(52, 199, 89, 0.2)',
+                      color: activeNode.split ? 'var(--apple-purple, #AF52DE)' : 'var(--apple-green, #34C759)',
+                      border: `1px solid ${activeNode.split ? 'rgba(175, 82, 222, 0.4)' : 'rgba(52, 199, 89, 0.4)'}`
+                    }}>
+                      {activeNode.split ? 'SPLIT CU' : 'LEAF CU'}
+                    </span>
+                  )}
+                </div>
                 {activeNode ? (
                   <div style={{ fontSize: '0.72rem', color: 'var(--apple-label-secondary)', marginTop: '0.25rem', fontFamily: 'JetBrains Mono', fontWeight: 600 }}>
-                    {activeW}×{activeH} • Cost {activeNode.cost !== null ? Number(activeNode.cost).toFixed(1) : '—'}
+                    {activeW}×{activeH} • Cost {activeNode.cost !== null && activeNode.cost !== undefined ? Number(activeNode.cost).toFixed(1) : '—'}
                   </div>
                 ) : (
                   <div style={{ fontSize: '0.72rem', color: 'var(--apple-label-tertiary)', marginTop: '0.25rem', fontFamily: 'JetBrains Mono' }}>
@@ -707,40 +785,48 @@ export default function QuadTreeVisualizer({
                   </div>
                 </div>
 
-                <div className="apple-card" style={{ padding: '0.65rem 0.75rem' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--apple-label-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
-                    Prediction Mode & Direction
+                {activeNode.split ? (
+                  <div className="apple-card" style={{ padding: '0.65rem 0.75rem', background: 'rgba(175, 82, 222, 0.08)', border: '1px solid rgba(175, 82, 222, 0.3)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--apple-purple, #AF52DE)', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                      HM RDO Decomposition Decision
+                    </div>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--apple-label)' }}>
+                      DECISION: SPLIT CU (J_split &lt; J_nosplit)
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--apple-label-secondary)', marginTop: '0.25rem' }}>
+                      Decomposed into 4 &times; {activeW / 2}&times;{activeH / 2} child CUs at Depth {activeNode.depth + 1}
+                    </div>
                   </div>
-                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--apple-blue)' }}>
-                    {activeNode.mode || 'INTRA'}
-                    {activeNode.mode === 'INTRA' && activeNode.intra_dir !== null && (
-                      <span style={{ marginLeft: '0.5rem', fontSize: '0.82rem', color: 'var(--apple-label)', fontWeight: 600 }}>
-                        Mode {activeNode.intra_dir}: {getIntraModeInfo(activeNode.intra_dir).name} ({getIntraModeInfo(activeNode.intra_dir).type})
-                      </span>
-                    )}
+                ) : (
+                  <div className="apple-card" style={{ padding: '0.65rem 0.75rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--apple-label-secondary)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '0.2rem' }}>
+                      Prediction Mode & Direction
+                    </div>
+                    <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--apple-blue)' }}>
+                      {activeNode.mode || 'INTRA'}
+                      {activeNode.mode === 'INTRA' && activeNode.intra_dir !== null && (
+                        <span style={{ marginLeft: '0.5rem', fontSize: '0.82rem', color: 'var(--apple-label)', fontWeight: 600 }}>
+                          Mode {activeNode.intra_dir}: {getIntraModeInfo(activeNode.intra_dir).name} ({getIntraModeInfo(activeNode.intra_dir).type})
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {onNavigateToIntra && (
                   <button
                     type="button"
                     className="apple-btn-primary"
-                    onClick={() => {
-                      if (activeNode.width === 8) {
-                        onNavigateToIntra(activeNode);
-                      }
-                    }}
-                    disabled={activeNode.width !== 8}
+                    onClick={() => onNavigateToIntra(activeNode)}
                     style={{
                       width: '100%',
                       padding: '0.65rem 1rem',
-                      background: activeNode.width === 8 ? 'var(--apple-purple, #AF52DE)' : '#94A3B8',
-                      cursor: activeNode.width === 8 ? 'pointer' : 'not-allowed',
-                      opacity: activeNode.width === 8 ? 1 : 0.7
+                      background: 'var(--apple-purple, #AF52DE)',
+                      cursor: 'pointer'
                     }}
-                    title={activeNode.width === 8 ? "Inspect 8×8 Intra Prediction Flow" : "Intra prediction pipeline only supports 8×8 block matrix inspection"}
+                    title={`Inspect Parent Candidate: Proceed to ${activeW}×${activeH} Intra Prediction`}
                   >
-                    {activeNode.width === 8 ? 'Inspect Intra (8×8) →' : `8×8 Only (${activeW}×${activeH})`}
+                    {activeNode.split ? `Candidate Prediction (${activeW}×${activeH}) →` : `Intra Prediction (${activeW}×${activeH}) →`}
                   </button>
                 )}
               </div>
@@ -816,7 +902,7 @@ export default function QuadTreeVisualizer({
                       fontWeight: 700
                     }}
                   >
-                    Select 8×8 CU to Inspect Intra →
+                    Select CU for Intra Prediction →
                   </button>
                 )}
               </div>
@@ -880,3 +966,5 @@ export default function QuadTreeVisualizer({
     </div>
   );
 }
+
+export default React.memo(QuadTreeVisualizer);

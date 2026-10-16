@@ -37,6 +37,7 @@
 
 #include "TEncTop.h"
 #include "TEncSlice.h"
+#include "TLibCommon/VisualDumper.h"
 #include <math.h>
 
 //! \ingroup TLibEncoder
@@ -839,6 +840,18 @@ Void TEncSlice::compressSlice( TComPic* pcPic, const Bool bCompressEntireSlice, 
     pRDSbacCoder->setBinCountingEnableFlag( false );
 
     const Int numberOfWrittenBits = m_pcEntropyCoder->getNumberOfWrittenBits();
+
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    if (pDumper && pDumper->isEnabled())
+    {
+      const TComSPS& sps = *(pCtu->getSlice()->getSPS());
+      const Int ctuX = pCtu->getCUPelX() / sps.getMaxCUWidth();
+      const Int ctuY = pCtu->getCUPelY() / sps.getMaxCUHeight();
+      const UInt ctuRsAddr = pCtu->getCtuRsAddr();
+      pDumper->dumpCtuActualBits(pcSlice->getPOC(), ctuX, ctuY, ctuRsAddr, numberOfWrittenBits);
+    }
+#endif
 
     // Calculate if this CTU puts us over slice bit size.
     // cannot terminate if current slice/slice-segment would be 0 Ctu in size,

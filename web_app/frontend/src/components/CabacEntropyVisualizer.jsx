@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Progress } from './apple';
 
 /**
@@ -7,26 +7,52 @@ import { Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableC
  * Finite State Machine probability transition (pStateIdx, valMPS), and Bitrate Allocation Breakdown.
  * Design standard: Apple Pro-Grade, 100% English, no emoji icons, zero overflow.
  */
-export default function CabacEntropyVisualizer({
+function CabacEntropyVisualizer({
   cabacEntropyData,
   _ctuX,
   _ctuY,
 }) {
   const [filterSyntax, setFilterSyntax] = useState('ALL');
 
-  const bins = cabacEntropyData?.bins || [];
+  const bins = useMemo(() => cabacEntropyData?.bins || [], [cabacEntropyData?.bins]);
   const totalBins = cabacEntropyData?.total_bins || bins.length;
-  const totalBits = cabacEntropyData?.total_bits || bins.reduce((sum, b) => sum + (b.bits || 1), 0);
-  const breakdown = cabacEntropyData?.syntax_breakdown || {};
+  const totalBits = useMemo(() => {
+    return cabacEntropyData?.total_bits || bins.reduce((sum, b) => sum + (b.bits || 1), 0);
+  }, [cabacEntropyData?.total_bits, bins]);
+  const breakdown = useMemo(() => cabacEntropyData?.syntax_breakdown || {}, [cabacEntropyData?.syntax_breakdown]);
 
-  const filteredBins = filterSyntax === 'ALL'
-    ? bins
-    : bins.filter((b) => b.syntax_element === filterSyntax);
+  const filteredBins = useMemo(() => {
+    return filterSyntax === 'ALL'
+      ? bins
+      : bins.filter((b) => b.syntax_element === filterSyntax);
+  }, [bins, filterSyntax]);
 
-  const syntaxElements = Object.keys(breakdown);
+  const syntaxElements = useMemo(() => Object.keys(breakdown), [breakdown]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
+      {/* Scope Clarification Banner */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '5px 12px',
+        background: 'var(--fill-2)',
+        borderRadius: '6px',
+        border: '0.5px solid var(--separator)',
+        fontSize: '11px',
+        fontFamily: 'var(--font-mono)',
+        boxSizing: 'border-box'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>SCOPE:</span>
+          <Badge variant="blue">CTU-Level Final Syntax Stream</Badge>
+          <span style={{ color: 'var(--apple-label-tertiary)' }}>
+            HM TEncSbac writes decided CU syntax &bull; Candidate rates during search are estimated inside CP_01/CP_02
+          </span>
+        </div>
+      </div>
+
       {/* Top Telemetry Header */}
       <div
         style={{
@@ -201,3 +227,5 @@ export default function CabacEntropyVisualizer({
     </div>
   );
 }
+
+export default React.memo(CabacEntropyVisualizer);

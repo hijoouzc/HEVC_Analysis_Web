@@ -309,7 +309,7 @@ export default function Step4FullRdoView({
             gap: '0.45rem'
           }}>
             <div style={{ fontSize: '0.72rem', fontWeight: 800, fontFamily: 'JetBrains Mono', color: 'var(--apple-label)' }}>
-              2. PREDICTION P(x, y)
+              {channel === 'Y' ? '2. LUMA Y PREDICTION P(x, y)' : '2. PREDICTION P(x, y)'}
             </div>
             <BlockMatrixGrid
               data={P_data}

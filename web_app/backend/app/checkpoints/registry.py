@@ -2,6 +2,7 @@ from app.checkpoints.base_parser import BaseCheckpointParser
 from app.checkpoints.parsers.intra_search_parser import intra_search_parser
 from app.checkpoints.parsers.intra_ref_parser import intra_ref_parser
 from app.checkpoints.parsers.partition_parser import partition_parser
+from app.checkpoints.parsers.cu_rdo_decision_parser import cu_rdo_decision_parser
 from app.checkpoints.parsers.transform_parser import transform_parser, quant_parser
 
 class CheckpointRegistry:
@@ -10,11 +11,16 @@ class CheckpointRegistry:
         self._parsers_by_event: dict[str, BaseCheckpointParser] = {}
         self._descriptions: dict[str, tuple[str, str]] = {} # stage_id -> (Name, Description)
         
-        # Sprint 3: Partitioning
+        # Sprint 3: Partitioning & RDO Decisions
         self.register(
             partition_parser,
             name="CTU QuadTree Partitioning",
             description="Recursively partitions 64x64 CTU into Coding Units (CUs) across depths 0-3 with Z-scan order."
+        )
+        self.register(
+            cu_rdo_decision_parser,
+            name="CU Rate-Distortion Optimization Decision",
+            description="HM-18.0 xCheckBestMode decision comparing costNoSplit vs costSplit at each CU QuadTree node."
         )
         
         # Sprint 2: Intra Reference & Prediction Search

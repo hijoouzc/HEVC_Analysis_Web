@@ -11,7 +11,8 @@ from app.domain.models.checkpoint import (
     InterSearchCheckpoint,
     ReconPictureCheckpoint,
     InLoopFilterFullResponse,
-    CabacEntropyFullResponse
+    CabacEntropyFullResponse,
+    CuRdoDecisionCheckpoint
 )
 from app.domain.exceptions import JobNotFoundError, InvalidInputError
 from app.services.analysis_service import analysis_service
@@ -73,11 +74,48 @@ async def get_intra_ref_checkpoint(
     job_id: str,
     cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)"),
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU/PU X pixel coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate")
 ):
     """CP_02_INTRA_REF: Retrieves raw and filtered reference samples (4N+1)"""
     try:
-        return analysis_service.get_intra_ref_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_intra_ref_data(
+            job_id,
+            cu_size=cu_size,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y
+        )
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ==========================================
+# CP_01_CU_QUADTREE_RDO / RDO Decisions
+# ==========================================
+@router.get("/{job_id}/rdo-decisions", response_model=list[CuRdoDecisionCheckpoint])
+@router.get("/{job_id}/CP_01_CU_QUADTREE_RDO", response_model=list[CuRdoDecisionCheckpoint])
+async def get_rdo_decisions(
+    job_id: str,
+    ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU X pixel coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU Y pixel coordinate"),
+    cu_size: int | None = Query(None, description="Optional target CU block size (8, 16, 32, 64)")
+):
+    """Retrieves real HM CU RDO decisions: cost_nosplit, cost_split, best_mode, and split_decision"""
+    try:
+        return analysis_service.get_rdo_decisions(
+            job_id,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y,
+            cu_size=cu_size
+        )
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -122,11 +160,21 @@ async def get_intra_search_modes(
     mode: int | None = Query(None, ge=0, le=34, description="Optional filter for a specific mode index (0-34)"),
     cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)"),
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU/PU X pixel coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate")
 ):
     """Lazy-load full matrix and reference sample data for tested Intra modes"""
     try:
-        return analysis_service.get_intra_search_data(job_id, mode=mode, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_intra_search_data(
+            job_id,
+            mode=mode,
+            cu_size=cu_size,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y
+        )
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -139,7 +187,9 @@ async def get_intra_pipeline_full(
     job_id: str,
     cu_size: int | None = Query(None, description="Optional target CU block size (4, 8, 16, 32, 64)"),
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU/PU X pixel coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate")
 ):
     """
     CP_03_INTRA_SEARCH Pipeline: Complete 5-stage Intra Prediction & RDO Search Flow
@@ -150,7 +200,14 @@ async def get_intra_pipeline_full(
     Step 5: Chroma Mode Search & Best Mode Decision
     """
     try:
-        return analysis_service.get_intra_pipeline_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_intra_pipeline_data(
+            job_id,
+            cu_size=cu_size,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y
+        )
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -165,12 +222,25 @@ async def get_transform_checkpoints(
     comp: str | None = Query(None, description="Color component ('Y', 'Cb', 'Cr')"),
     component: str | None = Query(None, description="Alias for comp"),
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU X coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU Y coordinate"),
+    cu_size: int | None = Query(None, description="Optional target CU size"),
+    intra_mode: int | None = Query(None, description="Optional candidate intra mode index")
 ):
     """CP_06_TRANSFORM: Retrieves 2D DCT/DST transform coefficients and residual matrix"""
     try:
         active_comp = component or comp
-        return analysis_service.get_transform_quant_data(job_id, comp=active_comp, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_transform_quant_data(
+            job_id,
+            comp=active_comp,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y,
+            cu_size=cu_size,
+            intra_mode=intra_mode
+        )
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -182,12 +252,25 @@ async def get_quant_checkpoints(
     comp: str | None = Query(None, description="Color component ('Y', 'Cb', 'Cr')"),
     component: str | None = Query(None, description="Alias for comp"),
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU X coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU Y coordinate"),
+    cu_size: int | None = Query(None, description="Optional target CU size"),
+    intra_mode: int | None = Query(None, description="Optional candidate intra mode index")
 ):
     """CP_07_QUANT: Retrieves quantized transform coefficients and sparsity statistics"""
     try:
         active_comp = component or comp
-        return analysis_service.get_transform_quant_data(job_id, comp=active_comp, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_transform_quant_data(
+            job_id,
+            comp=active_comp,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y,
+            cu_size=cu_size,
+            intra_mode=intra_mode
+        )
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -225,11 +308,24 @@ async def get_transform_rqt(
     job_id: str,
     comp: str | None = Query(None, description="Color component ('Y', 'Cb', 'Cr')"),
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    cu_x: int | None = Query(None, description="Optional target CU X coordinate"),
+    cu_y: int | None = Query(None, description="Optional target CU Y coordinate"),
+    cu_size: int | None = Query(None, description="Optional target CU size"),
+    intra_mode: int | None = Query(None, description="Optional candidate intra mode index")
 ):
     """CP_04_TRANSFORM_RQT: Retrieves 6-domain Transform, RQT hierarchy, DST-VII, and TSM data"""
     try:
-        return analysis_service.get_transform_quant_data(job_id, comp=comp, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_transform_quant_data(
+            job_id,
+            comp=comp,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y,
+            cu_size=cu_size,
+            intra_mode=intra_mode
+        )
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:

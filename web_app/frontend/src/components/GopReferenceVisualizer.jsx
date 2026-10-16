@@ -7,7 +7,7 @@ import { Badge, Card } from './apple';
  * Specializes in Frame & GOP structure, Reference Dependency Graph (DPB), and CTU Navigator.
  * Design standard: Apple Pro-Grade, 100% English, no emoji icons, zero overflow.
  */
-export default function GopReferenceVisualizer({
+function GopReferenceVisualizer({
   imageSrc,
   imageDims,
   ctuX,
@@ -22,6 +22,7 @@ export default function GopReferenceVisualizer({
   selectedCu = null,
   onSelectCU,
   frameGopData = [],
+  committedCtuKeys = null,
 }) {
   const currentFrame = Array.isArray(frameGopData) && frameGopData.length > 0 ? frameGopData[0] : null;
 
@@ -139,8 +140,11 @@ export default function GopReferenceVisualizer({
           loading={loading}
           selectedCu={selectedCu}
           onSelectCU={onSelectCU}
+          committedCtuKeys={committedCtuKeys}
         />
       </div>
     </div>
   );
 }
+
+export default React.memo(GopReferenceVisualizer);

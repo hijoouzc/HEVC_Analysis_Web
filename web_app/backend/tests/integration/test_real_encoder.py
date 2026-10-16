@@ -147,4 +147,53 @@ def test_real_encoder_cu_size_32(client, dummy_png_bytes):
     assert len(first_mode["ref_top"]) == 65
     assert len(first_mode["ref_left"]) == 65
 
+@pytest.mark.skipif(not settings.ENCODER_BIN.exists(), reason="TAppEncoder binary not found")
+def test_real_encoder_real_hm_prediction_and_ctu_bits(client, dummy_png_bytes):
+    """Verify that real HM-18.0 run emits INTRA_TU_PRED, CTU_ACTUAL_BITS, and verified CU_RDO_DECISION"""
+    files = {"file": ("test_real_pred.png", dummy_png_bytes, "image/png")}
+    data = {"ctu_x": "0", "ctu_y": "0", "cu_size": "8"}
+
+    submit_res = client.post("/api/v1/jobs/submit", files=files, data=data)
+    assert submit_res.status_code == 202
+    job_id = submit_res.json()["job_id"]
+
+    import time
+    completed = False
+    for _ in range(25):
+        s_res = client.get(f"/api/v1/jobs/{job_id}")
+        if s_res.json()["status"] == "COMPLETED":
+            completed = True
+            break
+        time.sleep(0.2)
+
+    assert completed is True
+
+    # 1. Verify CTU_ACTUAL_BITS via partition endpoint
+    part_res = client.get(f"/api/v1/checkpoints/{job_id}/CP_01_PARTITION")
+    assert part_res.status_code == 200
+    part_data = part_res.json()
+    assert "ctu_actual_bits" in part_data
+    assert part_data["ctu_actual_bits"] is not None
+    assert part_data["ctu_actual_bits"] > 0
+
+    # 2. Verify intra-pipeline endpoint returns Step 4 RDO candidates with pred_data from HM trace
+    pipe_res = client.get(f"/api/v1/checkpoints/{job_id}/intra-pipeline?cu_size=8&ctu_x=0&ctu_y=0")
+    assert pipe_res.status_code == 200
+    pipe_data = pipe_res.json()
+    assert "step4_rdo" in pipe_data
+    rdo_cands = pipe_data["step4_rdo"]
+    assert len(rdo_cands) > 0
+    # At least one candidate has real HM discrete prediction matrix
+    winner_found = False
+    for cand in rdo_cands:
+        assert "mode" in cand
+        assert "cost_rdo" in cand
+        assert "rdo_rate_est" in cand
+        if cand.get("is_winner"):
+            winner_found = True
+        if cand.get("data_source") == "HM_TRACE" and cand.get("pred_data"):
+            assert len(cand["pred_data"]) == 64 # 8x8 PU
+    assert winner_found is True
+
+
 

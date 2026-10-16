@@ -4,7 +4,7 @@ class ROICoordinates(BaseModel):
     poc: int = Field(default=0, ge=0, description="Picture Order Count")
     ctu_x: int = Field(default=0, ge=0, description="CTU X index (0-based)")
     ctu_y: int = Field(default=0, ge=0, description="CTU Y index (0-based)")
-    cu_size: int = Field(default=8, description="Target CU Size (e.g. 64, 32, 16, 8)")
+    cu_size: int = Field(default=0, description="Target CU Size (0 = all sizes 64..4, or specific: 64, 32, 16, 8, 4)")
 
 class FrameMetadata(BaseModel):
     width: int = Field(..., gt=0, description="Original image width")

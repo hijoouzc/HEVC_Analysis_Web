@@ -8,11 +8,11 @@ class TraceReader:
     """Memory-efficient, LRU-cached reader for HEVC trace.jsonl files conforming to HM data-locality standards"""
     
     _MAX_CACHE_SIZE: int = 24
-    _cache: OrderedDict[str, tuple[float, list[dict[str, Any]], dict[str, list[dict[str, Any]]]]] = OrderedDict()
+    _cache: OrderedDict[str, tuple[float, list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[tuple[str, int, int], list[dict[str, Any]]]]] = OrderedDict()
     _lock = threading.Lock()
 
     @classmethod
-    def _get_cached_data(cls, trace_file: Path) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]]] | None:
+    def _get_cached_data(cls, trace_file: Path) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[tuple[str, int, int], list[dict[str, Any]]]] | None:
         if not trace_file.exists():
             return None
         try:
@@ -23,16 +23,17 @@ class TraceReader:
         file_key = str(trace_file.resolve())
         with cls._lock:
             if file_key in cls._cache:
-                cached_mtime, all_events, by_type = cls._cache[file_key]
+                cached_mtime, all_events, by_type, by_type_ctu = cls._cache[file_key]
                 if cached_mtime == mtime:
                     cls._cache.move_to_end(file_key)
-                    return all_events, by_type
+                    return all_events, by_type, by_type_ctu
                 else:
                     del cls._cache[file_key]
 
-        # Parse trace file once into memory
+        # Parse trace file once into memory with O(1) multi-level indexing
         all_events: list[dict[str, Any]] = []
         by_type: dict[str, list[dict[str, Any]]] = {}
+        by_type_ctu: dict[tuple[str, int, int], list[dict[str, Any]]] = {}
         try:
             with open(trace_file, "r", encoding="utf-8") as f:
                 for line in f:
@@ -46,17 +47,28 @@ class TraceReader:
                         if ev not in by_type:
                             by_type[ev] = []
                         by_type[ev].append(obj)
+
+                        cx = obj.get("ctu_x")
+                        cy = obj.get("ctu_y")
+                        if cx is not None and cy is not None:
+                            try:
+                                ctu_key = (ev, int(cx), int(cy))
+                                if ctu_key not in by_type_ctu:
+                                    by_type_ctu[ctu_key] = []
+                                by_type_ctu[ctu_key].append(obj)
+                            except (ValueError, TypeError):
+                                pass
                     except json.JSONDecodeError:
                         continue
         except OSError:
             return None
 
         with cls._lock:
-            cls._cache[file_key] = (mtime, all_events, by_type)
+            cls._cache[file_key] = (mtime, all_events, by_type, by_type_ctu)
             if len(cls._cache) > cls._MAX_CACHE_SIZE:
                 cls._cache.popitem(last=False)
                 
-        return all_events, by_type
+        return all_events, by_type, by_type_ctu
 
     @classmethod
     def clear_cache(cls) -> None:
@@ -65,10 +77,22 @@ class TraceReader:
             cls._cache.clear()
 
     @classmethod
+    def has_event(cls, trace_file: Path, event_name: str) -> bool:
+        """O(1) check if a specific event type exists in the trace file"""
+        cached = cls._get_cached_data(trace_file)
+        if cached is not None:
+            return event_name in cached[1]
+        
+        # Fallback to streaming check
+        for ev in cls.stream_events(trace_file, event_filter=event_name):
+            return True
+        return False
+
+    @classmethod
     def stream_events(cls, trace_file: Path, event_filter: str | None = None) -> Iterator[dict[str, Any]]:
         cached = cls._get_cached_data(trace_file)
         if cached is not None:
-            all_events, by_type = cached
+            all_events, by_type, _ = cached
             if event_filter is not None:
                 for ev in by_type.get(event_filter, []):
                     yield ev
@@ -98,12 +122,20 @@ class TraceReader:
         trace_file: Path,
         event_filter: str | None = None,
         limit: int | None = None,
-        predicate: Callable[[dict[str, Any]], bool] | None = None
+        predicate: Callable[[dict[str, Any]], bool] | None = None,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
     ) -> list[dict[str, Any]]:
         cached = cls._get_cached_data(trace_file)
         if cached is not None:
-            all_events, by_type = cached
-            candidate_list = by_type.get(event_filter, []) if event_filter is not None else all_events
+            all_events, by_type, by_type_ctu = cached
+            if event_filter is not None and ctu_x is not None and ctu_y is not None:
+                candidate_list = by_type_ctu.get((event_filter, ctu_x, ctu_y), [])
+            elif event_filter is not None:
+                candidate_list = by_type.get(event_filter, [])
+            else:
+                candidate_list = all_events
+
             if predicate is None:
                 return candidate_list[:limit] if limit is not None else list(candidate_list)
             
@@ -117,6 +149,10 @@ class TraceReader:
 
         results = []
         for event in cls.stream_events(trace_file, event_filter):
+            if ctu_x is not None and event.get("ctu_x") != ctu_x:
+                continue
+            if ctu_y is not None and event.get("ctu_y") != ctu_y:
+                continue
             if predicate is not None and not predicate(event):
                 continue
             results.append(event)
@@ -128,7 +164,7 @@ class TraceReader:
     def count_events(cls, trace_file: Path) -> dict[str, int]:
         cached = cls._get_cached_data(trace_file)
         if cached is not None:
-            _, by_type = cached
+            _, by_type, _ = cached
             return {k: len(v) for k, v in by_type.items()}
 
         counts: dict[str, int] = {}
@@ -149,15 +185,34 @@ class TraceReader:
         return counts
 
     @classmethod
-    def find_one(cls, trace_file: Path, predicate: Callable[[dict[str, Any]], bool]) -> dict[str, Any] | None:
+    def find_one(
+        cls,
+        trace_file: Path,
+        predicate: Callable[[dict[str, Any]], bool],
+        event_filter: str | None = None,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None
+    ) -> dict[str, Any] | None:
         cached = cls._get_cached_data(trace_file)
         if cached is not None:
-            for event in cached[0]:
+            all_events, by_type, by_type_ctu = cached
+            if event_filter is not None and ctu_x is not None and ctu_y is not None:
+                candidates = by_type_ctu.get((event_filter, ctu_x, ctu_y), [])
+            elif event_filter is not None:
+                candidates = by_type.get(event_filter, [])
+            else:
+                candidates = all_events
+
+            for event in candidates:
                 if predicate(event):
                     return event
             return None
 
-        for event in cls.stream_events(trace_file):
+        for event in cls.stream_events(trace_file, event_filter=event_filter):
+            if ctu_x is not None and event.get("ctu_x") != ctu_x:
+                continue
+            if ctu_y is not None and event.get("ctu_y") != ctu_y:
+                continue
             if predicate(event):
                 return event
         return None

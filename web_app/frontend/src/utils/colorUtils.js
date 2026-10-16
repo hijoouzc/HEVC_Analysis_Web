@@ -150,10 +150,49 @@ export const getLumaColorAndTextColor = (val) => {
 };
 
 /**
- * Returns distinct, intuitive CSS background color, text color, and border for Chroma (Cb/Cr) samples:
- * - Cb (U): Dedicated Blue/Cyan channel (lower = deep navy blue, 128 = mid ocean blue, higher = bright sky cyan).
- * - Cr (V): Dedicated Crimson/Rose channel (lower = soft pale rose, 128 = vibrant rose/crimson, higher = deep crimson red).
- * Ensures Chroma channels are clearly distinguishable and never collapse into flat gray.
+ * Exact ITU-R BT.709 Full-Range YCbCr (YUV) to sRGB conversion.
+ * Primary standard for HD / Full HD HEVC content.
+ * 
+ * @param {number} y  - 8-bit Luma sample [0, 255]
+ * @param {number} cb - 8-bit Chroma Blue sample [0, 255]
+ * @param {number} cr - 8-bit Chroma Red sample [0, 255]
+ * @returns {{ r: number, g: number, b: number, hex: string }}
+ */
+export const bt709YuvToRgb = (y, cb, cr) => {
+  const dCb = (cb ?? 128) - 128;
+  const dCr = (cr ?? 128) - 128;
+  const luma = y ?? 128;
+  const r = clamp(Math.round(luma + 1.57480 * dCr), 0, 255);
+  const g = clamp(Math.round(luma - 0.18732 * dCb - 0.46812 * dCr), 0, 255);
+  const b = clamp(Math.round(luma + 1.85560 * dCb), 0, 255);
+  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+  return { r, g, b, hex };
+};
+
+/**
+ * Exact ITU-R BT.601 Full-Range YCbCr (YUV) to sRGB conversion.
+ * 
+ * @param {number} y  - 8-bit Luma sample [0, 255]
+ * @param {number} cb - 8-bit Chroma Blue sample [0, 255]
+ * @param {number} cr - 8-bit Chroma Red sample [0, 255]
+ * @returns {{ r: number, g: number, b: number, hex: string }}
+ */
+export const bt601YuvToRgb = (y, cb, cr) => {
+  const dCb = (cb ?? 128) - 128;
+  const dCr = (cr ?? 128) - 128;
+  const luma = y ?? 128;
+  const r = clamp(Math.round(luma + 1.40200 * dCr), 0, 255);
+  const g = clamp(Math.round(luma - 0.34414 * dCb - 0.71414 * dCr), 0, 255);
+  const b = clamp(Math.round(luma + 1.77200 * dCb), 0, 255);
+  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+  return { r, g, b, hex };
+};
+
+/**
+ * Returns mathematically exact ITU-R BT.709 Chroma (Cb/Cr) color and legible text color:
+ * - Cb (U): Blue (high Cb > 128) <-> Neutral Gray (Cb = 128) <-> Warm Yellow (low Cb < 128)
+ * - Cr (V): Crimson Red (high Cr > 128) <-> Neutral Gray (Cr = 128) <-> Vibrant Green (low Cr < 128)
+ * Fixed neutral Luma Y = 128 ensures zero luminance distortion.
  * 
  * @param {number} val - 8-bit chroma sample value (0-255)
  * @param {boolean} isU - true for Cb (U), false for Cr (V)
@@ -161,37 +200,22 @@ export const getLumaColorAndTextColor = (val) => {
  */
 export const getChromaColorAndTextColor = (val, isU) => {
   const v = clamp(Math.round(val ?? 128), 0, 255);
-  const diff = v - 128;
+  const { r, g, b, hex } = isU
+    ? bt709YuvToRgb(128, v, 128)  // U (Cb): Blue <-> Yellow
+    : bt709YuvToRgb(128, 128, v); // V (Cr): Red <-> Green
 
-  if (isU) {
-    // U (Cb): Distinctive Blue / Cyan Palette
-    const lightness = clamp(Math.round(54 + diff * 1.8), 22, 88);
-    const hue = clamp(Math.round(212 - diff * 0.7), 195, 226);
-    const saturation = clamp(Math.round(74 + Math.abs(diff) * 0.4), 55, 92);
-    const bg = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-    const color = lightness < 58 ? '#FFFFFF' : '#000000';
-    return {
-      bg,
-      color,
-      border: '1px solid rgba(0, 0, 0, 0.18)',
-      textShadow: 'none',
-      val: v
-    };
-  } else {
-    // V (Cr): Distinctive Crimson / Rose / Red Palette
-    const lightness = clamp(Math.round(64 - diff * 1.8), 24, 88);
-    const hue = clamp(Math.round(350 - diff * 0.5), 342, 358);
-    const saturation = clamp(Math.round(72 + Math.abs(diff) * 0.5), 55, 92);
-    const bg = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-    const color = lightness < 58 ? '#FFFFFF' : '#000000';
-    return {
-      bg,
-      color,
-      border: '1px solid rgba(0, 0, 0, 0.18)',
-      textShadow: 'none',
-      val: v
-    };
-  }
+  // Calculate perceived relative luminance for optimal text readability
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const color = lum < 135 ? '#FFFFFF' : '#000000';
+  const isDark = lum < 128;
+
+  return {
+    bg: hex,
+    color,
+    border: isDark ? '1px solid rgba(255, 255, 255, 0.18)' : '1px solid rgba(0, 0, 0, 0.18)',
+    textShadow: 'none',
+    val: v
+  };
 };
 
 /**
@@ -279,41 +303,3 @@ export const getIntraModeInfo = (mode) => {
   return { name: `Mode ${mode}`, type: 'Intra', desc: `Intra Mode ${mode}` };
 };
 
-/**
- * Exact ITU-R BT.709 Full-Range YCbCr (YUV) to sRGB conversion.
- * Primary standard for HD / Full HD HEVC content.
- * 
- * @param {number} y  - 8-bit Luma sample [0, 255]
- * @param {number} cb - 8-bit Chroma Blue sample [0, 255]
- * @param {number} cr - 8-bit Chroma Red sample [0, 255]
- * @returns {{ r: number, g: number, b: number, hex: string }}
- */
-export const bt709YuvToRgb = (y, cb, cr) => {
-  const dCb = (cb ?? 128) - 128;
-  const dCr = (cr ?? 128) - 128;
-  const luma = y ?? 128;
-  const r = clamp(Math.round(luma + 1.57480 * dCr), 0, 255);
-  const g = clamp(Math.round(luma - 0.18732 * dCb - 0.46812 * dCr), 0, 255);
-  const b = clamp(Math.round(luma + 1.85560 * dCb), 0, 255);
-  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
-  return { r, g, b, hex };
-};
-
-/**
- * Exact ITU-R BT.601 Full-Range YCbCr (YUV) to sRGB conversion.
- * 
- * @param {number} y  - 8-bit Luma sample [0, 255]
- * @param {number} cb - 8-bit Chroma Blue sample [0, 255]
- * @param {number} cr - 8-bit Chroma Red sample [0, 255]
- * @returns {{ r: number, g: number, b: number, hex: string }}
- */
-export const bt601YuvToRgb = (y, cb, cr) => {
-  const dCb = (cb ?? 128) - 128;
-  const dCr = (cr ?? 128) - 128;
-  const luma = y ?? 128;
-  const r = clamp(Math.round(luma + 1.40200 * dCr), 0, 255);
-  const g = clamp(Math.round(luma - 0.34414 * dCb - 0.71414 * dCr), 0, 255);
-  const b = clamp(Math.round(luma + 1.77200 * dCb), 0, 255);
-  const hex = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
-  return { r, g, b, hex };
-};

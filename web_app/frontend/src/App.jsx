@@ -14,6 +14,18 @@ import {
 } from './components/apple';
 import './index.css';
 
+const STAGE_TABS = [
+  { id: 'CP_00', label: '0. Frame & GOP' },
+  { id: 'CP_01', label: '1. CU QuadTree' },
+  { id: 'CP_02', label: '2. Intra Search' },
+  { id: 'CP_03', label: '3. Inter Search' },
+  { id: 'CP_04', label: '4. Transform & Quant' },
+  { id: 'CP_05', label: '5. Recon Picture' },
+  { id: 'CP_06', label: '6. In-Loop Filter' },
+  { id: 'CP_07', label: '7. CABAC Entropy' },
+  { id: 'RDO_SIM', label: '8. RDO Simulator' },
+];
+
 /**
  * App (HEVC Video Analyzer Shell)
  * Top-level application container implementing applecn macOS Tahoe guidelines.
@@ -21,9 +33,10 @@ import './index.css';
  */
 function App() {
   const [isStandaloneSim, setIsStandaloneSim] = useState(false);
-  const [reconMode, setReconMode] = useState('overview'); // 'overview' | 'synchronized'
   const [showInspector, setShowInspector] = useState(true);
   const [backendStatus, setBackendStatus] = useState('Checking...');
+  const [viewMode, setViewMode] = useState('guided'); // 'guided' | 'expert'
+  const [guidedStep, setGuidedStep] = useState('STEP_1'); // 'STEP_1'..'STEP_5'
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('apple_theme');
@@ -64,7 +77,9 @@ function App() {
     reconPictureData,
     inloopFilterData,
     cabacEntropyData,
+    rdoDecisions,
     selectedCu,
+    setSelectedCu,
     ctuPartitionsMap,
     hasDesync,
     API_BASE_URL,
@@ -73,6 +88,9 @@ function App() {
     handleResetImage,
     handleSelectCU,
     handleSelectCTU,
+    handleSelectSize,
+    handleSelectBlock,
+    setCuSize,
   } = useAnalysisSession();
 
   // Check Backend Connection Health
@@ -115,37 +133,38 @@ function App() {
     const handleKeyDown = (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-      if (e.key === '0') setActiveStageTab('CP_00');
-      else if (e.key === '1') setActiveStageTab('CP_01');
-      else if (e.key === '2') setActiveStageTab('CP_02');
-      else if (e.key === '3') setActiveStageTab('CP_03');
-      else if (e.key === '4') setActiveStageTab('CP_04');
-      else if (e.key === '5') setActiveStageTab('CP_05');
-      else if (e.key === '6') setActiveStageTab('CP_06');
-      else if (e.key === '7') setActiveStageTab('CP_07');
-      else if (e.key === '8') setActiveStageTab('RDO_SIM');
-      else if (e.key === 'i' || e.key === 'I') {
+      if (e.key === 'm' || e.key === 'M') {
+        setViewMode((v) => (v === 'guided' ? 'expert' : 'guided'));
+      } else if (e.key === 'i' || e.key === 'I') {
         setShowInspector((prev) => !prev);
       } else if (e.key === 'd' || e.key === 'D') {
         setIsDarkMode((prev) => !prev);
+      } else if (viewMode === 'guided') {
+        const scrollTo = (id) => {
+          const el = document.getElementById(id);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        if (e.key === '1') { setGuidedStep('STEP_1'); scrollTo('STEP_1'); }
+        else if (e.key === '2') { setGuidedStep('STEP_2'); scrollTo('STEP_2'); }
+        else if (e.key === '3') { setGuidedStep('STEP_3'); scrollTo('STEP_3'); }
+        else if (e.key === '4') { setGuidedStep('STEP_4'); scrollTo('STEP_4'); }
+        else if (e.key === '5') { setGuidedStep('STEP_5'); scrollTo('STEP_5'); }
+      } else {
+        if (e.key === '0') setActiveStageTab('CP_00');
+        else if (e.key === '1') setActiveStageTab('CP_01');
+        else if (e.key === '2') setActiveStageTab('CP_02');
+        else if (e.key === '3') setActiveStageTab('CP_03');
+        else if (e.key === '4') setActiveStageTab('CP_04');
+        else if (e.key === '5') setActiveStageTab('CP_05');
+        else if (e.key === '6') setActiveStageTab('CP_06');
+        else if (e.key === '7') setActiveStageTab('CP_07');
+        else if (e.key === '8') setActiveStageTab('RDO_SIM');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [data, setActiveStageTab]);
-
-  const stageTabs = [
-    { id: 'CP_00', label: '0. Frame & GOP' },
-    { id: 'CP_01', label: '1. CU QuadTree' },
-    { id: 'CP_02', label: '2. Intra Search' },
-    { id: 'CP_03', label: '3. Inter Search' },
-    { id: 'CP_04', label: '4. Transform RQT' },
-    { id: 'CP_05', label: '5. Recon Picture' },
-    { id: 'CP_06', label: '6. In-Loop Filter' },
-    { id: 'CP_07', label: '7. CABAC Entropy' },
-    { id: 'RDO_SIM', label: '8. RDO Simulator' },
-  ];
+  }, [data, setActiveStageTab, viewMode]);
 
   return (
     <Window>
@@ -340,7 +359,7 @@ function App() {
             <ActiveStageViewport
               activeStageTab={activeStageTab}
               setActiveStageTab={setActiveStageTab}
-              stageTabs={stageTabs}
+              stageTabs={STAGE_TABS}
               hasDesync={hasDesync}
               analyzedCtu={analyzedCtu}
               ctuX={ctuX}
@@ -370,12 +389,19 @@ function App() {
               reconPictureData={reconPictureData}
               inloopFilterData={inloopFilterData}
               cabacEntropyData={cabacEntropyData}
-              reconMode={reconMode}
-              setReconMode={setReconMode}
+              rdoDecisions={rdoDecisions}
               jobId={jobId}
               API_BASE_URL={API_BASE_URL}
               showInspector={showInspector}
               setShowInspector={setShowInspector}
+              handleSelectSize={handleSelectSize}
+              handleSelectBlock={handleSelectBlock}
+              setCuSize={setCuSize}
+              setSelectedCu={setSelectedCu}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              guidedStep={guidedStep}
+              setGuidedStep={setGuidedStep}
             />
 
             {/* Right Column: Unified Apple Info Inspector */}

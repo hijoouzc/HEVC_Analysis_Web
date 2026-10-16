@@ -26,7 +26,8 @@ const StaticPartitionLayer = React.memo(function StaticPartitionLayer({
   combinedPartitions,
   colorScheme,
   gridColor = 'white',
-  onSelectLeaf
+  onSelectLeaf,
+  committedCtuKeys = null
 }) {
   const cuStrokeColor = gridColor === 'yellow'
     ? 'rgba(250, 204, 21, 0.90)'
@@ -38,6 +39,7 @@ const StaticPartitionLayer = React.memo(function StaticPartitionLayer({
     <g className="static-partition-layer">
       {Object.entries(combinedPartitions).map(([key, ctuPart]) => {
         if (!ctuPart || !ctuPart.nodes) return null;
+        if (committedCtuKeys && !committedCtuKeys.has(key)) return null;
         const leaves = ctuPart.nodes.filter(n => !n.split);
         const ctuOriginX = (ctuPart.ctu_x ?? 0) * 64;
         const ctuOriginY = (ctuPart.ctu_y ?? 0) * 64;
@@ -225,9 +227,10 @@ const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
           y={activeCu.y}
           width={activeCu.width}
           height={activeCu.height}
-          fill="rgba(175, 82, 222, 0.25)"
-          stroke="var(--apple-purple)"
-          strokeWidth={2}
+          fill={activeCu.split ? 'rgba(175, 82, 222, 0.20)' : 'rgba(222, 0, 106, 0.25)'}
+          stroke={activeCu.split ? 'var(--apple-purple)' : '#DE006A'}
+          strokeWidth={activeCu.split ? 2.5 : 2}
+          strokeDasharray={activeCu.split ? '4 2' : 'none'}
           vectorEffect="non-scaling-stroke"
         />
       )}
@@ -249,7 +252,8 @@ function FullFrameViewer({
   _onReAnalyze = null,
   loading = false,
   selectedCu: propsSelectedCu = undefined,
-  onSelectCU = null
+  onSelectCU = null,
+  committedCtuKeys = null
 }) {
   const [viewMode, setViewMode] = useState(isAnalyzed ? 'partition' : 'original');
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (clean transparent) or 'depth'
@@ -684,6 +688,7 @@ function FullFrameViewer({
                 colorScheme={colorScheme}
                 gridColor={gridColor}
                 onSelectLeaf={handleLeafClick}
+                committedCtuKeys={committedCtuKeys}
               />
             )}
 

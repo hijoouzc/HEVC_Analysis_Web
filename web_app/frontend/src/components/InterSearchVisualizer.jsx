@@ -6,7 +6,7 @@ import { Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableC
  * Specializes in Inter Prediction, Motion Vector Field (MV, MVD), and AMVP candidate selection.
  * Design standard: Apple Pro-Grade, 100% English, no emoji icons, zero overflow.
  */
-export default function InterSearchVisualizer({
+function InterSearchVisualizer({
   interSearchData = [],
   ctuX,
   ctuY,
@@ -239,3 +239,5 @@ export default function InterSearchVisualizer({
     </div>
   );
 }
+
+export default React.memo(InterSearchVisualizer);

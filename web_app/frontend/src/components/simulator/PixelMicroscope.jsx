@@ -12,7 +12,7 @@ const clamp8 = (v) => Math.max(0, Math.min(255, Math.round(v)));
  * When showText is enabled (sizes <= 16), renders mathematical values directly onto the canvas,
  * completely eliminating thousands of DOM <div> nodes and preventing reflow stutters.
  */
-function MatrixCanvas({ data, size, isResidual, showText }) {
+const MatrixCanvas = React.memo(function MatrixCanvas({ data, size, isResidual, showText }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -57,24 +57,15 @@ function MatrixCanvas({ data, size, isResidual, showText }) {
       }
     } else {
       // Pure discrete pixel rendering for larger sizes (32, 64) or when numbers are toggled off
-      const imgData = ctx.createImageData(size, size);
-      for (let i = 0; i < size * size; i++) {
-        const val = data[i];
-        const pixelVal = isResidual ? clamp8(val + 128) : clamp8(val);
-        const idx = i * 4;
-        imgData.data[idx] = pixelVal;
-        imgData.data[idx + 1] = pixelVal;
-        imgData.data[idx + 2] = pixelVal;
-        imgData.data[idx + 3] = 255;
+      // Direct fillRect rendering eliminates temporary DOM canvas allocations
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const val = data[y * size + x];
+          const pixelVal = isResidual ? clamp8(val + 128) : clamp8(val);
+          ctx.fillStyle = `rgb(${pixelVal}, ${pixelVal}, ${pixelVal})`;
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
       }
-      const tempCvs = document.createElement('canvas');
-      tempCvs.width = size;
-      tempCvs.height = size;
-      const tempCtx = tempCvs.getContext('2d');
-      tempCtx.putImageData(imgData, 0, 0);
-
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(tempCvs, 0, 0, widthPx, heightPx);
     }
   }, [data, size, isResidual, showText]);
 
@@ -92,7 +83,7 @@ function MatrixCanvas({ data, size, isResidual, showText }) {
       }}
     />
   );
-}
+});
 
 /**
  * PixelMicroscope
@@ -104,7 +95,7 @@ function MatrixCanvas({ data, size, isResidual, showText }) {
  * - Fixed 192×192px viewport across all block sizes (64, 32, 16, 8, 4).
  * - Clean Apple Pro-grade minimalism: zero hover tracking, zero hover clutter.
  */
-export default function PixelMicroscope({
+function PixelMicroscope({
   size,
   origBlock,
   activeEval,
@@ -169,7 +160,7 @@ export default function PixelMicroscope({
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              border: '0.5px dashed var(--separator)',
+              border: '0.5px solid var(--separator)',
               background: 'var(--fill-4)',
               color: 'var(--apple-label-tertiary)',
               fontFamily: 'var(--font-mono)',
@@ -179,8 +170,10 @@ export default function PixelMicroscope({
               boxSizing: 'border-box'
             }}
           >
-            <span>Awaiting RDO</span>
-            <span style={{ fontSize: '9.5px', opacity: 0.7 }}>[Split / Branch Node]</span>
+            <span>{activeEval?.isTraceRecord ? 'Not recorded in trace' : 'Split CU'}</span>
+            <span style={{ fontSize: '9.5px', opacity: 0.7 }}>
+              {activeEval?.isTraceRecord ? '[Not evaluated in HM]' : '[Split into 4 Sub-CUs]'}
+            </span>
           </div>
         )}
       </div>
@@ -220,11 +213,13 @@ export default function PixelMicroscope({
         justifyItems: 'center',
         width: '100%'
       }}>
-        {renderMatrix(origBlock, 'Original (Orig)')}
-        {renderMatrix(activeEval?.pred, 'Prediction (Pred)')}
-        {renderMatrix(activeEval?.resi, 'Residual (Resi)', true)}
-        {renderMatrix(activeEval?.reco, 'Reconstruction (Reco)')}
+        {renderMatrix(origBlock, 'Original (S)')}
+        {renderMatrix(activeEval?.pred, 'Prediction (P)')}
+        {renderMatrix(activeEval?.resi, 'Residual (R)', true)}
+        {renderMatrix(activeEval?.reco, 'Reconstruction (S\')')}
       </div>
     </div>
   );
 }
+
+export default React.memo(PixelMicroscope);

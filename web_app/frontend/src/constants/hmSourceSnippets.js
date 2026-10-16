@@ -148,7 +148,7 @@ export const HM_INTRA_PREDICTION_SNIPPET = {
   sourceFile: 'source/Lib/TLibCommon/TComPrediction.cpp (Lines 370-580)',
   functionName: 'predIntraLumaAng / xPredIntraAng',
   standardRef: 'ITU-T H.265 Section 8.4.4.2.6 (Intra Sample Prediction) / HEVC Book Chapter 4',
-  description: 'HEVC generates predicted sample blocks from reconstructed spatial boundary samples (2N+1 samples on Top and Left). Mode 0 (Planar) performs 2D bilinear interpolation from 4 corners. Mode 1 (DC) computes the mean average. Modes 2-34 (Angular) project directional rays with 1/32 fractional sample precision. Mode-Dependent Intra Smoothing (MDIS) applies a 3-tap lowpass filter [1, 2, 1]/4 when directional edges require sample smoothing.',
+  description: 'HEVC generates predicted sample blocks across all standard PU sizes (64×64, 32×32, 16×16, 8×8, and 4×4 for PART_NxN) from reconstructed spatial boundary samples (2N+1 samples on Top and Left). Mode 0 (Planar) performs 2D bilinear interpolation from 4 corners. Mode 1 (DC) computes the mean average. Modes 2-34 (Angular) project directional rays with 1/32 fractional sample precision. Mode-Dependent Intra Smoothing (MDIS) applies a 3-tap lowpass filter [1, 2, 1]/4 when directional edges require sample smoothing.',
   codeSnippet: `// source/Lib/TLibCommon/TComPrediction.cpp
 
 Void TComPrediction::xPredIntraAng( Int bitDepth, const Pel* pSrc, Int srcStride, Pel* pDst, Int dstStride, 
@@ -245,7 +245,7 @@ export const HM_EST_INTRAPRED_LUMA_SNIPPET = {
   sourceFile: 'source/Lib/TLibEncoder/TEncSearch.cpp (Lines 2260-2440)',
   functionName: 'estIntraPredLumaQT',
   standardRef: 'ITU-T H.265 Section 8.4.2 / HEVC Book Chapter 4',
-  description: 'HM evaluates all 35 intra modes using fast Hadamard SATD cost: J_RMD = SATD + λ_Had · R_mode. It sorts modes and selects Top K candidates (K=8 for 4x4/8x8; K=3 for 16x16/32x32). Then, it derives 3 Most Probable Modes (MPM) from Left & Above neighbors via pcCU->getIntraDirPredictor and merges them into the candidate list for Full RDO.',
+  description: 'HM evaluates all 35 intra modes using fast Hadamard SATD cost: J_RMD = SATD + λ_Had · R_mode. It sorts modes and selects Top K candidates (K=8 for 4x4/8x8; K=3 for 16x16/32x32/64x64). Then, it derives 3 Most Probable Modes (MPM) from Left & Above neighbors via pcCU->getIntraDirPredictor and merges them into the candidate list for Full RDO.',
   codeSnippet: `// source/Lib/TLibEncoder/TEncSearch.cpp
 
 Void TEncSearch::estIntraPredLumaQT( TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv* pcPredYuv, ... )

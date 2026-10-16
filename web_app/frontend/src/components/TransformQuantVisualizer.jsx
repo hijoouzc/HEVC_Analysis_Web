@@ -1,39 +1,70 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import HmSourceCodeModal from './common/HmSourceCodeModal';
 import BlockMatrixGrid from './common/BlockMatrixGrid';
+import TuTreeCallStack from './common/TuTreeCallStack';
 import { HM_TRANSFORM_QUANT_SNIPPET } from '../constants/hmSourceSnippets';
 import { Button, SegmentedControl } from './apple';
 
 /**
  * TransformQuantVisualizer (CP_04_TRANSFORM_QUANT)
  * Displays:
- *  1. Spatial Residual Matrix R(x, y)
- *  2. 2D DCT/DST Frequency Spectrum & Energy Compaction Ratio
- *  3. Quantized Levels QCoeff & Sparsity Ratio Analysis
+ *  1. Residual QuadTree (RQT) Geometric Square Blocks Hierarchical Tree
+ *  2. Spatial Residual Matrix R(x, y)
+ *  3. 2D DCT/DST Frequency Spectrum & Energy Compaction Ratio
+ *  4. Quantized Levels QCoeff & Sparsity Ratio Analysis
  */
-export default function TransformQuantVisualizer({
+function TransformQuantVisualizer({
   transformData = [],
   quantData = [],
   _ctuX = 0,
   _ctuY = 0,
   targetTuX = undefined,
-  targetTuY = undefined
+  targetTuY = undefined,
+  targetCuX = undefined,
+  targetCuY = undefined,
+  targetCuSize = undefined,
+  _selectedCu = null,
+  initialViewLayout = 'dual',
+  channel: propsChannel = undefined,
+  onSelectChannel = null,
 }) {
-  const [activeComp, setActiveComp] = useState('Y'); // 'Y', 'Cb', 'Cr'
+  const [internalComp, setInternalComp] = useState('Y'); // 'Y', 'Cb', 'Cr'
+  const activeComp = propsChannel !== undefined ? propsChannel : internalComp;
+  const setActiveComp = onSelectChannel || setInternalComp;
   const [userSelectedTuIdx, setUserSelectedTuIdx] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null); // { x, y }
   const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 });
   const [showHmModal, setShowHmModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
   const [showValues, setShowValues] = useState(true);
+  const [viewLayout, setViewLayout] = useState(initialViewLayout); // 'dual' | 'tree' | 'matrix'
 
   const handleCellClick = useCallback((coord) => {
     setSelectedCell(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
   }, []);
 
   // Filter events by selected component (supporting either transformData or quantData)
-  const allEvents = (transformData && transformData.length > 0) ? transformData : (quantData || []);
-  const filteredEvents = allEvents.filter(e => e.component === activeComp);
+  const filteredEvents = useMemo(() => {
+    const allEvents = (transformData && transformData.length > 0) ? transformData : (quantData || []);
+    let events = allEvents.filter(e => e.component === activeComp);
+
+    // If a specific CU is targeted, prioritize matching events
+    if (targetCuX != null && targetCuY != null) {
+      const cuMatched = events.filter(e => e.cu_x === targetCuX && e.cu_y === targetCuY);
+      if (cuMatched.length > 0) {
+        events = cuMatched;
+      }
+    }
+
+    // If targetCuSize is specified, filter matching events
+    if (targetCuSize != null) {
+      const sizeMatched = events.filter(e => e.cu_width === targetCuSize || e.cu_size === targetCuSize);
+      if (sizeMatched.length > 0) {
+        events = sizeMatched;
+      }
+    }
+    return events;
+  }, [transformData, quantData, activeComp, targetCuX, targetCuY, targetCuSize]);
 
   // Sync with targetTuX and targetTuY if provided, or use user override
   const targetIdx = (targetTuX != null && targetTuY != null && filteredEvents.length > 0)
@@ -45,6 +76,47 @@ export default function TransformQuantVisualizer({
     : (targetIdx !== -1 ? targetIdx : 0);
 
   const activeEvent = filteredEvents[selectedTuIdx] || filteredEvents[0];
+
+  const handleSelectTuFromTree = useCallback((tuRecord) => {
+    if (!tuRecord) return;
+    const targetRawX = tuRecord.rawTuX ?? tuRecord.tu_x ?? tuRecord.absX ?? tuRecord.x;
+    const targetRawY = tuRecord.rawTuY ?? tuRecord.tu_y ?? tuRecord.absY ?? tuRecord.y;
+    const targetSize = tuRecord.width ?? tuRecord.size;
+    const targetRelX = tuRecord.relX;
+    const targetRelY = tuRecord.relY;
+
+    let matchIdx = filteredEvents.findIndex(e => {
+      if (e === tuRecord || (tuRecord.rawEvent && e === tuRecord.rawEvent)) return true;
+      if (e.id && tuRecord.id && e.id === tuRecord.id) return true;
+      const sizeMatches = targetSize ? (e.width === targetSize || e.size === targetSize) : true;
+      if (e.tu_x === targetRawX && e.tu_y === targetRawY && sizeMatches) return true;
+      if (targetRelX !== undefined && targetRelY !== undefined) {
+        const eRelX = (targetCuX != null && e.tu_x >= targetCuX) ? (e.tu_x - targetCuX) : e.tu_x;
+        const eRelY = (targetCuY != null && e.tu_y >= targetCuY) ? (e.tu_y - targetCuY) : e.tu_y;
+        if (eRelX === targetRelX && eRelY === targetRelY && sizeMatches) return true;
+      }
+      return false;
+    });
+
+    // Fallback: If split parent node clicked without direct transform record, select first child leaf event
+    if (matchIdx === -1 && (tuRecord.isSplit || tuRecord.children?.length)) {
+      const pRelX = tuRecord.relX ?? 0;
+      const pRelY = tuRecord.relY ?? 0;
+      const pSize = tuRecord.size || 32;
+      matchIdx = filteredEvents.findIndex(e => {
+        const eRelX = (targetCuX != null && e.tu_x >= targetCuX) ? (e.tu_x - targetCuX) : e.tu_x;
+        const eRelY = (targetCuY != null && e.tu_y >= targetCuY) ? (e.tu_y - targetCuY) : e.tu_y;
+        return eRelX >= pRelX && eRelX < pRelX + pSize &&
+               eRelY >= pRelY && eRelY < pRelY + pSize;
+      });
+    }
+
+    if (matchIdx !== -1) {
+      setUserSelectedTuIdx(matchIdx);
+      setSelectedCell(null);
+      setActiveWindow({ wx: 0, wy: 0 });
+    }
+  }, [filteredEvents, targetCuX, targetCuY]);
 
   if (!activeEvent) {
     return (
@@ -162,26 +234,45 @@ export default function TransformQuantVisualizer({
 
         {/* TU Block Selector & Controls */}
         <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* RQT View Layout Switcher */}
           <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
             <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--apple-label-secondary)' }}>
-              TU Instance:
+              Layout:
             </span>
-            <select
-              value={selectedTuIdx}
-              onChange={(e) => {
-                setUserSelectedTuIdx(Number(e.target.value));
-                setSelectedCell(null);
-                setActiveWindow({ wx: 0, wy: 0 });
-              }}
-              className="apple-select-control"
-              style={{ height: '24px', fontSize: '11px', padding: '0 8px' }}
-            >
-              {filteredEvents.map((ev, idx) => (
-                <option key={idx} value={idx}>
-                  TU #{idx + 1} @ ({ev.tu_x}, {ev.tu_y}) — {ev.width}×{ev.height} samples
-                </option>
-              ))}
-            </select>
+            <SegmentedControl
+              value={viewLayout}
+              onChange={setViewLayout}
+              size="small"
+              items={[
+                { id: 'dual', label: 'Dual View' },
+                { id: 'tree', label: 'RQT Tree' },
+                { id: 'matrix', label: 'Matrix' },
+              ]}
+            />
+          </div>
+
+          {/* Active Selected TU Indicator (Selected on Transform QuadTree) */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '2px 8px',
+              borderRadius: '5px',
+              background: 'var(--fill-2)',
+              border: '0.5px solid var(--separator)',
+              fontSize: '11px',
+              fontFamily: 'var(--font-mono)',
+            }}
+            title={`Active TU at (${_tu_x}, ${_tu_y}) selected on Transform QuadTree`}
+          >
+            <span style={{ color: 'var(--apple-blue)', fontWeight: 700 }}>TU:</span>
+            <span style={{ color: 'var(--apple-label)', fontWeight: 600 }}>
+              {width}×{height}
+            </span>
+            <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10px' }}>
+              ({transformName})
+            </span>
           </div>
 
           {/* Zoom Preset Toggle */}
@@ -216,6 +307,22 @@ export default function TransformQuantVisualizer({
         </div>
       </div>
 
+      {/* RQT Geometric Square Tree View & Call Stack Stepper */}
+      {(viewLayout === 'dual' || viewLayout === 'tree') && (
+        <div className="rqt-tree-section" style={{ width: '100%' }}>
+          <TuTreeCallStack
+            tuEvents={filteredEvents}
+            cuX={targetCuX ?? activeEvent.cu_x ?? 0}
+            cuY={targetCuY ?? activeEvent.cu_y ?? 0}
+            cuSize={targetCuSize ?? activeEvent.cu_width ?? activeEvent.cu_size ?? 32}
+            component={activeComp}
+            intraMode={activeEvent.intra_mode ?? null}
+            selectedTu={activeEvent}
+            onSelectTu={handleSelectTuFromTree}
+          />
+        </div>
+      )}
+
       {/* Metrics Banner */}
       <div className="apple-card" style={{
         display: 'grid',
@@ -249,27 +356,36 @@ export default function TransformQuantVisualizer({
       </div>
 
       {/* Tri-Matrix Pipeline Comparison View */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
-        gap: '1.5rem',
-        alignItems: 'flex-start',
-        maxWidth: '100%',
-        width: '100%'
-      }}>
+      {(viewLayout === 'dual' || viewLayout === 'matrix') ? (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(310px, 1fr))',
+          gap: '1.25rem',
+          alignItems: 'stretch',
+          maxWidth: '100%',
+          width: '100%',
+          overflowX: 'auto',
+          boxSizing: 'border-box'
+        }}>
         {/* Matrix 1: Spatial Residual R(x, y) */}
         <div className="apple-card" style={{
           padding: '1.25rem',
           maxWidth: '100%',
+          height: '475px',
+          minHeight: '475px',
+          maxHeight: '475px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
+            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
               1. Spatial Residual R(x, y)
             </h4>
           </div>
 
-          <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: '100%', height: '365px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
             <BlockMatrixGrid
               data={resi_matrix}
               width={width}
@@ -285,7 +401,7 @@ export default function TransformQuantVisualizer({
             />
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--apple-label-secondary)', marginTop: '0.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--apple-label-secondary)', marginTop: 'auto', flexShrink: 0 }}>
             <span>Negative (Blue)</span>
             <span>Zero (White)</span>
             <span>Positive (Red)</span>
@@ -296,10 +412,16 @@ export default function TransformQuantVisualizer({
         <div className="apple-card" style={{
           padding: '1.25rem',
           maxWidth: '100%',
+          height: '475px',
+          minHeight: '475px',
+          maxHeight: '475px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
+            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
               2. {transformName} Spectrum C(u, v)
             </h4>
             <span style={{ fontSize: '0.75rem', color: 'var(--apple-blue)', fontWeight: 700 }}>
@@ -307,7 +429,7 @@ export default function TransformQuantVisualizer({
             </span>
           </div>
 
-          <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: '100%', height: '365px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
             <BlockMatrixGrid
               data={dct_coeff}
               width={width}
@@ -324,7 +446,7 @@ export default function TransformQuantVisualizer({
           </div>
 
           {/* Energy bar */}
-          <div style={{ marginTop: '0.5rem' }}>
+          <div style={{ marginTop: 'auto', flexShrink: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', fontWeight: 700, marginBottom: '0.2rem', color: 'var(--apple-label)' }}>
               <span>DC Harmonic Energy Compaction</span>
               <span style={{ color: 'var(--apple-blue)' }}>{energyPercent}%</span>
@@ -339,10 +461,16 @@ export default function TransformQuantVisualizer({
         <div className="apple-card" style={{
           padding: '1.25rem',
           maxWidth: '100%',
+          height: '475px',
+          minHeight: '475px',
+          maxHeight: '475px',
+          display: 'flex',
+          flexDirection: 'column',
+          boxSizing: 'border-box',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem' }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
+            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
               3. Quantized QCoeff(u, v)
             </h4>
             <span style={{ fontSize: '0.75rem', color: 'var(--apple-purple, #AF52DE)', fontWeight: 700 }}>
@@ -350,7 +478,7 @@ export default function TransformQuantVisualizer({
             </span>
           </div>
 
-          <div style={{ width: '100%', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: '100%', height: '365px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
             <BlockMatrixGrid
               data={quant_coeff}
               width={width}
@@ -397,6 +525,16 @@ export default function TransformQuantVisualizer({
           )}
         </div>
       </div>
+      ) : (
+        <div className="apple-card" style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--fill-1)' }}>
+          <span style={{ fontSize: '11.5px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
+            Selected Node: TU #{selectedTuIdx + 1} ({width}&times;{height}) at ({activeEvent.tu_x}, {activeEvent.tu_y}) &bull; {sig_coeff_count} sig coeffs &bull; Energy Compaction {energyPercent}%
+          </span>
+          <Button variant="tinted" size="small" onClick={() => setViewLayout('dual')}>
+            Open Tri-Matrix in Dual View &rarr;
+          </Button>
+        </div>
+      )}
 
       {/* Selected Sample Inspector Readout */}
       <div style={{
@@ -462,3 +600,5 @@ export default function TransformQuantVisualizer({
     </div>
   );
 }
+
+export default React.memo(TransformQuantVisualizer);

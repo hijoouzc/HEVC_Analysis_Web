@@ -1,7 +1,5 @@
-import json
 import asyncio
 from pathlib import Path
-from typing import Any
 from app.domain.models.roi import ROICoordinates, FrameMetadata
 from app.domain.models.job import JobInfo, LegacyAnalysisResponse
 from app.domain.models.checkpoint import (
@@ -19,7 +17,8 @@ from app.domain.models.checkpoint import (
     SaoDecisionCheckpoint,
     InLoopFilterFullResponse,
     CabacBinCheckpoint,
-    CabacEntropyFullResponse
+    CabacEntropyFullResponse,
+    CuRdoDecisionCheckpoint
 )
 from app.domain.enums import JobStatus, StageEnum
 from app.domain.exceptions import JobNotFoundError, EncoderExecutionError, InvalidInputError
@@ -33,6 +32,7 @@ from app.checkpoints.parsers.intra_search_parser import intra_search_parser, bui
 from app.checkpoints.parsers.intra_ref_parser import intra_ref_parser
 from app.checkpoints.parsers.partition_parser import partition_parser
 from app.checkpoints.parsers.transform_parser import transform_quant_parser
+from app.checkpoints.parsers.cu_rdo_decision_parser import cu_rdo_decision_parser
 from app.services.job_manager import job_manager, JobManager as JobManagerClass
 
 class AnalysisService:
@@ -98,17 +98,29 @@ class AnalysisService:
         cu_size: int | None = None,
         ctu_x: int | None = None,
         ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None,
     ):
         """Create a predicate function to filter trace events by event name and ROI."""
         def predicate(e: dict) -> bool:
             if event_name is not None and e.get("event") != event_name:
                 return False
-            if cu_size is not None and e.get("cu_size") != cu_size:
-                return False
+            if cu_size is not None:
+                e_size = e.get("cu_size") if e.get("cu_size") is not None else e.get("pu_size")
+                if e_size != cu_size:
+                    return False
             if ctu_x is not None and e.get("ctu_x") != ctu_x:
                 return False
             if ctu_y is not None and e.get("ctu_y") != ctu_y:
                 return False
+            if cu_x is not None:
+                e_x = e.get("cu_x") if e.get("cu_x") is not None else e.get("pu_x")
+                if e_x is not None and e_x != cu_x:
+                    return False
+            if cu_y is not None:
+                e_y = e.get("cu_y") if e.get("cu_y") is not None else e.get("pu_y")
+                if e_y is not None and e_y != cu_y:
+                    return False
             return True
         return predicate
 
@@ -186,27 +198,27 @@ class AnalysisService:
             parsed_modes = [intra_search_parser.parse_event(m) for m in raw_modes]
             summary = intra_search_parser.compute_summary(parsed_modes)
             
-            # Check and register all available stages dynamically
+            # Check and register all available stages dynamically with O(1) checks
             stages = []
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "FRAME_GOP"):
+            if self.reader.has_event(trace_path, "FRAME_GOP"):
                 stages.append(StageEnum.CP_00_FRAME_GOP.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "CTU_PARTITION"):
+            if self.reader.has_event(trace_path, "CTU_PARTITION"):
                 stages.append(StageEnum.CP_01_PARTITION.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "INTRA_REF_SAMPLES"):
+            if self.reader.has_event(trace_path, "INTRA_REF_SAMPLES"):
                 stages.append(StageEnum.CP_02_INTRA_REF.value)
             stages.append(StageEnum.CP_02_INTRA_SEARCH.value)
             stages.append(StageEnum.CP_03_INTRA_SEARCH.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "INTER_SEARCH"):
+            if self.reader.has_event(trace_path, "INTER_SEARCH"):
                 stages.append(StageEnum.CP_03_INTER_SEARCH.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "TRANSFORM_QUANT"):
+            if self.reader.has_event(trace_path, "TRANSFORM_QUANT"):
                 stages.append(StageEnum.CP_04_TRANSFORM_RQT.value)
                 stages.append(StageEnum.CP_06_TRANSFORM.value)
                 stages.append(StageEnum.CP_07_QUANT.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "RECON_PICTURE"):
+            if self.reader.has_event(trace_path, "RECON_PICTURE"):
                 stages.append(StageEnum.CP_05_RECON_PICTURE.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") in ("DEBLOCKING_EDGE", "SAO_DECISION")):
+            if self.reader.has_event(trace_path, "DEBLOCKING_EDGE") or self.reader.has_event(trace_path, "SAO_DECISION"):
                 stages.append(StageEnum.CP_06_INLOOP_FILTER.value)
-            if self.reader.find_one(trace_path, lambda e: e.get("event") == "CABAC_BIN"):
+            if self.reader.has_event(trace_path, "CABAC_BIN"):
                 stages.append(StageEnum.CP_07_CABAC_ENTROPY.value)
                 
             await self.job_mgr.set_result(
@@ -303,19 +315,30 @@ class AnalysisService:
         mode: int | None = None,
         cu_size: int | None = None,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None
     ) -> list[IntraModeData]:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
             
         target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
+        if target_cu is None or target_cu <= 0:
+            target_cu = 8
         predicate = None
-        if target_cu is not None or target_x is not None or target_y is not None:
-            predicate = self._build_roi_predicate(cu_size=target_cu, ctu_x=target_x, ctu_y=target_y)
+        if target_cu is not None or target_x is not None or target_y is not None or cu_x is not None or cu_y is not None:
+            predicate = self._build_roi_predicate(cu_size=target_cu, ctu_x=target_x, ctu_y=target_y, cu_x=cu_x, cu_y=cu_y)
 
-        raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35, predicate=predicate)
-        explicit_roi_requested = (ctu_x is not None or ctu_y is not None)
+        raw_modes = self.reader.read_all(
+            trace_path,
+            event_filter="RDO_INTRA_SEARCH",
+            limit=35,
+            predicate=predicate,
+            ctu_x=target_x,
+            ctu_y=target_y
+        )
+        explicit_roi_requested = (ctu_x is not None or ctu_y is not None or cu_x is not None or cu_y is not None)
         if not raw_modes and predicate is not None and not explicit_roi_requested:
             raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35)
             
@@ -335,16 +358,40 @@ class AnalysisService:
         job_id: str,
         cu_size: int | None = None,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None
     ) -> IntraPipelineFullResponse:
-        modes = self.get_intra_search_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
-        ref_checkpoint = self.get_intra_ref_data(job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y)
+        modes = self.get_intra_search_data(
+            job_id,
+            cu_size=cu_size,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y
+        )
+        ref_checkpoint = self.get_intra_ref_data(
+            job_id,
+            cu_size=cu_size,
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            cu_x=cu_x,
+            cu_y=cu_y
+        )
         
         target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
         active_cu_size = target_cu or (modes[0].cu_size if modes else 8)
         active_ctu_x = target_x if target_x is not None else (modes[0].ctu_x if modes else 0)
         active_ctu_y = target_y if target_y is not None else (modes[0].ctu_y if modes else 0)
         poc = modes[0].poc if modes else 0
+
+        # Disambiguate PU within CTU so multiple PUs of same size don't mix
+        target_pu_x = cu_x
+        target_pu_y = cu_y
+        if target_pu_x is None and modes and modes[0].pu_x is not None:
+            target_pu_x = modes[0].pu_x
+        if target_pu_y is None and modes and modes[0].pu_y is not None:
+            target_pu_y = modes[0].pu_y
 
         # Query Partition QuadTree for Left and Above Neighbor modes if available
         left_mode, above_mode = None, None
@@ -361,7 +408,15 @@ class AnalysisService:
 
         transform_events = []
         try:
-            transform_events = self.get_transform_quant_data(job_id, comp="Y", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+            transform_events = self.get_transform_quant_data(
+                job_id,
+                comp="Y",
+                ctu_x=active_ctu_x,
+                ctu_y=active_ctu_y,
+                cu_x=target_pu_x,
+                cu_y=target_pu_y,
+                cu_size=active_cu_size
+            )
         except Exception:
             pass
 
@@ -371,28 +426,76 @@ class AnalysisService:
         try:
             trace_path = self.storage.get_trace_path(job_id)
             if trace_path.exists():
-                all_mpm = self.reader.read_all(trace_path, event_filter="INTRA_MPM_DERIVATION")
+                all_mpm = self.reader.read_all(trace_path, event_filter="INTRA_MPM_DERIVATION", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+                if not all_mpm:
+                    all_mpm = self.reader.read_all(trace_path, event_filter="INTRA_MPM_DERIVATION")
                 for e in all_mpm:
                     if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
                        (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
                        (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
+                            continue
+                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
+                            continue
                         mpm_raw_event = e
+                        if target_pu_x is None:
+                            target_pu_x = e.get("pu_x", e.get("cu_x"))
+                        if target_pu_y is None:
+                            target_pu_y = e.get("pu_y", e.get("cu_y"))
                         break
 
-                all_rdo = self.reader.read_all(trace_path, event_filter="INTRA_FULL_RDO")
+                all_rdo = self.reader.read_all(trace_path, event_filter="INTRA_FULL_RDO", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+                if not all_rdo:
+                    all_rdo = self.reader.read_all(trace_path, event_filter="INTRA_FULL_RDO")
                 for e in all_rdo:
                     if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
                        (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
                        (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
+                            continue
+                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
+                            continue
+                        if target_pu_x is None:
+                            target_pu_x = e.get("pu_x", e.get("cu_x"))
+                        if target_pu_y is None:
+                            target_pu_y = e.get("pu_y", e.get("cu_y"))
                         full_rdo_events.append(e)
 
-                all_chroma = self.reader.read_all(trace_path, event_filter="INTRA_CHROMA_SEARCH")
+                tu_pred_events = []
+                all_tu_pred = self.reader.read_all(trace_path, event_filter="INTRA_TU_PRED", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+                if not all_tu_pred:
+                    all_tu_pred = self.reader.read_all(trace_path, event_filter="INTRA_TU_PRED")
+                for e in all_tu_pred:
+                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
+                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
+                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
+                            continue
+                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
+                            continue
+                        tu_pred_events.append(e)
+
+                all_chroma = self.reader.read_all(trace_path, event_filter="INTRA_CHROMA_SEARCH", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
+                if not all_chroma:
+                    all_chroma = self.reader.read_all(trace_path, event_filter="INTRA_CHROMA_SEARCH")
                 for e in all_chroma:
                     if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
                        (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
                        (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
+                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
+                            continue
+                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
+                            continue
                         chroma_raw_event = e
                         break
+                if not chroma_raw_event and active_cu_size == 4:
+                    # In HEVC 4:2:0, chroma is not split below 4x4; 4x4 PUs share the 8x8 CU's chroma evaluation
+                    for e in all_chroma:
+                        if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
+                           (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
+                           (e.get("pu_size", e.get("cu_size")) == 8):
+                            chroma_raw_event = e
+                            break
         except Exception:
             pass
 
@@ -408,7 +511,10 @@ class AnalysisService:
             transform_events=transform_events,
             mpm_raw_event=mpm_raw_event,
             full_rdo_events=full_rdo_events if full_rdo_events else None,
-            chroma_raw_event=chroma_raw_event
+            chroma_raw_event=chroma_raw_event,
+            cu_x=target_pu_x,
+            cu_y=target_pu_y,
+            tu_pred_events=tu_pred_events if tu_pred_events else None
         )
 
     def get_intra_ref_data(
@@ -416,28 +522,45 @@ class AnalysisService:
         job_id: str,
         cu_size: int | None = None,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None
     ) -> IntraRefCheckpoint:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
             
         target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
+        if target_cu is None or target_cu <= 0:
+            target_cu = 8
         ref_pred = self._build_roi_predicate(
             event_name="INTRA_REF_SAMPLES",
             cu_size=target_cu,
             ctu_x=target_x,
-            ctu_y=target_y
+            ctu_y=target_y,
+            cu_x=cu_x,
+            cu_y=cu_y
         )
 
         raw_ref = self.reader.find_one(trace_path, ref_pred)
+        if not raw_ref and (cu_x is not None or cu_y is not None):
+            # Fallback to CTU-level if specific PU position ref wasn't found
+            ref_pred_no_pos = self._build_roi_predicate(
+                event_name="INTRA_REF_SAMPLES",
+                cu_size=target_cu,
+                ctu_x=target_x,
+                ctu_y=target_y
+            )
+            raw_ref = self.reader.find_one(trace_path, ref_pred_no_pos)
         if not raw_ref:
             raw_ref = self.reader.find_one(trace_path, lambda e: e.get("event") == "INTRA_REF_SAMPLES")
             
         if not raw_ref:
             rdo_pred = self._build_roi_predicate(
                 event_name="RDO_INTRA_SEARCH",
-                cu_size=target_cu
+                cu_size=target_cu,
+                cu_x=cu_x,
+                cu_y=cu_y
             )
             raw_mode = self.reader.find_one(trace_path, rdo_pred)
             if not raw_mode:
@@ -508,11 +631,14 @@ class AnalysisService:
         if target_x is not None and target_y is not None:
             raw_part = self.reader.find_one(
                 trace_path,
-                lambda e: e.get("event") == "CTU_PARTITION" and e.get("ctu_x") == target_x and e.get("ctu_y") == target_y
+                lambda e: e.get("ctu_x") == target_x and e.get("ctu_y") == target_y,
+                event_filter="CTU_PARTITION",
+                ctu_x=target_x,
+                ctu_y=target_y
             )
 
         if not raw_part:
-            raw_part = self.reader.find_one(trace_path, lambda e: e.get("event") == "CTU_PARTITION")
+            raw_part = self.reader.find_one(trace_path, lambda e: True, event_filter="CTU_PARTITION")
 
         if not raw_part:
             return CTUPartitionCheckpoint(cu_size=64, nodes=[], ctu_x=target_x or 0, ctu_y=target_y or 0)
@@ -522,6 +648,23 @@ class AnalysisService:
             parsed.ctu_x = target_x
         if target_y is not None and (parsed.ctu_y is None or parsed.ctu_y == 0):
             parsed.ctu_y = target_y
+
+        # Merge CTU_ACTUAL_BITS if available
+        try:
+            actual_bits_ev = self.reader.find_one(
+                trace_path,
+                lambda e: e.get("ctu_x") == parsed.ctu_x and e.get("ctu_y") == parsed.ctu_y,
+                event_filter="CTU_ACTUAL_BITS",
+                ctu_x=parsed.ctu_x,
+                ctu_y=parsed.ctu_y
+            )
+            if actual_bits_ev:
+                parsed.ctu_actual_bits = int(actual_bits_ev.get("actual_bits_ctu", 0))
+                if actual_bits_ev.get("ctu_rs_addr") is not None:
+                    parsed.ctu_rs_addr = int(actual_bits_ev["ctu_rs_addr"])
+        except Exception:
+            pass
+
         return parsed
 
     def get_all_partitions(self, job_id: str) -> list[CTUPartitionCheckpoint]:
@@ -530,29 +673,85 @@ class AnalysisService:
             raise JobNotFoundError(job_id)
             
         raw_parts = self.reader.read_all(trace_path, event_filter="CTU_PARTITION")
-        return [partition_parser.parse_event(p) for p in raw_parts]
+        try:
+            ctu_bits_events = self.reader.read_all(trace_path, event_filter="CTU_ACTUAL_BITS")
+            bits_map = {f"{e.get('ctu_x')}_{e.get('ctu_y')}": e for e in ctu_bits_events}
+        except Exception:
+            bits_map = {}
+
+        results = []
+        for p in raw_parts:
+            part = partition_parser.parse_event(p)
+            key = f"{part.ctu_x}_{part.ctu_y}"
+            if key in bits_map:
+                ev = bits_map[key]
+                part.ctu_actual_bits = int(ev.get("actual_bits_ctu", 0))
+                if ev.get("ctu_rs_addr") is not None:
+                    part.ctu_rs_addr = int(ev["ctu_rs_addr"])
+            results.append(part)
+        return results
 
     def get_transform_quant_data(
         self,
         job_id: str,
         comp: str | None = None,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None,
+        cu_size: int | None = None,
+        intra_mode: int | None = None
     ) -> list[TransformQuantCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
             
-        raw_events = self.reader.read_all(trace_path, event_filter="TRANSFORM_QUANT")
-        parsed = [transform_quant_parser.parse_event(e) for e in raw_events]
+        raw_events = self.reader.read_all(trace_path, event_filter="TRANSFORM_QUANT", ctu_x=ctu_x, ctu_y=ctu_y)
+        # Pre-filter dictionaries to avoid unnecessary Pydantic model instantiations
         if ctu_x is not None:
-            parsed = [t for t in parsed if t.ctu_x == ctu_x]
+            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
         if ctu_y is not None:
-            parsed = [t for t in parsed if t.ctu_y == ctu_y]
+            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        if cu_x is not None:
+            raw_events = [e for e in raw_events if (e.get("cu_x") == cu_x or e.get("pu_x") == cu_x)]
+        if cu_y is not None:
+            raw_events = [e for e in raw_events if (e.get("cu_y") == cu_y or e.get("pu_y") == cu_y)]
+        if cu_size is not None:
+            raw_events = [e for e in raw_events if (e.get("cu_width") == cu_size or e.get("cu_size") == cu_size or e.get("tu_size") == cu_size or e.get("width") == cu_size)]
+        if intra_mode is not None:
+            raw_events = [e for e in raw_events if e.get("intra_mode") == intra_mode]
         if comp and comp.strip():
             target_comp = comp.strip().upper()
-            return [t for t in parsed if t.component.upper() == target_comp]
-        return parsed
+            raw_events = [e for e in raw_events if (e.get("component") or e.get("comp") or "Y").upper() == target_comp]
+
+        return [transform_quant_parser.parse_event(e) for e in raw_events]
+
+    def get_rdo_decisions(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None,
+        cu_size: int | None = None
+    ) -> list[CuRdoDecisionCheckpoint]:
+        trace_path = self.storage.get_trace_path(job_id)
+        if not trace_path.exists():
+            raise JobNotFoundError(job_id)
+            
+        raw_events = self.reader.read_all(trace_path, event_filter="CU_RDO_DECISION", ctu_x=ctu_x, ctu_y=ctu_y)
+        if ctu_x is not None:
+            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
+        if ctu_y is not None:
+            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        if cu_x is not None:
+            raw_events = [e for e in raw_events if e.get("cu_x") == cu_x]
+        if cu_y is not None:
+            raw_events = [e for e in raw_events if e.get("cu_y") == cu_y]
+        if cu_size is not None:
+            raw_events = [e for e in raw_events if e.get("cu_size") == cu_size]
+
+        return [cu_rdo_decision_parser.parse_event(e) for e in raw_events]
 
     def get_frame_gop_data(self, job_id: str) -> list[FrameGopCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
@@ -580,8 +779,12 @@ class AnalysisService:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
-        raw_events = self.reader.read_all(trace_path, event_filter="INTER_SEARCH")
-        parsed = [
+        raw_events = self.reader.read_all(trace_path, event_filter="INTER_SEARCH", ctu_x=ctu_x, ctu_y=ctu_y)
+        if ctu_x is not None:
+            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
+        if ctu_y is not None:
+            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        return [
             InterSearchCheckpoint(
                 poc=e.get("poc", 0),
                 ctu_x=e.get("ctu_x", 0),
@@ -608,11 +811,6 @@ class AnalysisService:
             )
             for e in raw_events
         ]
-        if ctu_x is not None:
-            parsed = [t for t in parsed if t.ctu_x == ctu_x]
-        if ctu_y is not None:
-            parsed = [t for t in parsed if t.ctu_y == ctu_y]
-        return parsed
 
     def get_recon_picture_data(
         self,
@@ -623,8 +821,12 @@ class AnalysisService:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
-        raw_events = self.reader.read_all(trace_path, event_filter="RECON_PICTURE")
-        parsed = [
+        raw_events = self.reader.read_all(trace_path, event_filter="RECON_PICTURE", ctu_x=ctu_x, ctu_y=ctu_y)
+        if ctu_x is not None:
+            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
+        if ctu_y is not None:
+            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        return [
             ReconPictureCheckpoint(
                 poc=e.get("poc", 0),
                 ctu_x=e.get("ctu_x", 0),
@@ -639,11 +841,6 @@ class AnalysisService:
             )
             for e in raw_events
         ]
-        if ctu_x is not None:
-            parsed = [t for t in parsed if t.ctu_x == ctu_x]
-        if ctu_y is not None:
-            parsed = [t for t in parsed if t.ctu_y == ctu_y]
-        return parsed
 
     def get_inloop_filter_data(
         self,
@@ -654,9 +851,15 @@ class AnalysisService:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
-        raw_edges = self.reader.read_all(trace_path, event_filter="DEBLOCKING_EDGE")
-        raw_sao = self.reader.read_all(trace_path, event_filter="SAO_DECISION")
-        
+        raw_edges = self.reader.read_all(trace_path, event_filter="DEBLOCKING_EDGE", ctu_x=ctu_x, ctu_y=ctu_y)
+        raw_sao = self.reader.read_all(trace_path, event_filter="SAO_DECISION", ctu_x=ctu_x, ctu_y=ctu_y)
+        if ctu_x is not None:
+            raw_edges = [e for e in raw_edges if e.get("ctu_x") == ctu_x]
+            raw_sao = [s for s in raw_sao if s.get("ctu_x") == ctu_x]
+        if ctu_y is not None:
+            raw_edges = [e for e in raw_edges if e.get("ctu_y") == ctu_y]
+            raw_sao = [s for s in raw_sao if s.get("ctu_y") == ctu_y]
+
         edges = [
             DeblockingEdgeCheckpoint(
                 poc=e.get("poc", 0),
@@ -675,17 +878,10 @@ class AnalysisService:
             )
             for e in raw_edges
         ]
-        if ctu_x is not None:
-            edges = [ed for ed in edges if ed.ctu_x == ctu_x]
-        if ctu_y is not None:
-            edges = [ed for ed in edges if ed.ctu_y == ctu_y]
 
         sao_res = None
-        for s in raw_sao:
-            if ctu_x is not None and s.get("ctu_x") != ctu_x:
-                continue
-            if ctu_y is not None and s.get("ctu_y") != ctu_y:
-                continue
+        if raw_sao:
+            s = raw_sao[0]
             sao_res = SaoDecisionCheckpoint(
                 poc=s.get("poc", 0),
                 ctu_x=s.get("ctu_x", 0),
@@ -695,7 +891,6 @@ class AnalysisService:
                 offset_u=s.get("offset_u", []),
                 offset_v=s.get("offset_v", [])
             )
-            break
 
         bs2 = sum(1 for ed in edges if ed.bs == 2)
         bs1 = sum(1 for ed in edges if ed.bs == 1)

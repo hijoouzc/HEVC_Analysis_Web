@@ -299,13 +299,62 @@ export function evaluateCuIntraMode({
   origBlock,
   refTop,
   refLeft,
-  qp
+  qp,
+  traceCandidate = null
 }) {
   const N = size;
   const numPixels = N * N;
   const qstep = computeQstep(qp);
   const lambda = computeLambda(qp);
 
+  const modeNames = {
+    0: 'Planar (0)',
+    1: 'DC (1)',
+    10: 'Horizontal (10)',
+    26: 'Vertical (26)'
+  };
+  const modeName = traceCandidate?.direction_name || modeNames[mode] || `Mode ${mode}`;
+
+  // Priority: Use real HM encoder trace data if available
+  if (traceCandidate && (traceCandidate.data_source === 'HM_TRACE' || traceCandidate.pred_data?.length > 0 || traceCandidate.cost_rdo !== undefined)) {
+    const pred = (traceCandidate.pred_data && traceCandidate.pred_data.length === numPixels)
+      ? traceCandidate.pred_data
+      : null;
+    const reco = (traceCandidate.reconstructed_data && traceCandidate.reconstructed_data.length === numPixels)
+      ? traceCandidate.reconstructed_data
+      : null;
+    const resi = (traceCandidate.reconstructed_resi && traceCandidate.reconstructed_resi.length === numPixels)
+      ? traceCandidate.reconstructed_resi
+      : (pred && origBlock && origBlock.length === numPixels ? Array.from(origBlock).map((v, i) => v - pred[i]) : null);
+
+    const ssd = traceCandidate.sse !== undefined ? traceCandidate.sse : (traceCandidate.distortion || 0);
+    // Real HM RDO rate estimate: (J - D)/lambda
+    const bits = traceCandidate.rdo_rate_est !== undefined ? traceCandidate.rdo_rate_est : (traceCandidate.bits || 0);
+    const cost = traceCandidate.cost_rdo !== undefined ? traceCandidate.cost_rdo : (traceCandidate.cost || 0);
+
+    return {
+      mode,
+      modeName,
+      pred: pred || SCRATCH_PRED.slice(0, numPixels),
+      resi: resi || SCRATCH_RESI.slice(0, numPixels),
+      dctCoeff: new Float32Array(numPixels),
+      quantCoeff: new Int32Array(numPixels),
+      resiReco: resi || new Int32Array(numPixels),
+      reco: reco || (pred || SCRATCH_RECO.slice(0, numPixels)),
+      ssd,
+      nonzeroCount: 0,
+      bits: Math.round(bits * 10) / 10,
+      cost: Math.round(cost * 10) / 10,
+      lambda: Math.round(lambda * 100) / 100,
+      qstep: Math.round(qstep * 100) / 100,
+      is_winner: Boolean(traceCandidate.is_winner),
+      isTraceRecord: true,
+      dataSource: 'HM_TRACE',
+      hasData: Boolean(pred)
+    };
+  }
+
+  // Fallback: Synthetic Sandbox Simulation
   // 1. Prediction written directly into SCRATCH_PRED (zero allocation)
   generateIntraPrediction(mode, N, refTop, refLeft, SCRATCH_PRED);
 
@@ -347,13 +396,6 @@ export function evaluateCuIntraMode({
   const totalBits = coeffBits + modeBits + splitFlagBits;
   const cost = ssd + lambda * totalBits;
 
-  const modeNames = {
-    0: 'Planar (0)',
-    1: 'DC (1)',
-    10: 'Horizontal (10)',
-    26: 'Vertical (26)'
-  };
-
   return {
     mode,
     modeName: modeNames[mode] || `Mode ${mode}`,
@@ -368,7 +410,11 @@ export function evaluateCuIntraMode({
     bits: totalBits,
     cost: Math.round(cost * 10) / 10,
     lambda: Math.round(lambda * 100) / 100,
-    qstep: Math.round(qstep * 100) / 100
+    qstep: Math.round(qstep * 100) / 100,
+    is_winner: false,
+    isTraceRecord: false,
+    dataSource: 'SYNTHETIC_SIMULATION',
+    hasData: true
   };
 }
 
@@ -432,7 +478,9 @@ export function runHevcQuadtreeSimulation({
   ctuPatch, // 64x64 1D array of original pixels
   qp = 32,
   forcedMode = null, // null: Auto best mode; or fixed mode (0, 1, 10, 26)
-  groundTruthNodes = null // Optional: real HM-18.0 encoder trace nodes from CU QuadTree
+  groundTruthNodes = null, // Optional: real HM-18.0 encoder trace nodes from CU QuadTree
+  rdoDecisions = null, // Optional: verified CU_RDO_DECISION checkpoints from HM encoder
+  candidateDetails = null // Optional: real candidate evaluation details from Step 4 Full RDO
 }) {
   const steps = [];
   const ctuSize = 64;
@@ -450,6 +498,26 @@ export function runHevcQuadtreeSimulation({
       const relY = gn.rel_y !== undefined ? gn.rel_y : ((gn.y ?? 0) % ctuSize);
       gtMap.set(`node_${gn.depth}_${relX}_${relY}`, gn);
       gtMap.set(`node_d${gn.depth}_x${relX}_y${relY}`, gn);
+    }
+  }
+
+  // Map verified CU_RDO_DECISION checkpoints from HM xCheckBestMode
+  const rdoDecisionMap = new Map();
+  if (Array.isArray(rdoDecisions) && rdoDecisions.length > 0) {
+    for (const d of rdoDecisions) {
+      const relX = d.cu_x !== undefined ? (d.cu_x % ctuSize) : 0;
+      const relY = d.cu_y !== undefined ? (d.cu_y % ctuSize) : 0;
+      const sz = d.cu_size || (64 >> (d.depth || 0));
+      rdoDecisionMap.set(`${relX}_${relY}_${sz}`, d);
+      rdoDecisionMap.set(`node_${d.depth}_${relX}_${relY}`, d);
+    }
+  }
+
+  // Map Step 4 Full RDO candidates
+  const candDetailsMap = new Map();
+  if (Array.isArray(candidateDetails) && candidateDetails.length > 0) {
+    for (const c of candidateDetails) {
+      candDetailsMap.set(c.mode, c);
     }
   }
 
@@ -531,14 +599,18 @@ export function runHevcQuadtreeSimulation({
 
     // STEP 2: EVALUATE MODES (Non-split RDO)
     nodeMeta.status = 'EVALUATING';
-    const evaluations = candidateModes.map(m => evaluateCuIntraMode({
-      mode: m,
-      size,
-      origBlock,
-      refTop,
-      refLeft,
-      qp: qpVal
-    }));
+    const evaluations = candidateModes.map(m => {
+      const cand = candDetailsMap.get(m);
+      return evaluateCuIntraMode({
+        mode: m,
+        size,
+        origBlock,
+        refTop,
+        refLeft,
+        qp: qpVal,
+        traceCandidate: cand
+      });
+    });
 
     // Find best mode with minimum cost
     evaluations.sort((a, b) => a.cost - b.cost);
@@ -586,13 +658,17 @@ export function runHevcQuadtreeSimulation({
 
     // Check if max depth reached (Depth 3 = 8x8 CU in HEVC)
     const gtNode = gtMap.get(nodeId);
+    const rdoDec = rdoDecisionMap.get(`${x}_${y}_${size}`) || rdoDecisionMap.get(nodeId);
+
     if (depth >= 3 || size <= 8) {
       // Must stay as leaf
       nodeMeta.status = 'LEAF';
       nodeMeta.decision = 'KEEP';
       nodeMeta.jSplit = Infinity;
 
-      if (gtNode && gtNode.cost !== undefined && gtNode.cost !== null) {
+      if (rdoDec) {
+        nodeMeta.jNonSplit = rdoDec.nosplit?.cost ?? rdoDec.cost_nosplit ?? bestEval.cost;
+      } else if (gtNode && gtNode.cost !== undefined && gtNode.cost !== null) {
         nodeMeta.jNonSplit = Number(gtNode.cost);
       }
 
@@ -675,10 +751,17 @@ export function runHevcQuadtreeSimulation({
     const jSplit = sumSubCuCosts + lambda * splitFlagRate;
     nodeMeta.jSplit = Math.round(jSplit * 10) / 10;
 
-    // Ground truth from full HM C++ encoder takes precedence if provided:
+    // Ground truth from verified CU_RDO_DECISION takes highest precedence:
     let willSplit = false;
-    if (gtNode && gtNode.split !== undefined && gtNode.split !== null) {
+    if (rdoDec) {
+      willSplit = Boolean(rdoDec.split_decision);
+      nodeMeta.jNonSplit = rdoDec.nosplit?.cost ?? rdoDec.cost_nosplit ?? bestEval.cost;
+      nodeMeta.jSplit = rdoDec.split_evaluated ? (rdoDec.split?.cost ?? rdoDec.cost_split ?? jSplit) : Infinity;
+    } else if (gtNode && gtNode.split !== undefined && gtNode.split !== null) {
       willSplit = Boolean(gtNode.split);
+      if (gtNode.cost !== undefined && gtNode.cost !== null) {
+        nodeMeta.jNonSplit = Number(gtNode.cost);
+      }
     } else {
       willSplit = jSplit < bestEval.cost;
     }
@@ -693,18 +776,24 @@ export function runHevcQuadtreeSimulation({
           recoBuffer[(y + r) * ctuSize + (x + c)] = bestEval.reco[r * size + c];
         }
       }
-      if (gtNode && gtNode.cost !== undefined && gtNode.cost !== null) {
+      if (rdoDec) {
+        nodeMeta.jNonSplit = rdoDec.nosplit?.cost ?? rdoDec.cost_nosplit ?? bestEval.cost;
+      } else if (gtNode && gtNode.cost !== undefined && gtNode.cost !== null) {
         nodeMeta.jNonSplit = Number(gtNode.cost);
       }
     }
 
-    const descText = (gtNode && gtNode.split !== undefined)
+    const descText = rdoDec
       ? (willSplit
-          ? `HM-18.0 Encoder Decision: SPLIT (J_Split ${nodeMeta.jSplit.toLocaleString()})`
-          : `HM-18.0 Encoder Decision: KEEP (Leaf CU • J ${(nodeMeta.jNonSplit || bestEval.cost).toLocaleString()})`)
-      : (willSplit
-          ? `J_Split ${nodeMeta.jSplit.toLocaleString()} < J_NonSplit ${bestEval.cost.toLocaleString()} (Δ -${Math.round(bestEval.cost - nodeMeta.jSplit).toLocaleString()})`
-          : `J_NonSplit ${bestEval.cost.toLocaleString()} ≤ J_Split ${nodeMeta.jSplit.toLocaleString()}`);
+          ? `HM Verified Decision: SPLIT (J_Split ${nodeMeta.jSplit.toLocaleString()})`
+          : `HM Verified Decision: KEEP (Leaf CU • J_NoSplit ${(nodeMeta.jNonSplit || bestEval.cost).toLocaleString()})`)
+      : (gtNode && gtNode.split !== undefined)
+        ? (willSplit
+            ? `HM-18.0 Encoder Decision: SPLIT (J_Split ${nodeMeta.jSplit.toLocaleString()})`
+            : `HM-18.0 Encoder Decision: KEEP (Leaf CU • J ${(nodeMeta.jNonSplit || bestEval.cost).toLocaleString()})`)
+        : (willSplit
+            ? `J_Split ${nodeMeta.jSplit.toLocaleString()} < J_NonSplit ${bestEval.cost.toLocaleString()} (Δ -${Math.round(bestEval.cost - nodeMeta.jSplit).toLocaleString()})`
+            : `J_NonSplit ${bestEval.cost.toLocaleString()} ≤ J_Split ${nodeMeta.jSplit.toLocaleString()}`);
 
     steps.push({
       stepId: steps.length,

@@ -12,7 +12,7 @@ import { buildSimulatorQuadtreeTree } from '../../utils/quadtreeTreeLayout';
  * - Inset active node bounds preventing outer edge clipping and 8x8 interior occlusion.
  * - Zero hover bounces or decorative glowing halos.
  */
-export default function PartitionCanvas({
+function PartitionCanvas({
   activeCtuPatch,
   currentStep,
   activeNode = {},
@@ -69,10 +69,14 @@ export default function PartitionCanvas({
       padding: '0.75rem',
       display: 'flex',
       flexDirection: 'column',
-      gap: '0.55rem'
+      gap: '0.55rem',
+      height: '315px',
+      minHeight: '315px',
+      maxHeight: '315px',
+      boxSizing: 'border-box'
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--apple-label-primary)' }}>Partition QuadTree (64×64)</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '22px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--apple-label-primary)', whiteSpace: 'nowrap' }}>Partition QuadTree (64×64)</span>
         <span style={{
           fontSize: '11px',
           color: dConf.text,
@@ -81,7 +85,16 @@ export default function PartitionCanvas({
           borderRadius: '4px',
           padding: '1px 6px',
           fontFamily: 'JetBrains Mono',
-          fontWeight: 700
+          fontVariantNumeric: 'tabular-nums',
+          fontWeight: 700,
+          width: '105px',
+          minWidth: '105px',
+          textAlign: 'center',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          whiteSpace: 'nowrap',
+          boxSizing: 'border-box'
         }}>
           Depth {activeNode?.depth ?? 0} ({activeNode?.size ?? 64}×{activeNode?.size ?? 64})
         </span>
@@ -202,4 +215,6 @@ export default function PartitionCanvas({
     </div>
   );
 }
+
+export default React.memo(PartitionCanvas);
 

@@ -51,7 +51,7 @@ def create_app() -> FastAPI:
         file: UploadFile = File(...),
         ctu_x: int = Form(0),
         ctu_y: int = Form(0),
-        cu_size: int = Form(8),
+        cu_size: int = Form(0),
         scale_mode: str = Form("native")
     ):
         try:

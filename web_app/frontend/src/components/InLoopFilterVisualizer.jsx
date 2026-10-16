@@ -7,7 +7,7 @@ import { Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableC
  * and Sample Adaptive Offset (SAO) classification modes.
  * Design standard: Apple Pro-Grade, 100% English, no emoji icons, zero overflow.
  */
-export default function InLoopFilterVisualizer({
+function InLoopFilterVisualizer({
   inloopFilterData,
   ctuX,
   ctuY,
@@ -218,7 +218,7 @@ export default function InLoopFilterVisualizer({
   );
 }
 
-function BoundaryPlot({ pBefore, qBefore, pAfter, qAfter }) {
+const BoundaryPlot = React.memo(function BoundaryPlot({ pBefore, qBefore, pAfter, qAfter }) {
   // Combine 4 samples from p (reversed: p3, p2, p1, p0) and 4 samples from q (q0, q1, q2, q3)
   const pre = [...pBefore.slice().reverse(), ...qBefore];
   const post = [...pAfter.slice().reverse(), ...qAfter];
@@ -285,4 +285,6 @@ function BoundaryPlot({ pBefore, qBefore, pAfter, qAfter }) {
       </svg>
     </div>
   );
-}
+});
+
+export default React.memo(InLoopFilterVisualizer);

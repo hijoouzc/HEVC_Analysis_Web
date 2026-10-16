@@ -8,7 +8,7 @@ def test_roi_coordinates_defaults():
     assert roi.poc == 0
     assert roi.ctu_x == 0
     assert roi.ctu_y == 0
-    assert roi.cu_size == 8
+    assert roi.cu_size == 0
 
 def test_frame_metadata_validation():
     meta = FrameMetadata(

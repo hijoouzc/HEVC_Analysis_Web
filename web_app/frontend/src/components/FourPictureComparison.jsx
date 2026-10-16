@@ -1,25 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { getIntraModeInfo } from '../utils/colorUtils';
+import { getIntraModeInfo, getResidualColorAndTextColor } from '../utils/colorUtils';
 import { calculatePsnr } from '../utils/metricsUtils';
 import { Button, SegmentedControl, Badge } from './apple';
-
-/**
- * Diverging Colormap for Residual:
- * Negative values: Blue
- * Zero: Neutral Light Slate Gray
- * Positive values: Orange-Red
- */
-function getResidualColor(val, maxVal = 64) {
-  const norm = Math.max(-1, Math.min(1, val / maxVal));
-  if (norm < 0) {
-    const intensity = Math.round(Math.abs(norm) * 200);
-    return `rgb(${140 - intensity / 2}, ${170 - intensity / 3}, ${220 + intensity / 8})`;
-  } else if (norm > 0) {
-    const intensity = Math.round(norm * 200);
-    return `rgb(${220 + intensity / 8}, ${160 - intensity / 2}, ${140 - intensity / 2})`;
-  }
-  return '#E2E8F0'; // Zero error
-}
 
 /**
  * FourPictureComparison Component
@@ -229,7 +211,7 @@ const FourPictureComparison = ({
     else dataArray = cuData.recon;
 
     const maxW = isBare ? '560px' : (layoutMode === 'single' ? '600px' : '480px');
-    const cellFontSize = size <= 4 ? '1.05rem' : size <= 8 ? '0.85rem' : size <= 16 ? '0.66rem' : '0.48rem';
+    const cellFontSize = size <= 4 ? '1.05rem' : size <= 8 ? '0.78rem' : '0.56rem';
 
     const matrixGrid = (
       <div
@@ -242,6 +224,9 @@ const FourPictureComparison = ({
           maxWidth: maxW,
           width: '100%',
           aspectRatio: '1 / 1',
+          margin: '0 auto',
+          boxSizing: 'border-box',
+          overflow: 'hidden'
         }}
       >
         {dataArray.map((val, idx) => {
@@ -254,8 +239,9 @@ const FourPictureComparison = ({
 
           if (type === 'resi') {
             const boosted = val * resiGain;
-            bg = getResidualColor(boosted, 128);
-            textCol = Math.abs(val) > 20 ? '#000000' : '#475569';
+            const resiStyle = getResidualColorAndTextColor(boosted, 128);
+            bg = resiStyle.bg;
+            textCol = resiStyle.color;
           } else {
             const clamped = Math.max(0, Math.min(255, val));
             bg = `rgb(${clamped}, ${clamped}, ${clamped})`;
@@ -282,15 +268,22 @@ const FourPictureComparison = ({
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: cellFontSize,
-                fontFamily: 'JetBrains Mono',
+                fontFamily: 'JetBrains Mono, monospace',
                 fontWeight: 600,
+                letterSpacing: '-0.35px',
                 cursor: 'pointer',
                 outline: isSelected ? '2px solid #007AFF' : 'none',
                 zIndex: isSelected ? 5 : 1,
                 userSelect: 'none',
+                overflow: 'hidden',
+                whiteSpace: 'nowrap',
+                textOverflow: 'clip',
+                boxSizing: 'border-box',
+                lineHeight: 1,
+                padding: '0 1px'
               }}
             >
-              {showValues && (type === 'resi' && val > 0 ? `+${val}` : val)}
+              {showValues && size <= 16 && (type === 'resi' && val > 0 ? `+${val}` : val)}
             </div>
           );
         })}
@@ -309,6 +302,10 @@ const FourPictureComparison = ({
           flexDirection: 'column',
           overflow: 'hidden',
           width: '100%',
+          height: '380px',
+          minHeight: '380px',
+          maxHeight: '380px',
+          boxSizing: 'border-box'
         }}
       >
         <div
@@ -322,7 +319,9 @@ const FourPictureComparison = ({
             fontSize: '0.78rem',
             fontFamily: 'JetBrains Mono',
             fontWeight: 600,
-            color: 'var(--apple-label)'
+            color: 'var(--apple-label)',
+            height: '24px',
+            flexShrink: 0
           }}
         >
           <span>{title}</span>
@@ -343,11 +342,17 @@ const FourPictureComparison = ({
 
         <div
           style={{
-            padding: '0.75rem',
+            padding: '0.5rem',
             display: 'flex',
-            justifyContent: 'center',
+            justifyContent: 'safe center',
             alignItems: 'center',
             background: 'var(--apple-canvas)',
+            width: '100%',
+            height: '340px',
+            maxHeight: '340px',
+            boxSizing: 'border-box',
+            overflowX: 'auto',
+            overflowY: 'auto',
           }}
         >
           {matrixGrid}
@@ -946,4 +951,4 @@ const FourPictureComparison = ({
   );
 };
 
-export default FourPictureComparison;
+export default React.memo(FourPictureComparison);

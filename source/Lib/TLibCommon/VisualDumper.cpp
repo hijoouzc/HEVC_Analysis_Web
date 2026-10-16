@@ -113,11 +113,13 @@ VisualDumper::VisualDumper()
     m_targetPOC(-1),
     m_targetCtuX(0),
     m_targetCtuY(0),
-    m_targetCuSize(8),
+    m_targetCuSize(0),
     m_filterPuPosition(false),
     m_targetPuX(0),
     m_targetPuY(0)
 {
+  m_activeTrial.active = false;
+  m_activeTrial.trialId = 0;
   readIntegerEnv("VISUAL_POC", m_targetPOC);
   const Bool hasX = readIntegerEnv("VISUAL_CTU_X", m_targetCtuX);
   const Bool hasY = readIntegerEnv("VISUAL_CTU_Y", m_targetCtuY);
@@ -200,6 +202,48 @@ Void VisualDumper::dumpCuRdoDecision(Int poc, Int ctuX, Int ctuY, Int cuX, Int c
             << ",\"cost_split\":" << costSplit
             << ",\"split_decision\":" << (splitDecision ? "true" : "false")
             << ",\"best_mode\":" << bestMode
+            << "}\n";
+}
+
+Void VisualDumper::dumpCuRdoDecisionVerified(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
+                                             Bool splitEvaluated,
+                                             Double costNoSplit, Distortion distNoSplit, UInt bitsNoSplit, Int qpNoSplit, Int modeNoSplit,
+                                             Double costSplit, Distortion distSplit, UInt bitsSplit, Int qpSplit,
+                                             Bool splitDecision, Double winnerCost)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"CU_RDO_DECISION\",\"stage\":\"CP_01_CU_QUADTREE_RDO\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"cu_x\":" << cuX << ",\"cu_y\":" << cuY
+            << ",\"cu_size\":" << cuSize << ",\"depth\":" << depth
+            << ",\"split_evaluated\":" << (splitEvaluated ? "true" : "false")
+            << ",\"cost_nosplit\":" << costNoSplit
+            << ",\"cost_split\":" << costSplit
+            << ",\"nosplit\":{\"cost\":" << costNoSplit << ",\"dist\":" << distNoSplit << ",\"bits\":" << bitsNoSplit << ",\"qp\":" << qpNoSplit << ",\"mode\":" << modeNoSplit << '}'
+            << ",\"split\":{\"cost\":" << costSplit << ",\"dist\":" << distSplit << ",\"bits\":" << bitsSplit << ",\"qp\":" << qpSplit << '}'
+            << ",\"split_decision\":" << (splitDecision ? "true" : "false")
+            << ",\"best_mode\":" << modeNoSplit
+            << ",\"winner_cost\":" << winnerCost
+            << "}\n";
+}
+
+Void VisualDumper::dumpCtuActualBits(Int poc, Int ctuX, Int ctuY, UInt ctuRsAddr, Int actualBitsCtu)
+{
+  if (!isCtuActive(poc, ctuX, ctuY))
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"CTU_ACTUAL_BITS\",\"stage\":\"CP_01_CU_QUADTREE_RDO\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"ctu_rs_addr\":" << ctuRsAddr
+            << ",\"actual_bits_ctu\":" << actualBitsCtu
             << "}\n";
 }
 
@@ -389,10 +433,39 @@ Void VisualDumper::dumpIntraMpm(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, I
   m_outFile << "}\n";
 }
 
+Void VisualDumper::dumpIntraTuPred(Int poc, Int ctuX, Int ctuY,
+                                   Int puX, Int puY, Int puSize,
+                                   Int tuX, Int tuY, Int tuWidth, Int tuHeight, Int tuDepth,
+                                   Int candRank, Int candMode, Int qp, UInt trialId,
+                                   const Pel* pPred, Int stride)
+{
+  if (!isActive(poc, ctuX, ctuY, puX, puY, puSize) || pPred == NULL || stride < tuWidth)
+  {
+    return;
+  }
+  std::lock_guard<std::mutex> lock(m_mutex);
+  m_outFile << "{\"event\":\"INTRA_TU_PRED\",\"stage\":\"CP_02_INTRA_SEARCH\",\"sub_stage\":\"FULL_RDO\""
+            << ",\"poc\":" << poc
+            << ",\"ctu_x\":" << ctuX << ",\"ctu_y\":" << ctuY
+            << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
+            << ",\"pu_size\":" << puSize
+            << ",\"cand_rank\":" << candRank
+            << ",\"cand_mode\":" << candMode
+            << ",\"qp\":" << qp
+            << ",\"trial_id\":" << trialId
+            << ",\"tu_x\":" << tuX << ",\"tu_y\":" << tuY
+            << ",\"tu_width\":" << tuWidth << ",\"tu_height\":" << tuHeight
+            << ",\"tu_depth\":" << tuDepth
+            << ",\"pred_data\":";
+  writeArray(m_outFile, pPred, tuWidth, tuHeight, stride);
+  m_outFile << "}\n";
+}
+
 Void VisualDumper::dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
-                                        Int candRank, Int mode, Double cost, Distortion dist, Double bits,
+                                        Int candRank, Int mode, Int qp, UInt trialId,
+                                        Double cost, Distortion dist, Double bits,
                                         Bool isWinner,
-                                        const Pel* pReco, const Pel* pResi, const Pel* pOrg, const Pel* pPred,
+                                        const Pel* pReco, const Pel* pResi, const Pel* pOrg,
                                         Int stride)
 {
   if (!isActive(poc, ctuX, ctuY, puX, puY, puSize))
@@ -406,10 +479,15 @@ Void VisualDumper::dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, In
             << ",\"pu_x\":" << puX << ",\"pu_y\":" << puY
             << ",\"pu_size\":" << puSize
             << ",\"mode\":" << mode
+            << ",\"cand_rank\":" << candRank
             << ",\"rank_rdo\":" << candRank
+            << ",\"qp\":" << qp
+            << ",\"trial_id\":" << trialId
             << ",\"cost_rdo\":" << cost
             << ",\"sse\":" << dist
             << ",\"bits\":" << bits
+            << ",\"rdo_rate_est\":" << bits
+            << ",\"is_transient_best\":" << (isWinner ? "true" : "false")
             << ",\"is_winner\":" << (isWinner ? "true" : "false");
   if (pReco != NULL && stride >= puSize)
   {
@@ -421,7 +499,21 @@ Void VisualDumper::dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, In
     m_outFile << ",\"reconstructed_resi\":";
     writeArray(m_outFile, pResi, puSize, puSize, stride);
   }
+  if (pOrg != NULL && stride >= puSize)
+  {
+    m_outFile << ",\"org_data\":";
+    writeArray(m_outFile, pOrg, puSize, puSize, stride);
+  }
   m_outFile << "}\n";
+}
+
+Void VisualDumper::dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                                        Int candRank, Int mode, Double cost, Distortion dist, Double bits,
+                                        Bool isWinner,
+                                        const Pel* pReco, const Pel* pResi, const Pel* pOrg, const Pel* pPred,
+                                        Int stride)
+{
+  dumpIntraFullRdoStep(poc, ctuX, ctuY, puX, puY, puSize, candRank, mode, 0, 0, cost, dist, bits, isWinner, pReco, pResi, pOrg, stride);
 }
 
 Void VisualDumper::dumpIntraChromaSearch(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,

@@ -25,7 +25,9 @@ export default function CandidateModesTable({ size, evaluations }) {
       display: 'flex',
       flexDirection: 'column',
       gap: '8px',
+      height: '210px',
       minHeight: '210px',
+      maxHeight: '210px',
       boxSizing: 'border-box'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -50,27 +52,27 @@ export default function CandidateModesTable({ size, evaluations }) {
               color: 'var(--apple-label-3)',
             }}
           >
-            Standby (Split Node)
+            Split CU (Evaluated)
           </span>
         )}
       </div>
 
       {hasData ? (
-        <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
+        <div style={{ height: '150px', minHeight: '150px', maxHeight: '150px', overflowY: 'auto' }}>
           <Table striped>
             <TableHeader>
               <tr>
                 <TableHead>Mode</TableHead>
-                <TableHead align="right">SSD (D)</TableHead>
+                <TableHead align="right">Distortion (D)</TableHead>
                 <TableHead align="right">Coeffs</TableHead>
-                <TableHead align="right">Rate (R)</TableHead>
+                <TableHead align="right" title="HM RDO Rate Estimate: (J - D) / λ">Rate Est (R)</TableHead>
                 <TableHead align="right">Cost (J)</TableHead>
                 <TableHead align="center">Rank</TableHead>
               </tr>
             </TableHeader>
             <TableBody>
               {evaluations.map((ev, idx) => {
-                const isWinner = idx === 0;
+                const isWinner = ev.is_winner ?? (idx === 0);
                 return (
                   <TableRow
                     key={ev.mode}
@@ -84,7 +86,7 @@ export default function CandidateModesTable({ size, evaluations }) {
                     </TableCell>
                     <TableCell align="right">{ev.ssd.toLocaleString()}</TableCell>
                     <TableCell align="right">{ev.nonzeroCount}</TableCell>
-                    <TableCell align="right">{ev.bits}</TableCell>
+                    <TableCell align="right">{ev.bits !== undefined ? `${ev.bits} b` : '---'}</TableCell>
                     <TableCell
                       align="right"
                       style={{
@@ -113,7 +115,9 @@ export default function CandidateModesTable({ size, evaluations }) {
         </div>
       ) : (
         <div style={{
-          height: '145px',
+          height: '150px',
+          minHeight: '150px',
+          maxHeight: '150px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',

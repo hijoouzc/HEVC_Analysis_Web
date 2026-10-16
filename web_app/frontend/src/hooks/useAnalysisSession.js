@@ -37,6 +37,7 @@ export function useAnalysisSession() {
   const [inloopFilterData, setInloopFilterData] = useState(null);
   const [cabacEntropyData, setCabacEntropyData] = useState(null);
   const [selectedCu, setSelectedCu] = useState(null);
+  const [rdoDecisions, setRdoDecisions] = useState([]);
   const [ctuPartitionsMap, setCtuPartitionsMap] = useState({});
   const [ctuAnalysisCache, setCtuAnalysisCache] = useState({});
 
@@ -119,25 +120,29 @@ export function useAnalysisSession() {
   }, [computeDims]);
 
   // Helper to fetch checkpoints for a completed job
-  const fetchCheckpoints = useCallback(async (currentJobId, targetX, targetY, targetCuSize) => {
+  const fetchCheckpoints = useCallback(async (currentJobId, targetX, targetY, targetCuSize, targetCuX = null, targetCuY = null) => {
     const ctuParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
       ? `&ctu_x=${targetX}&ctu_y=${targetY}`
       : '';
     const ctuOnlyParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
       ? `?ctu_x=${targetX}&ctu_y=${targetY}`
       : '';
+    const cuPosParams = (targetCuX !== null && targetCuX !== undefined && targetCuY !== null && targetCuY !== undefined)
+      ? `&cu_x=${targetCuX}&cu_y=${targetCuY}`
+      : '';
 
-    const [p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac] = await Promise.all([
+    const [p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac, rdoDecs] = await Promise.all([
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_01_PARTITION${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/partitions`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_02_INTRA_REF?cu_size=${targetCuSize}${ctuParams}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_04_TRANSFORM_RQT${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_02_INTRA_REF?cu_size=${targetCuSize}${ctuParams}${cuPosParams}`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_04_TRANSFORM_RQT${ctuOnlyParams}${cuPosParams}`).then(r => r.ok ? r.json() : []),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${ctuOnlyParams}${cuPosParams}`).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_00_FRAME_GOP`).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTER_SEARCH${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_05_RECON_PICTURE${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_06_INLOOP_FILTER${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
       fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_CABAC_ENTROPY?limit=300`).then(r => r.ok ? r.json() : null),
+      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/rdo-decisions${ctuOnlyParams}${cuPosParams}`).then(r => r.ok ? r.json() : []),
     ]);
 
     if (p) {
@@ -169,7 +174,8 @@ export function useAnalysisSession() {
     if (Array.isArray(recon)) setReconPictureData(recon);
     if (inloop) setInloopFilterData(inloop);
     if (cabac) setCabacEntropyData(cabac);
-    return { p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac };
+    if (Array.isArray(rdoDecs)) setRdoDecisions(rdoDecs);
+    return { p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac, rdoDecs };
   }, []);
 
   // Poll job status until COMPLETED or FAILED
@@ -361,6 +367,7 @@ export function useAnalysisSession() {
     setReconPictureData([]);
     setInloopFilterData(null);
     setCabacEntropyData(null);
+    setRdoDecisions([]);
     setJobId(null);
     setErrorMsg(null);
     setCtuPartitionsMap({});
@@ -375,7 +382,12 @@ export function useAnalysisSession() {
       }
       return cu;
     });
-  }, []);
+    if (cu && jobId) {
+      const cuPosX = cu.abs_x ?? cu.x;
+      const cuPosY = cu.abs_y ?? cu.y;
+      fetchCheckpoints(jobId, ctuX, ctuY, cu.width || cuSize, cuPosX, cuPosY).catch(() => {});
+    }
+  }, [jobId, ctuX, ctuY, cuSize, fetchCheckpoints]);
 
   const handleSelectCTU = useCallback((x, y) => {
     setCtuX(x);
@@ -418,7 +430,95 @@ export function useAnalysisSession() {
     }
   }, [ctuPartitionsMap, ctuAnalysisCache, cuSize, jobId, fetchCheckpoints]);
 
-  const hasDesync = data && ctuX !== null && ctuY !== null && (ctuX !== analyzedCtu.x || ctuY !== analyzedCtu.y);
+  const handleSelectBlock = useCallback(async ({ size, relX = 0, relY = 0, absX = null, absY = null, cu = null }) => {
+    const targetSize = size || cu?.width || cuSize || 8;
+    const resolvedRelX = (typeof relX === 'number') ? relX : (cu?.x ?? 0);
+    const resolvedRelY = (typeof relY === 'number') ? relY : (cu?.y ?? 0);
+    const resolvedAbsX = (absX !== null && absX !== undefined)
+      ? absX
+      : (typeof cu?.abs_x === 'number' ? cu.abs_x : (ctuX ?? 0) * 64 + resolvedRelX);
+    const resolvedAbsY = (absY !== null && absY !== undefined)
+      ? absY
+      : (typeof cu?.abs_y === 'number' ? cu.abs_y : (ctuY ?? 0) * 64 + resolvedRelY);
+
+    const normalizedCu = {
+      ...(cu || {}),
+      x: resolvedRelX,
+      y: resolvedRelY,
+      abs_x: resolvedAbsX,
+      abs_y: resolvedAbsY,
+      width: targetSize,
+      height: targetSize,
+      size: targetSize,
+      ctu_x: ctuX,
+      ctu_y: ctuY
+    };
+
+    setSelectedCu(normalizedCu);
+    setCuSize(targetSize);
+    setAnalyzedCuSize(targetSize);
+
+    const cacheKey = `${ctuX}_${ctuY}_${targetSize}_${resolvedAbsX}_${resolvedAbsY}`;
+    const cachedAnalysis = ctuAnalysisCache[cacheKey] || ctuAnalysisCache[`${ctuX}_${ctuY}_${targetSize}`];
+    if (cachedAnalysis) {
+      setData(cachedAnalysis.data);
+      if (cachedAnalysis.refSamples) setRefSamples(cachedAnalysis.refSamples);
+      return;
+    }
+
+    if (jobId) {
+      try {
+        const ctuParams = (ctuX !== null && ctuY !== null) ? `&ctu_x=${ctuX}&ctu_y=${ctuY}` : '';
+        const cuPosParams = `&cu_x=${resolvedAbsX}&cu_y=${resolvedAbsY}`;
+        const [modesRes, refRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH?cu_size=${targetSize}${ctuParams}${cuPosParams}`),
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF?cu_size=${targetSize}${ctuParams}${cuPosParams}`)
+        ]);
+        let modesData = modesRes.ok ? await modesRes.json() : [];
+        let refData = refRes.ok ? await refRes.json() : null;
+
+        if (!modesData || modesData.length === 0) {
+          const fallbackRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH?cu_size=${targetSize}${ctuParams}`);
+          if (fallbackRes.ok) modesData = await fallbackRes.json();
+        }
+        if (!refData) {
+          const fallbackRef = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF?cu_size=${targetSize}${ctuParams}`);
+          if (fallbackRef.ok) refData = await fallbackRef.json();
+        }
+
+        if (modesData && modesData.length > 0) {
+          setData(modesData);
+          if (refData) setRefSamples(refData);
+          setCtuAnalysisCache(prev => ({
+            ...prev,
+            [cacheKey]: {
+              data: modesData,
+              refSamples: refData,
+              jobId
+            }
+          }));
+        }
+      } catch (err) {
+        console.warn('Failed to switch block position checkpoints:', err);
+      }
+    }
+  }, [ctuX, ctuY, cuSize, ctuAnalysisCache, jobId]);
+
+  const handleSelectSize = useCallback(async (newSize) => {
+    if (!newSize || newSize <= 0) return;
+    const currentRelX = selectedCu ? (selectedCu.abs_x !== undefined ? selectedCu.abs_x % 64 : (selectedCu.x ?? 0)) : 0;
+    const currentRelY = selectedCu ? (selectedCu.abs_y !== undefined ? selectedCu.abs_y % 64 : (selectedCu.y ?? 0)) : 0;
+    const snappedRelX = Math.min(64 - newSize, Math.floor(currentRelX / newSize) * newSize);
+    const snappedRelY = Math.min(64 - newSize, Math.floor(currentRelY / newSize) * newSize);
+
+    return handleSelectBlock({
+      size: newSize,
+      relX: snappedRelX,
+      relY: snappedRelY
+    });
+  }, [selectedCu, handleSelectBlock]);
+
+  const hasDesync = Boolean(data && ctuX !== null && ctuY !== null && (ctuX !== analyzedCtu.x || ctuY !== analyzedCtu.y));
 
   return {
     file,
@@ -441,6 +541,7 @@ export function useAnalysisSession() {
     ctuY,
     analyzedCtu,
     cuSize,
+    setCuSize,
     analyzedCuSize,
     activeStageTab,
     setActiveStageTab,
@@ -454,7 +555,10 @@ export function useAnalysisSession() {
     reconPictureData,
     inloopFilterData,
     cabacEntropyData,
+    rdoDecisions,
+    setRdoDecisions,
     selectedCu,
+    setSelectedCu,
     ctuPartitionsMap,
     hasDesync,
     API_BASE_URL,
@@ -463,5 +567,7 @@ export function useAnalysisSession() {
     handleResetImage,
     handleSelectCU,
     handleSelectCTU,
+    handleSelectSize,
+    handleSelectBlock,
   };
 }

@@ -119,6 +119,7 @@ TEncSearch::TEncSearch()
 , m_pcRDGoOnSbacCoder (NULL)
 , m_pTempPel (NULL)
 , m_isInitialized (false)
+, m_trialSeq (0)
 {
   for (UInt ch=0; ch<MAX_NUM_COMPONENT; ch++)
   {
@@ -1208,6 +1209,25 @@ Void TEncSearch::xIntraCodingTUBlock(       TComYuv*    pcOrgYuv,
     //===== get prediction signal =====
     predIntraAng( compID, uiChFinalMode, piOrg, uiStride, piPred, uiStride, rTu, bUseFilteredPredictions );
 
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    if (pDumper && pDumper->isEnabled() && compID == COMPONENT_Y)
+    {
+      VisualDumper::ActiveTrialInfo trialInfo;
+      if (pDumper->getActiveTrial(trialInfo))
+      {
+        const UInt uiAbsPartIdx = rTu.GetAbsPartIdxTU();
+        const Int tuPelX = pcCU->getCUPelX() + g_auiRasterToPelX[ g_auiZscanToRaster[ uiAbsPartIdx ] ];
+        const Int tuPelY = pcCU->getCUPelY() + g_auiRasterToPelY[ g_auiZscanToRaster[ uiAbsPartIdx ] ];
+        pDumper->dumpIntraTuPred(trialInfo.poc, trialInfo.ctuX, trialInfo.ctuY,
+                                 trialInfo.puX, trialInfo.puY, trialInfo.puSize,
+                                 tuPelX, tuPelY, uiWidth, uiHeight, rTu.GetTransformDepthRel(),
+                                 trialInfo.candRank, trialInfo.candMode, trialInfo.qp, trialInfo.trialId,
+                                 piPred, uiStride);
+      }
+    }
+#endif
+
     // save prediction
     if( default0Save1Load2 == 1 )
     {
@@ -2274,7 +2294,6 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
     const Bool dumpThisPu = pDumper->isActive(dumpPoc, dumpCtuX, dumpCtuY,
                                                dumpPuX, dumpPuY, dumpPuRect.width);
     Pel* piOrgDump         = pcOrgYuv ->getAddr( COMPONENT_Y, dumpAbsPartIdx );
-    Pel* piPredDump        = pcPredYuv->getAddr( COMPONENT_Y, dumpAbsPartIdx );
     UInt uiStrideDump      = pcPredYuv->getStride( COMPONENT_Y );
 #endif
 
@@ -2488,6 +2507,15 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
 
       pcCU->setIntraDirSubParts ( CHANNEL_TYPE_LUMA, uiOrgMode, uiPartOffset, uiDepth + uiInitTrDepth );
 
+#if ENABLE_VISUAL_DUMP
+      const UInt currentTrialId = ++m_trialSeq;
+      if (dumpThisPu)
+      {
+        pDumper->setActiveTrial(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, dumpPuRect.width,
+                                uiMode + 1, uiOrgMode, pcCU->getQP(dumpAbsPartIdx), currentTrialId);
+      }
+#endif
+
       DEBUG_STRING_NEW(sMode)
       // set context models
       m_pcRDGoOnSbacCoder->load( m_pppcRDSbacCoder[uiDepth][CI_CURR_BEST] );
@@ -2509,9 +2537,11 @@ TEncSearch::estIntraPredLumaQT(TComDataCU* pcCU,
         const Double lambda = m_pcRdCost->getLambda();
         const Double estBits = (lambda > 0.0 && dPUCost >= uiPUDistY) ? ((dPUCost - uiPUDistY) / lambda) : 0.0;
         pDumper->dumpIntraFullRdoStep(dumpPoc, dumpCtuX, dumpCtuY, dumpPuX, dumpPuY, dumpPuRect.width,
-                                      uiMode + 1, uiOrgMode, dPUCost, uiPUDistY, estBits,
+                                      uiMode + 1, uiOrgMode, pcCU->getQP(dumpAbsPartIdx), currentTrialId,
+                                      dPUCost, uiPUDistY, estBits,
                                       (dPUCost < dBestPUCost),
-                                      pCandReco, pCandResi, piOrgDump, piPredDump, uiStrideDump);
+                                      pCandReco, pCandResi, piOrgDump, uiStrideDump);
+        pDumper->clearActiveTrial();
       }
 #endif
 

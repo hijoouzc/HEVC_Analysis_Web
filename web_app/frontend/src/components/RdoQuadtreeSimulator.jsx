@@ -16,7 +16,7 @@ import TreeCallStack from './simulator/TreeCallStack';
 import HmSourceCodeModal from './common/HmSourceCodeModal';
 import DrawioExportModal from './common/DrawioExportModal';
 import { HM_RDO_COST_SIMULATION_SNIPPET } from '../constants/hmSourceSnippets';
-import { Button, Card, Badge } from './apple';
+import { Button, Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from './apple';
 
 /**
  * RdoQuadtreeSimulator
@@ -26,12 +26,15 @@ import { Button, Card, Badge } from './apple';
  * - Zero hover bounces or decorative emojis.
  * - 100% discrete pixel and color fidelity.
  */
-export default function RdoQuadtreeSimulator({
+function RdoQuadtreeSimulator({
   imageSrc = null,
   imageDims = { width: 640, height: 360 },
   ctuX = 0,
   ctuY = 0,
   partitionData = null,
+  rdoDecisions = [],
+  candidateDetails = [],
+  selectedCu = null,
   onNavigateToStage = null
 }) {
   const [qp, setQp] = useState(32);
@@ -89,15 +92,22 @@ export default function RdoQuadtreeSimulator({
     return generateSyntheticCtuPattern(patternType === 'image' ? 'gradient' : patternType);
   }, [patternType, customPatch]);
 
+  const currentCtuDecisions = useMemo(() => {
+    if (!Array.isArray(rdoDecisions) || rdoDecisions.length === 0) return [];
+    return rdoDecisions.filter(d => (ctuX == null || d.ctu_x === ctuX) && (ctuY == null || d.ctu_y === ctuY));
+  }, [rdoDecisions, ctuX, ctuY]);
+
   // Simulation execution result (synced with HM encoder ground-truth when available)
   const isGroundTruthActive = patternType === 'image' && Boolean(partitionData?.nodes?.length);
   const simResult = useMemo(() => {
     return runHevcQuadtreeSimulation({
       ctuPatch: activeCtuPatch,
       qp: deferredQp,
-      groundTruthNodes: isGroundTruthActive ? partitionData.nodes : null
+      groundTruthNodes: isGroundTruthActive ? partitionData.nodes : null,
+      rdoDecisions: isGroundTruthActive ? currentCtuDecisions : null,
+      candidateDetails: isGroundTruthActive ? candidateDetails : null
     });
-  }, [activeCtuPatch, deferredQp, isGroundTruthActive, partitionData?.nodes]);
+  }, [activeCtuPatch, deferredQp, isGroundTruthActive, partitionData?.nodes, currentCtuDecisions, candidateDetails]);
 
   const totalSteps = simResult.totalSteps || 1;
   const safeStepIdx = Math.min(stepIdx, totalSteps - 1);
@@ -155,18 +165,27 @@ export default function RdoQuadtreeSimulator({
     <div className="stage-section-card" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
       {/* 1. Header */}
       <div className="stage-section-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
           <div className="stage-section-title">
-            RDO Simulator
+            CU QuadTree RDO &amp; xCompressCU
           </div>
+          {isGroundTruthActive ? (
+            <Badge variant="blue" style={{ fontSize: '11px' }}>
+              HM TRACE GROUND-TRUTH
+            </Badge>
+          ) : (
+            <Badge variant="orange" style={{ fontSize: '11px' }}>
+              SYNTHETIC SANDBOX SIMULATION
+            </Badge>
+          )}
+          {partitionData?.ctu_actual_bits != null && (
+            <Badge variant="green" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }} title="Written bitstream size by TEncSlice::encodeCtu()">
+              Actual bits — CTU: {partitionData.ctu_actual_bits.toLocaleString()} b
+            </Badge>
+          )}
           <span style={{ fontSize: '0.72rem', color: '#64748B', fontFamily: 'JetBrains Mono' }}>
             HM TEncCu::xCompressCU
           </span>
-          {isGroundTruthActive && (
-            <Badge color="green" style={{ fontSize: '0.66rem', padding: '0.12rem 0.45rem' }}>
-              Synced with CU QuadTree (HM-18.0)
-            </Badge>
-          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
@@ -199,6 +218,67 @@ export default function RdoQuadtreeSimulator({
           )}
         </div>
       </div>
+
+      {/* HM-18.0 Measured RDO Decisions from Trace */}
+      {currentCtuDecisions.length > 0 && (
+        <Card style={{ padding: '10px 14px', border: '0.5px solid var(--separator)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+                HM-18.0 MEASURED CU RDO DECISIONS (Trace Ground Truth)
+              </span>
+              <Badge variant="green">{currentCtuDecisions.length} Nodes Recorded</Badge>
+            </div>
+            <span style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
+              xCompressCU &bull; J_nosplit vs J_split
+            </span>
+          </div>
+          <div style={{ maxHeight: '160px', overflowY: 'auto' }}>
+            <Table style={{ fontSize: '11px' }}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Depth</TableHead>
+                  <TableHead>CU Block (x, y)</TableHead>
+                  <TableHead>Size</TableHead>
+                  <TableHead>J_best_nonSplit</TableHead>
+                  <TableHead>J_split</TableHead>
+                  <TableHead>Decision</TableHead>
+                  <TableHead>Best Mode</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {currentCtuDecisions.map((dec, idx) => {
+                  const isSel = selectedCu && ((selectedCu.abs_x ?? selectedCu.x) === dec.cu_x && (selectedCu.abs_y ?? selectedCu.y) === dec.cu_y);
+                  return (
+                    <TableRow key={idx} style={{ background: isSel ? 'var(--apple-blue-subtle, rgba(0,122,255,0.1))' : undefined }}>
+                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{dec.depth}</TableCell>
+                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>({dec.cu_x}, {dec.cu_y})</TableCell>
+                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{dec.cu_size}×{dec.cu_size}</TableCell>
+                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>
+                        {(dec.nosplit?.cost ?? dec.cost_nosplit ?? 0).toFixed(1)}
+                        {dec.nosplit?.qp ? ` (QP${dec.nosplit.qp})` : ''}
+                      </TableCell>
+                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>
+                        {dec.split_evaluated === false
+                          ? '— (Not evaluated)'
+                          : `${(dec.split?.cost ?? dec.cost_split ?? 0).toFixed(1)}${dec.split?.qp ? ` (QP${dec.split.qp})` : ''}`}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={dec.split_decision ? 'orange' : 'green'}>
+                          {dec.split_decision ? 'SPLIT (4×Sub-CUs)' : 'NO SPLIT (Leaf)'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>
+                        {dec.best_mode >= 0 ? `Mode ${dec.best_mode}` : '—'}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
+      )}
 
       {/* 2. Timeline Controls */}
       <SimulatorControls
@@ -284,7 +364,7 @@ export default function RdoQuadtreeSimulator({
       </Card>
 
       {/* 4. Main 2-Column Inspector Area */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 320px) minmax(0, 1fr)', gap: '0.85rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(330px, 350px) minmax(0, 1fr)', gap: '0.85rem' }}>
         {/* Left Column: 64x64 CTU Partition Canvas & RDO Decision Math Panel */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', minWidth: 0, boxSizing: 'border-box' }}>
           <PartitionCanvas
@@ -359,3 +439,5 @@ export default function RdoQuadtreeSimulator({
     </div>
   );
 }
+
+export default React.memo(RdoQuadtreeSimulator);

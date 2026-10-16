@@ -30,12 +30,57 @@ private:
     ~VisualDumper();
 
 public:
+    struct ActiveTrialInfo {
+        Int poc;
+        Int ctuX;
+        Int ctuY;
+        Int puX;
+        Int puY;
+        Int puSize;
+        Int candRank;
+        Int candMode;
+        Int qp;
+        UInt trialId;
+        Bool active;
+    };
+
+private:
+    ActiveTrialInfo m_activeTrial;
+
+public:
     static VisualDumper* getInstance() {
         static VisualDumper instance;
         return &instance;
     }
 
     Bool isEnabled() const { return m_enabled; }
+
+    Void setActiveTrial(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                        Int candRank, Int candMode, Int qp, UInt trialId) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_activeTrial.poc = poc;
+        m_activeTrial.ctuX = ctuX;
+        m_activeTrial.ctuY = ctuY;
+        m_activeTrial.puX = puX;
+        m_activeTrial.puY = puY;
+        m_activeTrial.puSize = puSize;
+        m_activeTrial.candRank = candRank;
+        m_activeTrial.candMode = candMode;
+        m_activeTrial.qp = qp;
+        m_activeTrial.trialId = trialId;
+        m_activeTrial.active = true;
+    }
+
+    Void clearActiveTrial() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_activeTrial.active = false;
+    }
+
+    Bool getActiveTrial(ActiveTrialInfo& info) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        info = m_activeTrial;
+        return m_activeTrial.active;
+    }
 
     Bool isActive(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize) const {
         return m_enabled &&
@@ -62,6 +107,12 @@ public:
     Void dumpCuRdoDecision(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
                            Double costNoSplit, Double costSplit, Bool splitDecision,
                            Int bestMode);
+    Void dumpCuRdoDecisionVerified(Int poc, Int ctuX, Int ctuY, Int cuX, Int cuY, Int cuSize, Int depth,
+                                   Bool splitEvaluated,
+                                   Double costNoSplit, Distortion distNoSplit, UInt bitsNoSplit, Int qpNoSplit, Int modeNoSplit,
+                                   Double costSplit, Distortion distSplit, UInt bitsSplit, Int qpSplit,
+                                   Bool splitDecision, Double winnerCost);
+    Void dumpCtuActualBits(Int poc, Int ctuX, Int ctuY, UInt ctuRsAddr, Int actualBitsCtu);
     Void dumpPartitionTree(TComDataCU* pcCU);
 
     // CP_02: Intra Prediction Pipeline
@@ -84,6 +135,19 @@ public:
                       Int mpm0, Int mpm1, Int mpm2, Int leftMode, Int aboveMode,
                       const UInt* pTopKModes, Int numTopK,
                       const UInt* pFullCandModes, Int numFullCand);
+
+    Void dumpIntraTuPred(Int poc, Int ctuX, Int ctuY,
+                         Int puX, Int puY, Int puSize,
+                         Int tuX, Int tuY, Int tuWidth, Int tuHeight, Int tuDepth,
+                         Int candRank, Int candMode, Int qp, UInt trialId,
+                         const Pel* pPred, Int stride);
+
+    Void dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
+                              Int candRank, Int mode, Int qp, UInt trialId,
+                              Double cost, Distortion dist, Double bits,
+                              Bool isWinner,
+                              const Pel* pReco, const Pel* pResi, const Pel* pOrg,
+                              Int stride);
 
     Void dumpIntraFullRdoStep(Int poc, Int ctuX, Int ctuY, Int puX, Int puY, Int puSize,
                               Int candRank, Int mode, Double cost, Distortion dist, Double bits,

@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageChops
 from app.domain.models.job import JobInfo
 from app.domain.models.roi import ROICoordinates, FrameMetadata
-from app.domain.exceptions import JobNotFoundError, HEVCAnalysisError
+from app.domain.exceptions import JobNotFoundError
 from app.services.job_manager import job_manager
 from app.services.analysis_service import analysis_service
 from app.storage.session_manager import session_manager
@@ -19,7 +19,7 @@ async def submit_analysis_job(
     file: UploadFile = File(...),
     ctu_x: int = Form(0),
     ctu_y: int = Form(0),
-    cu_size: int = Form(8),
+    cu_size: int = Form(0),
     scale_mode: str = Form("native")
 ):
     try:
