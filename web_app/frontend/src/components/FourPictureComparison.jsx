@@ -4,6 +4,190 @@ import { calculatePsnr } from '../utils/metricsUtils';
 import { Button, SegmentedControl, Badge } from './apple';
 
 /**
+ * PixelMatrixCanvas
+ * Fast, GPU-accelerated HTML5 canvas for large HEVC matrices (N >= 32, e.g. 32x32 & 64x64).
+ * Replaces up to 4,096 DOM nodes per matrix with 1 canvas (100% discrete pixels, zero browser blur).
+ */
+const PixelMatrixCanvas = ({
+  dataArray = [],
+  size = 64,
+  type = 'orig',
+  resiGain = 4,
+  selectedCell = null,
+  onSelectCell,
+  cuData,
+}) => {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !dataArray || dataArray.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = size;
+    canvas.height = size;
+    ctx.imageSmoothingEnabled = false;
+
+    const imgData = ctx.createImageData(size, size);
+    const data = imgData.data;
+    const totalPixels = size * size;
+    const dataLen = dataArray.length;
+
+    for (let i = 0; i < totalPixels; i++) {
+      const val = i < dataLen ? (dataArray[i] ?? 0) : 0;
+      const off = i * 4;
+
+      if (type === 'resi') {
+        const v = Math.round(val) * resiGain;
+        if (v === 0) {
+          // Neutral slate (#F1F5F9)
+          data[off] = 241;
+          data[off + 1] = 245;
+          data[off + 2] = 249;
+          data[off + 3] = 255;
+        } else {
+          const norm = Math.min(1, Math.max(0, Math.abs(v) / 128));
+          const alpha = 0.20 + 0.80 * norm;
+          if (v > 0) {
+            // Under-predicted: Crimson (225, 29, 72) over neutral slate
+            data[off] = Math.round(225 * alpha + 241 * (1 - alpha));
+            data[off + 1] = Math.round(29 * alpha + 245 * (1 - alpha));
+            data[off + 2] = Math.round(72 * alpha + 249 * (1 - alpha));
+            data[off + 3] = 255;
+          } else {
+            // Over-predicted: Blue (2, 132, 199) over neutral slate
+            data[off] = Math.round(2 * alpha + 241 * (1 - alpha));
+            data[off + 1] = Math.round(132 * alpha + 245 * (1 - alpha));
+            data[off + 2] = Math.round(199 * alpha + 249 * (1 - alpha));
+            data[off + 3] = 255;
+          }
+        }
+      } else {
+        const clamped = Math.max(0, Math.min(255, Math.round(val)));
+        data[off] = clamped;
+        data[off + 1] = clamped;
+        data[off + 2] = clamped;
+        data[off + 3] = 255;
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  }, [dataArray, size, type, resiGain]);
+
+  const handleClick = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !onSelectCell || !cuData) return;
+    const rect = canvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = Math.min(size - 1, Math.max(0, Math.floor((clickX / rect.width) * size)));
+    const y = Math.min(size - 1, Math.max(0, Math.floor((clickY / rect.height) * size)));
+    const idx = y * size + x;
+    onSelectCell({
+      x,
+      y,
+      orig: cuData.orig[idx] ?? 0,
+      pred: cuData.pred[idx] ?? 0,
+      resi: cuData.resi[idx] ?? 0,
+      recon: cuData.recon[idx] ?? 0,
+    });
+  };
+
+  const isSelected =
+    selectedCell &&
+    selectedCell.x >= 0 &&
+    selectedCell.x < size &&
+    selectedCell.y >= 0 &&
+    selectedCell.y < size;
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}
+    >
+      <canvas
+        ref={canvasRef}
+        onClick={handleClick}
+        style={{
+          width: '100%',
+          height: '100%',
+          imageRendering: 'pixelated',
+          cursor: 'crosshair',
+          display: 'block',
+        }}
+      />
+      {/* 8x8 Sub-Block Boundary Grid Overlay for 32x32 & 64x64 */}
+      {size >= 32 && (
+        <svg
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            pointerEvents: 'none',
+            zIndex: 4,
+          }}
+          viewBox={`0 0 ${size} ${size}`}
+          preserveAspectRatio="none"
+        >
+          {Array.from({ length: size / 8 - 1 }).map((_, i) => (
+            <React.Fragment key={i}>
+              <line
+                x1={(i + 1) * 8}
+                y1={0}
+                x2={(i + 1) * 8}
+                y2={size}
+                stroke="rgba(128, 128, 128, 0.35)"
+                strokeWidth={size >= 64 ? 0.35 : 0.45}
+                strokeDasharray="1,1"
+              />
+              <line
+                x1={0}
+                y1={(i + 1) * 8}
+                x2={size}
+                y2={(i + 1) * 8}
+                stroke="rgba(128, 128, 128, 0.35)"
+                strokeWidth={size >= 64 ? 0.35 : 0.45}
+                strokeDasharray="1,1"
+              />
+            </React.Fragment>
+          ))}
+        </svg>
+      )}
+      {/* Active Sample Selection Reticle */}
+      {isSelected && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${(selectedCell.x / size) * 100}%`,
+            top: `${(selectedCell.y / size) * 100}%`,
+            width: `${(1 / size) * 100}%`,
+            height: `${(1 / size) * 100}%`,
+            minWidth: '4px',
+            minHeight: '4px',
+            outline: '2px solid #007AFF',
+            boxShadow: '0 0 4px rgba(0, 122, 255, 0.9)',
+            boxSizing: 'border-box',
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+/**
  * FourPictureComparison Component
  * Clean, Apple-inspired comparison of the 4 fundamental HEVC images:
  *  1. Original Picture (S)
@@ -201,7 +385,7 @@ const FourPictureComparison = ({
     return imageSrc;
   };
 
-  // Clean pixel matrix rendering with enlarged responsive dimensions
+  // Clean pixel matrix rendering with fixed-dimension viewport & discrete canvas for 32x32 / 64x64
   const renderPixelMatrix = (type, title, badge, isBare = false) => {
     const size = cuData.cuSize;
     let dataArray;
@@ -210,10 +394,41 @@ const FourPictureComparison = ({
     else if (type === 'resi') dataArray = cuData.resi;
     else dataArray = cuData.recon;
 
-    const maxW = isBare ? '560px' : (layoutMode === 'single' ? '600px' : '480px');
+    const targetDim = isBare
+      ? '100%'
+      : (layoutMode === 'single' ? 'min(100%, 310px)' : 'min(100%, 300px)');
+    const maxDim = isBare
+      ? '560px'
+      : (layoutMode === 'single' ? '310px' : '300px');
     const cellFontSize = size <= 4 ? '1.05rem' : size <= 8 ? '0.78rem' : '0.56rem';
 
-    const matrixGrid = (
+    const matrixGrid = size >= 32 ? (
+      <div
+        style={{
+          width: targetDim,
+          height: targetDim,
+          maxWidth: maxDim,
+          maxHeight: maxDim,
+          aspectRatio: '1 / 1',
+          margin: '0 auto',
+          boxSizing: 'border-box',
+          position: 'relative',
+          overflow: 'hidden',
+          background: 'var(--apple-canvas)',
+          border: '1px solid var(--apple-hairline)',
+        }}
+      >
+        <PixelMatrixCanvas
+          dataArray={dataArray}
+          size={size}
+          type={type}
+          resiGain={resiGain}
+          selectedCell={selectedCell}
+          onSelectCell={setSelectedCell}
+          cuData={cuData}
+        />
+      </div>
+    ) : (
       <div
         style={{
           display: 'grid',
@@ -221,12 +436,14 @@ const FourPictureComparison = ({
           gap: '1px',
           background: 'var(--apple-border)',
           padding: '1px',
-          maxWidth: maxW,
-          width: '100%',
+          maxWidth: maxDim,
+          maxHeight: maxDim,
+          width: targetDim,
+          height: targetDim,
           aspectRatio: '1 / 1',
           margin: '0 auto',
           boxSizing: 'border-box',
-          overflow: 'hidden'
+          overflow: 'hidden',
         }}
       >
         {dataArray.map((val, idx) => {
@@ -280,7 +497,7 @@ const FourPictureComparison = ({
                 textOverflow: 'clip',
                 boxSizing: 'border-box',
                 lineHeight: 1,
-                padding: '0 1px'
+                padding: '0 1px',
               }}
             >
               {showValues && size <= 16 && (type === 'resi' && val > 0 ? `+${val}` : val)}
@@ -305,7 +522,7 @@ const FourPictureComparison = ({
           height: '380px',
           minHeight: '380px',
           maxHeight: '380px',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
         }}
       >
         <div
@@ -321,10 +538,13 @@ const FourPictureComparison = ({
             fontWeight: 600,
             color: 'var(--apple-label)',
             height: '24px',
-            flexShrink: 0
+            flexShrink: 0,
+            gap: '0.5rem',
           }}
         >
-          <span>{title}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {title}
+          </span>
           <span
             style={{
               padding: '0.1rem 0.45rem',
@@ -334,6 +554,8 @@ const FourPictureComparison = ({
               border: '1px solid var(--apple-hairline)',
               borderRadius: '4px',
               fontWeight: 700,
+              flexShrink: 0,
+              whiteSpace: 'nowrap',
             }}
           >
             {badge}
@@ -344,7 +566,7 @@ const FourPictureComparison = ({
           style={{
             padding: '0.5rem',
             display: 'flex',
-            justifyContent: 'safe center',
+            justifyContent: 'center',
             alignItems: 'center',
             background: 'var(--apple-canvas)',
             width: '100%',
@@ -352,7 +574,7 @@ const FourPictureComparison = ({
             maxHeight: '340px',
             boxSizing: 'border-box',
             overflowX: 'auto',
-            overflowY: 'auto',
+            overflowY: 'hidden',
           }}
         >
           {matrixGrid}

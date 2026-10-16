@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { getPixelTrace, generateIntraPredictionBlock } from '../utils/intraTraceUtils';
+import { INTRA_PRED_ANGLES, INV_ANGLES, getPixelTrace, generateIntraPredictionBlock } from '../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../utils/metricsUtils';
 import {
@@ -276,6 +276,10 @@ const IntraPredictionFlow = ({
   const totalPixels = N * N;
   const refSpan = 2 * N + 1;
 
+  const angle = INTRA_PRED_ANGLES[selectedMode] ?? 0;
+  const invAngle = INV_ANGLES[angle] ?? 0;
+  const hasEdgeFilter = (channel === 'Y') && (selectedMode === 1 || selectedMode === 10 || selectedMode === 26) && N <= 16;
+
   // Extract raw reference perimeter samples (2N+1) from trace or source frame
   const { refTopRaw, refLeftRaw } = useMemo(() => {
     if (rawRefTop && rawRefTop.length >= refSpan && rawRefLeft && rawRefLeft.length >= refSpan) {
@@ -286,46 +290,50 @@ const IntraPredictionFlow = ({
     }
 
     if (activeFrameCanvas) {
-      const ctx = activeFrameCanvas.getContext('2d');
-      if (ctx) {
-        const ctuOriginX = (ctuX ?? 0) * 64;
-        const ctuOriginY = (ctuY ?? 0) * 64;
-        const rawX = selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX;
-        const rawY = selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY;
-        const absX = rawX >= ctuOriginX ? rawX : ctuOriginX + rawX;
-        const absY = rawY >= ctuOriginY ? rawY : ctuOriginY + rawY;
+      try {
+        const ctx = activeFrameCanvas.getContext('2d');
+        if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
+          const ctuOriginX = (ctuX ?? 0) * 64;
+          const ctuOriginY = (ctuY ?? 0) * 64;
+          const rawX = Number(selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX);
+          const rawY = Number(selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY);
+          const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
+          const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
 
-        const frameW = activeFrameCanvas.width;
-        const frameH = activeFrameCanvas.height;
+          const frameW = activeFrameCanvas.width;
+          const frameH = activeFrameCanvas.height;
 
-        const startX = Math.max(0, Math.min(frameW - 1, absX - 1));
-        const startY = Math.max(0, Math.min(frameH - 1, absY - 1));
-        const reqW = Math.min(frameW - startX, 2 * N + 2);
-        const reqH = Math.min(frameH - startY, 2 * N + 2);
+          const startX = Math.max(0, Math.min(frameW - 1, absX - 1));
+          const startY = Math.max(0, Math.min(frameH - 1, absY - 1));
+          const reqW = Math.max(1, Math.min(frameW - startX, 2 * N + 2));
+          const reqH = Math.max(1, Math.min(frameH - startY, 2 * N + 2));
 
-        const patch = ctx.getImageData(startX, startY, reqW, reqH);
-        const getLumaAt = (px, py) => {
-          const clampedX = Math.max(0, Math.min(reqW - 1, px - startX));
-          const clampedY = Math.max(0, Math.min(reqH - 1, py - startY));
-          const offset = (clampedY * reqW + clampedX) * 4;
-          const r = patch.data[offset];
-          const g = patch.data[offset + 1];
-          const b = patch.data[offset + 2];
-          return Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
-        };
+          const patch = ctx.getImageData(startX, startY, reqW, reqH);
+          const getLumaAt = (px, py) => {
+            const clampedX = Math.max(0, Math.min(reqW - 1, px - startX));
+            const clampedY = Math.max(0, Math.min(reqH - 1, py - startY));
+            const offset = (clampedY * reqW + clampedX) * 4;
+            const r = patch.data[offset] ?? 128;
+            const g = patch.data[offset + 1] ?? 128;
+            const b = patch.data[offset + 2] ?? 128;
+            return Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+          };
 
-        const corner = getLumaAt(absX - 1, absY - 1);
-        const topSamples = new Array(refSpan);
-        const leftSamples = new Array(refSpan);
-        topSamples[0] = corner;
-        leftSamples[0] = corner;
+          const corner = getLumaAt(absX - 1, absY - 1);
+          const topSamples = new Array(refSpan);
+          const leftSamples = new Array(refSpan);
+          topSamples[0] = corner;
+          leftSamples[0] = corner;
 
-        for (let i = 0; i < 2 * N; i++) {
-          topSamples[i + 1] = getLumaAt(absX + i, absY - 1);
-          leftSamples[i + 1] = getLumaAt(absX - 1, absY + i);
+          for (let i = 0; i < 2 * N; i++) {
+            topSamples[i + 1] = getLumaAt(absX + i, absY - 1);
+            leftSamples[i + 1] = getLumaAt(absX - 1, absY + i);
+          }
+
+          return { refTopRaw: topSamples, refLeftRaw: leftSamples };
         }
-
-        return { refTopRaw: topSamples, refLeftRaw: leftSamples };
+      } catch (err) {
+        console.warn('Could not extract perimeter from frame canvas:', err);
       }
     }
 
@@ -369,26 +377,37 @@ const IntraPredictionFlow = ({
       return rawOrg.slice(0, totalPixels);
     }
     if (activeFrameCanvas) {
-      const ctx = activeFrameCanvas.getContext('2d');
-      if (ctx) {
-        const ctuOriginX = (ctuX ?? 0) * 64;
-        const ctuOriginY = (ctuY ?? 0) * 64;
-        const rawX = selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX;
-        const rawY = selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY;
-        const absX = rawX >= ctuOriginX ? rawX : ctuOriginX + rawX;
-        const absY = rawY >= ctuOriginY ? rawY : ctuOriginY + rawY;
-        const safeX = Math.max(0, Math.min(activeFrameCanvas.width - N, absX));
-        const safeY = Math.max(0, Math.min(activeFrameCanvas.height - N, absY));
+      try {
+        const ctx = activeFrameCanvas.getContext('2d');
+        if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
+          const ctuOriginX = (ctuX ?? 0) * 64;
+          const ctuOriginY = (ctuY ?? 0) * 64;
+          const rawX = Number(selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX);
+          const rawY = Number(selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY);
+          const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
+          const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
+          const safeX = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.width - N), absX));
+          const safeY = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.height - N), absY));
+          const safeW = Math.max(1, Math.min(N, activeFrameCanvas.width - safeX));
+          const safeH = Math.max(1, Math.min(N, activeFrameCanvas.height - safeY));
 
-        const imgData = ctx.getImageData(safeX, safeY, N, N);
-        const luma = new Array(totalPixels);
-        for (let i = 0; i < totalPixels; i++) {
-          const r = imgData.data[i * 4];
-          const g = imgData.data[i * 4 + 1];
-          const b = imgData.data[i * 4 + 2];
-          luma[i] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
+          const luma = new Array(totalPixels);
+          for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) {
+              const srcX = Math.min(safeW - 1, x);
+              const srcY = Math.min(safeH - 1, y);
+              const offset = (srcY * safeW + srcX) * 4;
+              const r = imgData.data[offset] ?? 128;
+              const g = imgData.data[offset + 1] ?? 128;
+              const b = imgData.data[offset + 2] ?? 128;
+              luma[y * N + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+            }
+          }
+          return luma;
         }
-        return luma;
+      } catch (err) {
+        console.warn('Could not extract orgData from frame canvas:', err);
       }
     }
     if (rawOrg && rawOrg.length > 0) {

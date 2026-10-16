@@ -193,27 +193,38 @@ export function Step1FrameTree({
 
     // 2. Extract exact ITU-R BT.709 Luma samples from the source frame image at CU coordinates
     if (activeFrameCanvas) {
-      const ctx = activeFrameCanvas.getContext('2d');
-      if (ctx) {
-        const ctuOriginX = (ctuX ?? 0) * 64;
-        const ctuOriginY = (ctuY ?? 0) * 64;
-        const rawX = selectedCu.abs_x ?? selectedCu.x ?? 0;
-        const rawY = selectedCu.abs_y ?? selectedCu.y ?? 0;
-        const absX = rawX >= ctuOriginX ? rawX : ctuOriginX + rawX;
-        const absY = rawY >= ctuOriginY ? rawY : ctuOriginY + rawY;
-        const safeX = Math.max(0, Math.min(activeFrameCanvas.width - w, absX));
-        const safeY = Math.max(0, Math.min(activeFrameCanvas.height - h, absY));
+      try {
+        const ctx = activeFrameCanvas.getContext('2d');
+        if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
+          const ctuOriginX = (ctuX ?? 0) * 64;
+          const ctuOriginY = (ctuY ?? 0) * 64;
+          const rawX = Number(selectedCu.abs_x ?? selectedCu.x ?? 0);
+          const rawY = Number(selectedCu.abs_y ?? selectedCu.y ?? 0);
+          const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
+          const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
+          const safeX = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.width - w), absX));
+          const safeY = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.height - h), absY));
+          const safeW = Math.max(1, Math.min(w, activeFrameCanvas.width - safeX));
+          const safeH = Math.max(1, Math.min(h, activeFrameCanvas.height - safeY));
 
-        const imgData = ctx.getImageData(safeX, safeY, w, h);
-        const luma = new Array(targetCount);
-        for (let i = 0; i < targetCount; i++) {
-          const r = imgData.data[i * 4];
-          const g = imgData.data[i * 4 + 1];
-          const b = imgData.data[i * 4 + 2];
-          // ITU-R BT.709 Full-Range Luma Y = 0.2126*R + 0.7152*G + 0.0722*B
-          luma[i] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
+          const luma = new Array(targetCount);
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const srcX = Math.min(safeW - 1, x);
+              const srcY = Math.min(safeH - 1, y);
+              const offset = (srcY * safeW + srcX) * 4;
+              const r = imgData.data[offset] ?? 128;
+              const g = imgData.data[offset + 1] ?? 128;
+              const b = imgData.data[offset + 2] ?? 128;
+              // ITU-R BT.709 Full-Range Luma Y = 0.2126*R + 0.7152*G + 0.0722*B
+              luma[y * w + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+            }
+          }
+          return { samples: luma, sourceProvenance: 'frame' };
         }
-        return { samples: luma, sourceProvenance: 'frame' };
+      } catch (err) {
+        console.warn('Could not extract CU samples from frame canvas:', err);
       }
     }
 
