@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { getIntraModeInfo, getResidualColorAndTextColor } from '../utils/colorUtils';
 import { calculatePsnr } from '../utils/metricsUtils';
+import { generateIntraPredictionBlock } from '../utils/intraTraceUtils';
 import { Button, SegmentedControl, Badge } from './apple';
 
 /**
@@ -262,10 +263,86 @@ const FourPictureComparison = ({
     };
   }, []);
 
+  const reconImgUrl = useMemo(() => {
+    if (jobId) {
+      return `${API_BASE_URL}/api/v1/jobs/${jobId}/images/reconstructed`;
+    }
+    return imageSrc;
+  }, [jobId, imageSrc, API_BASE_URL]);
+
+  const residualImgUrl = useMemo(() => {
+    if (jobId) {
+      return `${API_BASE_URL}/api/v1/jobs/${jobId}/images/residual?gain=${resiGain}`;
+    }
+    return null;
+  }, [jobId, resiGain, API_BASE_URL]);
+
+  // Maintain offscreen canvas for source frame (for extracting orig luma and perimeter)
+  const [origFrameCanvas, setOrigFrameCanvas] = useState(null);
+  useEffect(() => {
+    if (!imageSrc) return;
+    let isCurrent = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!isCurrent) return;
+      const cvs = document.createElement('canvas');
+      const w = imageDims?.width || img.naturalWidth || 640;
+      const h = imageDims?.height || img.naturalHeight || 360;
+      cvs.width = w;
+      cvs.height = h;
+      const ctx = cvs.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, w, h);
+        setOrigFrameCanvas(cvs);
+      }
+    };
+    img.src = imageSrc;
+    return () => {
+      isCurrent = false;
+    };
+  }, [imageSrc, imageDims?.width, imageDims?.height]);
+
+  // Maintain offscreen canvas for reconstructed frame (for extracting recon luma and reconstructed perimeter)
+  const [reconFrameCanvas, setReconFrameCanvas] = useState(null);
+  useEffect(() => {
+    if (!reconImgUrl) return;
+    let isCurrent = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!isCurrent) return;
+      const cvs = document.createElement('canvas');
+      const w = imageDims?.width || img.naturalWidth || 640;
+      const h = imageDims?.height || img.naturalHeight || 360;
+      cvs.width = w;
+      cvs.height = h;
+      const ctx = cvs.getContext('2d');
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, 0, 0, w, h);
+        setReconFrameCanvas(cvs);
+      }
+    };
+    img.src = reconImgUrl;
+    return () => {
+      isCurrent = false;
+    };
+  }, [reconImgUrl, imageDims?.width, imageDims?.height]);
+
   // Extract CU Data Matrices
   const cuData = useMemo(() => {
     const cuSize = selectedCu?.width || selectedCu?.w || currentMode?.cu_size || 8;
     const numPixels = cuSize * cuSize;
+    const refSpan = 2 * cuSize + 1;
+
+    const ctuOriginX = (ctuX ?? 0) * 64;
+    const ctuOriginY = (ctuY ?? 0) * 64;
+    const rawX = Number(selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX);
+    const rawY = Number(selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY);
+    const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
+    const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
 
     // Check if CP_05 RECON_PICTURE telemetry has matching reconstructed block
     let recoFromTelemetry = null;
@@ -273,8 +350,8 @@ const FourPictureComparison = ({
       const cuX = selectedCu?.x ?? 0;
       const cuY = selectedCu?.y ?? 0;
       const match = reconPictureData.find(e =>
-        (e.cu_x === cuX || e.cu_x === ((ctuX ?? 0) * 64 + cuX)) &&
-        (e.cu_y === cuY || e.cu_y === ((ctuY ?? 0) * 64 + cuY)) &&
+        (e.cu_x === cuX || e.cu_x === (ctuOriginX + cuX)) &&
+        (e.cu_y === cuY || e.cu_y === (ctuOriginY + cuY)) &&
         (e.cu_w === cuSize || e.cu_size === cuSize)
       ) || reconPictureData.find(e => e.cu_w === cuSize || e.cu_size === cuSize);
       if (match?.reco_y && match.reco_y.length >= numPixels) {
@@ -282,34 +359,180 @@ const FourPictureComparison = ({
       }
     }
 
-    let pred = currentMode?.pred_data;
-    if (!Array.isArray(pred) || pred.length < numPixels) {
-      pred = new Array(numPixels).fill(128);
-    } else if (pred.length > numPixels) {
-      pred = pred.slice(0, numPixels);
+    // 1. Extract or derive Original Source Samples (S)
+    let orig = null;
+    if (Array.isArray(currentMode?.orig_data) && currentMode.orig_data.length >= numPixels) {
+      orig = currentMode.orig_data.slice(0, numPixels);
+    } else if (origFrameCanvas) {
+      try {
+        const ctx = origFrameCanvas.getContext('2d');
+        if (ctx && origFrameCanvas.width > 0 && origFrameCanvas.height > 0) {
+          const frameW = origFrameCanvas.width;
+          const frameH = origFrameCanvas.height;
+          const safeX = Math.max(0, Math.min(Math.max(0, frameW - cuSize), absX));
+          const safeY = Math.max(0, Math.min(Math.max(0, frameH - cuSize), absY));
+          const safeW = Math.max(1, Math.min(cuSize, frameW - safeX));
+          const safeH = Math.max(1, Math.min(cuSize, frameH - safeY));
+
+          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
+          orig = new Array(numPixels);
+          for (let y = 0; y < cuSize; y++) {
+            for (let x = 0; x < cuSize; x++) {
+              const srcX = Math.min(safeW - 1, x);
+              const srcY = Math.min(safeH - 1, y);
+              const offset = (srcY * safeW + srcX) * 4;
+              const r = imgData.data[offset] ?? 128;
+              const g = imgData.data[offset + 1] ?? 128;
+              const b = imgData.data[offset + 2] ?? 128;
+              orig[y * cuSize + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not extract orig from origFrameCanvas in FourPictureComparison:', err);
+      }
+    } else if (Array.isArray(currentMode?.orig_data) && currentMode.orig_data.length > 0) {
+      const srcDim = Math.round(Math.sqrt(currentMode.orig_data.length)) || 8;
+      orig = new Array(numPixels);
+      for (let y = 0; y < cuSize; y++) {
+        for (let x = 0; x < cuSize; x++) {
+          const sx = Math.min(srcDim - 1, Math.floor((x / cuSize) * srcDim));
+          const sy = Math.min(srcDim - 1, Math.floor((y / cuSize) * srcDim));
+          orig[y * cuSize + x] = currentMode.orig_data[sy * srcDim + sx] ?? 128;
+        }
+      }
     }
 
-    let resi = currentMode?.resi_data;
-    if (!Array.isArray(resi) || resi.length < numPixels) {
-      resi = new Array(numPixels).fill(0);
-    } else if (resi.length > numPixels) {
-      resi = resi.slice(0, numPixels);
+    // 2. Extract or synthesize Perimeter Reference Samples (refTop, refLeft)
+    let refTop = currentMode?.ref_top;
+    let refLeft = currentMode?.ref_left;
+    if ((!Array.isArray(refTop) || refTop.length < refSpan || !Array.isArray(refLeft) || refLeft.length < refSpan) && (reconFrameCanvas || origFrameCanvas)) {
+      const refCanvas = reconFrameCanvas || origFrameCanvas;
+      try {
+        const ctx = refCanvas.getContext('2d');
+        if (ctx && refCanvas.width > 0 && refCanvas.height > 0) {
+          const frameW = refCanvas.width;
+          const frameH = refCanvas.height;
+          const startX = Math.max(0, Math.min(frameW - 1, absX - 1));
+          const startY = Math.max(0, Math.min(frameH - 1, absY - 1));
+          const reqW = Math.max(1, Math.min(frameW - startX, 2 * cuSize + 2));
+          const reqH = Math.max(1, Math.min(frameH - startY, 2 * cuSize + 2));
+          const patch = ctx.getImageData(startX, startY, reqW, reqH);
+
+          const getLumaAt = (px, py) => {
+            const clampedX = Math.max(0, Math.min(reqW - 1, px - startX));
+            const clampedY = Math.max(0, Math.min(reqH - 1, py - startY));
+            const offset = (clampedY * reqW + clampedX) * 4;
+            const r = patch.data[offset] ?? 128;
+            const g = patch.data[offset + 1] ?? 128;
+            const b = patch.data[offset + 2] ?? 128;
+            return Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+          };
+
+          const corner = getLumaAt(absX - 1, absY - 1);
+          const topSamples = new Array(refSpan);
+          const leftSamples = new Array(refSpan);
+          topSamples[0] = corner;
+          leftSamples[0] = corner;
+
+          for (let i = 0; i < 2 * cuSize; i++) {
+            topSamples[i + 1] = getLumaAt(absX + i, absY - 1);
+            leftSamples[i + 1] = getLumaAt(absX - 1, absY + i);
+          }
+          refTop = topSamples;
+          refLeft = leftSamples;
+        }
+      } catch (err) {
+        console.warn('Could not extract perimeter from canvas in FourPictureComparison:', err);
+      }
     }
 
-    let orig = currentMode?.orig_data;
+    if (!Array.isArray(refTop) || refTop.length < refSpan) {
+      const srcTop = Array.isArray(refTop) && refTop.length > 0 ? refTop : [128];
+      const fallbackTop = new Array(refSpan);
+      for (let i = 0; i < refSpan; i++) {
+        const idx = Math.min(srcTop.length - 1, Math.floor((i / refSpan) * srcTop.length));
+        fallbackTop[i] = srcTop[idx] ?? 128;
+      }
+      refTop = fallbackTop;
+    }
+    if (!Array.isArray(refLeft) || refLeft.length < refSpan) {
+      const srcLeft = Array.isArray(refLeft) && refLeft.length > 0 ? refLeft : [128];
+      const fallbackLeft = new Array(refSpan);
+      for (let i = 0; i < refSpan; i++) {
+        const idx = Math.min(srcLeft.length - 1, Math.floor((i / refSpan) * srcLeft.length));
+        fallbackLeft[i] = srcLeft[idx] ?? 128;
+      }
+      refLeft = fallbackLeft;
+    }
+
+    // 3. Extract or synthesize Spatial Predictor Matrix (P)
+    let pred = null;
+    if (Array.isArray(currentMode?.pred_data) && currentMode.pred_data.length >= numPixels) {
+      pred = currentMode.pred_data.slice(0, numPixels);
+    } else {
+      const mode = currentMode?.mode ?? 0;
+      const predBlock = generateIntraPredictionBlock(mode, cuSize, refTop, refLeft);
+      if (Array.isArray(predBlock) && predBlock.length >= numPixels) {
+        pred = predBlock.slice(0, numPixels);
+      } else {
+        pred = new Array(numPixels).fill(128);
+      }
+    }
+
+    // If orig was not available yet, fallback to pred
     if (!Array.isArray(orig) || orig.length < numPixels) {
-      orig = pred.map((p, idx) => Math.max(0, Math.min(255, p + resi[idx])));
-    } else if (orig.length > numPixels) {
-      orig = orig.slice(0, numPixels);
+      orig = pred.map(p => p);
     }
 
+    // 4. Extract or derive Residual Sample Matrix (R = S - P)
+    let resi = null;
+    if (Array.isArray(currentMode?.resi_data) && currentMode.resi_data.length >= numPixels) {
+      resi = currentMode.resi_data.slice(0, numPixels);
+    } else {
+      resi = orig.map((s, idx) => s - (pred[idx] ?? 128));
+    }
+
+    // 5. Extract or derive Reconstructed Sample Matrix (S')
     let recon = recoFromTelemetry || currentMode?.recon_data || currentMode?.reco_y;
+    if (Array.isArray(recon) && recon.length >= numPixels) {
+      recon = recon.slice(0, numPixels);
+    } else if (reconFrameCanvas) {
+      try {
+        const ctx = reconFrameCanvas.getContext('2d');
+        if (ctx && reconFrameCanvas.width > 0 && reconFrameCanvas.height > 0) {
+          const frameW = reconFrameCanvas.width;
+          const frameH = reconFrameCanvas.height;
+          const safeX = Math.max(0, Math.min(Math.max(0, frameW - cuSize), absX));
+          const safeY = Math.max(0, Math.min(Math.max(0, frameH - cuSize), absY));
+          const safeW = Math.max(1, Math.min(cuSize, frameW - safeX));
+          const safeH = Math.max(1, Math.min(cuSize, frameH - safeY));
+
+          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
+          recon = new Array(numPixels);
+          for (let y = 0; y < cuSize; y++) {
+            for (let x = 0; x < cuSize; x++) {
+              const srcX = Math.min(safeW - 1, x);
+              const srcY = Math.min(safeH - 1, y);
+              const offset = (srcY * safeW + srcX) * 4;
+              const r = imgData.data[offset] ?? 128;
+              const g = imgData.data[offset + 1] ?? 128;
+              const b = imgData.data[offset + 2] ?? 128;
+              recon[y * cuSize + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not extract recon from reconFrameCanvas in FourPictureComparison:', err);
+      }
+    }
+
     if (!Array.isArray(recon) || recon.length < numPixels) {
-      // True HEVC mathematical reconstruction: S' = Clip3(0, 255, P + R')
+      // True HEVC mathematical reconstruction fallback: S' = Clip3(0, 255, P + R')
       recon = orig.map((o, idx) => {
-        const r = resi[idx];
+        const r = resi[idx] ?? 0;
         const quantR = Math.round(r / 4) * 4;
-        return Math.max(0, Math.min(255, pred[idx] + quantR));
+        return Math.max(0, Math.min(255, (pred[idx] ?? 128) + quantR));
       });
     } else if (recon.length > numPixels) {
       recon = recon.slice(0, numPixels);
@@ -357,25 +580,11 @@ const FourPictureComparison = ({
       maxAbsErr,
       varReduction,
     };
-  }, [currentMode, selectedCu, ctuX, ctuY, reconPictureData]);
+  }, [currentMode, selectedCu, ctuX, ctuY, reconPictureData, origFrameCanvas, reconFrameCanvas]);
 
   const modeInfo = useMemo(() => {
     return currentMode ? getIntraModeInfo(currentMode.mode) : null;
   }, [currentMode]);
-
-  const reconImgUrl = useMemo(() => {
-    if (jobId) {
-      return `${API_BASE_URL}/api/v1/jobs/${jobId}/images/reconstructed`;
-    }
-    return imageSrc;
-  }, [jobId, imageSrc, API_BASE_URL]);
-
-  const residualImgUrl = useMemo(() => {
-    if (jobId) {
-      return `${API_BASE_URL}/api/v1/jobs/${jobId}/images/residual?gain=${resiGain}`;
-    }
-    return null;
-  }, [jobId, resiGain, API_BASE_URL]);
 
   const getFrameSrc = (type) => {
     if (type === 'orig') return imageSrc;
@@ -981,38 +1190,45 @@ const FourPictureComparison = ({
       </div>
 
       {/* Selected Cell Inspector (Deliberate click inspection) */}
-      {selectedCell && (
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: '0.45rem 0.85rem',
-            background: 'var(--apple-canvas)',
-            border: '1px solid var(--apple-hairline)',
-            fontFamily: 'JetBrains Mono',
-            fontSize: '0.75rem',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700 }}>
-              Sample ({selectedCell.x}, {selectedCell.y})
-            </span>
-            <span>Original: <strong>{selectedCell.orig}</strong></span>
-            <span>Prediction: <strong>{selectedCell.pred}</strong></span>
-            <span>Residual: <strong>{selectedCell.resi > 0 ? `+${selectedCell.resi}` : selectedCell.resi}</strong></span>
-            <span>Reconstructed: <strong>{selectedCell.recon}</strong></span>
-            <span>Error: <strong>{Math.abs(selectedCell.orig - selectedCell.recon)}</strong></span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSelectedCell(null)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--apple-label-secondary)', fontSize: '0.7rem' }}
+      {selectedCell && (() => {
+        const idx = selectedCell.y * cuData.cuSize + selectedCell.x;
+        const curOrig = (cuData.orig && cuData.orig[idx] !== undefined) ? cuData.orig[idx] : selectedCell.orig;
+        const curPred = (cuData.pred && cuData.pred[idx] !== undefined) ? cuData.pred[idx] : selectedCell.pred;
+        const curResi = (cuData.resi && cuData.resi[idx] !== undefined) ? cuData.resi[idx] : selectedCell.resi;
+        const curRecon = (cuData.recon && cuData.recon[idx] !== undefined) ? cuData.recon[idx] : selectedCell.recon;
+        return (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0.45rem 0.85rem',
+              background: 'var(--apple-canvas)',
+              border: '1px solid var(--apple-hairline)',
+              fontFamily: 'JetBrains Mono',
+              fontSize: '0.75rem',
+            }}
           >
-            ✕
-          </button>
-        </div>
-      )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700 }}>
+                Sample ({selectedCell.x}, {selectedCell.y})
+              </span>
+              <span>Original: <strong>{curOrig}</strong></span>
+              <span>Prediction: <strong>{curPred}</strong></span>
+              <span>Residual: <strong>{curResi > 0 ? `+${curResi}` : curResi}</strong></span>
+              <span>Reconstructed: <strong>{curRecon}</strong></span>
+              <span>Error: <strong>{Math.abs(curOrig - curRecon)}</strong></span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedCell(null)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--apple-label-secondary)', fontSize: '0.7rem' }}
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })()}
 
       {/* Main Viewport Content */}
       {layoutMode === 'split' ? (
