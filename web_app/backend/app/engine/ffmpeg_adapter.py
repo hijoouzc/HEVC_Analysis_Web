@@ -13,7 +13,8 @@ class FFmpegAdapter:
         input_image: Path,
         output_yuv: Path,
         roi: ROICoordinates,
-        scale_mode: str = "native"
+        scale_mode: str = "native",
+        frames: int = 1
     ) -> FrameMetadata:
         if not input_image.exists():
             raise InvalidInputError(f"Input image not found: {input_image}")
@@ -53,19 +54,31 @@ class FFmpegAdapter:
         max_ctu_x = max(0, num_ctu_w - 1)
         max_ctu_y = max(0, num_ctu_h - 1)
         
-        target_ctu_x = min(max(0, roi.ctu_x), max_ctu_x)
-        target_ctu_y = min(max(0, roi.ctu_y), max_ctu_y)
-        
-        # Update ROI in-place with clamped coordinates
-        roi.ctu_x = target_ctu_x
-        roi.ctu_y = target_ctu_y
+        # When all_ctus or -1 is requested, preserve -1 to dump full frame
+        if getattr(roi, "all_ctus", False) or roi.ctu_x < 0 or roi.ctu_y < 0:
+            roi.all_ctus = True
+            roi.ctu_x = -1
+            roi.ctu_y = -1
+        else:
+            roi.ctu_x = min(max(0, roi.ctu_x), max_ctu_x)
+            roi.ctu_y = min(max(0, roi.ctu_y), max_ctu_y)
         
         output_yuv.parent.mkdir(parents=True, exist_ok=True)
         
-        cmd = ["ffmpeg", "-y", "-i", str(input_image)]
-        if calc_w != orig_w or calc_h != orig_h:
-            cmd.extend(["-vf", f"scale={calc_w}:{calc_h}"])
-        cmd.extend(["-pix_fmt", "yuv420p", str(output_yuv)])
+        cmd = ["ffmpeg", "-y"]
+        if frames > 1:
+            cmd.extend(["-loop", "1", "-i", str(input_image), "-vframes", str(frames)])
+        else:
+            cmd.extend(["-i", str(input_image)])
+        cmd.extend([
+            "-vf", f"scale={calc_w}:{calc_h}:in_color_matrix=auto:out_color_matrix=bt709",
+            "-colorspace", "bt709",
+            "-color_primaries", "bt709",
+            "-color_trc", "bt709",
+            "-color_range", "tv",
+            "-pix_fmt", "yuv420p",
+            str(output_yuv)
+        ])
         
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -108,6 +121,7 @@ class FFmpegAdapter:
             "-s", f"{width}x{height}",
             "-pix_fmt", "yuv420p",
             "-i", str(yuv_file),
+            "-vf", "scale=in_color_matrix=bt709:out_color_matrix=bt709",
             "-vframes", "1",
             str(png_output)
         ]

@@ -379,7 +379,8 @@ def build_intra_pipeline_data(
         min_cost = float("inf")
         min_cand_idx = -1
         for idx, rdo_item in enumerate(full_rdo_events):
-            cost = float(rdo_item.get("cost_rdo", float("inf")))
+            cost_val = rdo_item.get("cost_rdo") if rdo_item.get("cost_rdo") is not None else rdo_item.get("cost")
+            cost = float(cost_val) if cost_val is not None else float("inf")
             if cost < min_cost:
                 min_cost = cost
                 min_cand_idx = idx
@@ -388,8 +389,10 @@ def build_intra_pipeline_data(
             c_mode = rdo_item.get("mode", 0)
             m_data = mode_map.get(c_mode)
             dir_name = m_data.direction_name if m_data else get_intra_mode_hevc_info(c_mode)[1]
-            rdo_cost = float(rdo_item.get("cost_rdo", 0.0))
-            rdo_sse = int(rdo_item.get("sse", 0))
+            cost_val = rdo_item.get("cost_rdo") if rdo_item.get("cost_rdo") is not None else rdo_item.get("cost", 0.0)
+            rdo_cost = float(cost_val) if cost_val is not None else 0.0
+            sse_val = rdo_item.get("sse") if rdo_item.get("sse") is not None else rdo_item.get("dist", 0)
+            rdo_sse = int(sse_val) if sse_val is not None else 0
             rdo_bits = float(rdo_item.get("bits", 0.0))
             rdo_rate_est = float(rdo_item.get("rdo_rate_est", rdo_bits))
             cand_rank = int(rdo_item.get("cand_rank", rdo_item.get("rank_rdo", idx + 1)))
@@ -408,7 +411,10 @@ def build_intra_pipeline_data(
             elif (cand_rank, c_mode, qp or 0) in tu_by_tuple:
                 matched_tus = tu_by_tuple[(cand_rank, c_mode, qp or 0)]
 
-            pred_data = assemble_pu_pred(cu_x or 0, cu_y or 0, cu_size, matched_tus) if matched_tus else []
+            pred_data = assemble_pu_pred(cu_x or 0, cu_y or 0, cu_size, matched_tus) if matched_tus else (m_data.pred_data if m_data else [])
+
+            reco = rdo_item.get("reconstructed_data") or rdo_item.get("reco_data", [])
+            resi = rdo_item.get("reconstructed_resi") or rdo_item.get("resi_data", [])
 
             rdo_details.append(RdoCandidateDetail(
                 mode=c_mode,
@@ -424,8 +430,8 @@ def build_intra_pipeline_data(
                 trial_id=trial_id,
                 tu_split=(len(matched_tus) > 1),
                 pred_data=pred_data or [],
-                reconstructed_data=rdo_item.get("reconstructed_data", []),
-                reconstructed_resi=rdo_item.get("reconstructed_resi", []),
+                reconstructed_data=reco,
+                reconstructed_resi=resi,
                 data_source="HM_TRACE",
                 is_fallback=False,
                 is_winner=is_winner

@@ -127,7 +127,7 @@ export default function Step3CandidatesView({
             Top {kThreshold} (RMD) ∪ 3 MPMs = {candidatePool.length} Candidates
           </Badge>
           <span style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono' }}>
-            [H.265 Section 8.4.2]
+            [Candidate Pool Derivation]
           </span>
         </div>
 

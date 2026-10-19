@@ -261,7 +261,7 @@ export function Step1FrameTree({
         processDesc=""
         outputItems={[`CU ${cuSizeStr}`]}
         hmFunction="TEncCu::xCompressCU"
-        specReference="ITU-T H.265 Section 6.5.3 (CTU Division into Coding Units)"
+        specReference="CTU Division into Coding Units"
         formula="CU_size = MaxCUSize >> depth (depth in [0..3], sizes 64, 32, 16, 8)"
       />
 

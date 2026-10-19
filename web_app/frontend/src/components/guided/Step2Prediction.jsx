@@ -60,7 +60,7 @@ export function Step2Prediction({
         processDesc=""
         outputItems={[`Pred P (${activeModeName})`]}
         hmFunction="TEncSearch::estIntraPredLumaQT"
-        specReference="ITU-T H.265 Section 8.4.4 (Intra Prediction Modes)"
+        specReference="Intra Angular Prediction & MPM Derivation"
         formula="Cost_RMD = SATD + ModeBits * sqrt(lambda_firstPass)"
       />
 

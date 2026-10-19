@@ -76,8 +76,16 @@
 
   --apple-label: var(--label);
   --apple-label-primary: var(--label);
-  --apple-label-secondary: var(--label-2);
   --apple-label-tertiary: var(--label-3);
+  --apple-label-quaternary: var(--label-4);
+  --apple-secondary-label: var(--label-2);
+  --apple-label-2: var(--label-2);
+  --apple-label-3: var(--label-3);
+  --fill-1: var(--fill);
+  --apple-fill-quaternary: var(--fill-4);
+  --window-bg: var(--apple-surface);
+  --apple-card-bg: var(--apple-surface);
+  --font-system: var(--font-sans);
 
   --apple-hairline: var(--separator);
   --apple-hairline-strong: rgba(0, 0, 0, 0.16);
@@ -135,8 +143,16 @@
 
   --apple-label: var(--label);
   --apple-label-primary: var(--label);
-  --apple-label-secondary: var(--label-2);
   --apple-label-tertiary: var(--label-3);
+  --apple-label-quaternary: var(--label-4);
+  --apple-secondary-label: var(--label-2);
+  --apple-label-2: var(--label-2);
+  --apple-label-3: var(--label-3);
+  --fill-1: var(--fill);
+  --apple-fill-quaternary: var(--fill-4);
+  --window-bg: var(--apple-surface);
+  --apple-card-bg: var(--apple-surface);
+  --font-system: var(--font-sans);
 
   --apple-hairline: var(--separator);
   --apple-hairline-strong: rgba(255, 255, 255, 0.20);

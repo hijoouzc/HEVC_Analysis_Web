@@ -15,6 +15,8 @@ class JobInfo(BaseModel):
     
     roi: ROICoordinates
     frame: FrameMetadata
+    profile: str = Field(default="all_intra", description="Encoder profile (all_intra, low_delay_p, random_access)")
+    frames: int = Field(default=1, ge=1, le=10, description="Number of frames to encode")
     
     best_mode: int | None = None
     best_cost: float | None = None

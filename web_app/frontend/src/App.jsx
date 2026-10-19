@@ -82,6 +82,12 @@ function App() {
     setSelectedCu,
     ctuPartitionsMap,
     hasDesync,
+    allCtus,
+    setAllCtus,
+    profile,
+    setProfile,
+    frames,
+    setFrames,
     API_BASE_URL,
     handleFileChange,
     handleUpload,
@@ -329,6 +335,12 @@ function App() {
             imagePreview={imagePreview}
             partitionData={partitionData}
             ctuPartitionsMap={ctuPartitionsMap}
+            allCtus={allCtus}
+            setAllCtus={setAllCtus}
+            profile={profile}
+            setProfile={setProfile}
+            frames={frames}
+            setFrames={setFrames}
             onFileChange={handleFileChange}
             onSelectCTU={handleSelectCTU}
             onReAnalyze={(targetX, targetY) => {

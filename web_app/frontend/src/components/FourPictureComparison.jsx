@@ -19,6 +19,22 @@ const PixelMatrixCanvas = ({
   cuData,
 }) => {
   const canvasRef = useRef(null);
+  const [isDarkTheme, setIsDarkTheme] = useState(() => {
+    if (typeof document === 'undefined') return false;
+    return document.documentElement.classList.contains('dark') ||
+           document.documentElement.getAttribute('data-theme') === 'dark';
+  });
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const observer = new MutationObserver(() => {
+      const dark = document.documentElement.classList.contains('dark') ||
+                   document.documentElement.getAttribute('data-theme') === 'dark';
+      setIsDarkTheme(dark);
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -35,6 +51,11 @@ const PixelMatrixCanvas = ({
     const totalPixels = size * size;
     const dataLen = dataArray.length;
 
+    // Theme-aware base slate: #2C2C2E (44, 44, 46) for dark, #F1F5F9 (241, 245, 249) for light
+    const baseR = isDarkTheme ? 44 : 241;
+    const baseG = isDarkTheme ? 44 : 245;
+    const baseB = isDarkTheme ? 46 : 249;
+
     for (let i = 0; i < totalPixels; i++) {
       const val = i < dataLen ? (dataArray[i] ?? 0) : 0;
       const off = i * 4;
@@ -42,25 +63,24 @@ const PixelMatrixCanvas = ({
       if (type === 'resi') {
         const v = Math.round(val) * resiGain;
         if (v === 0) {
-          // Neutral slate (#F1F5F9)
-          data[off] = 241;
-          data[off + 1] = 245;
-          data[off + 2] = 249;
+          data[off] = baseR;
+          data[off + 1] = baseG;
+          data[off + 2] = baseB;
           data[off + 3] = 255;
         } else {
           const norm = Math.min(1, Math.max(0, Math.abs(v) / 128));
           const alpha = 0.20 + 0.80 * norm;
           if (v > 0) {
-            // Under-predicted: Crimson (225, 29, 72) over neutral slate
-            data[off] = Math.round(225 * alpha + 241 * (1 - alpha));
-            data[off + 1] = Math.round(29 * alpha + 245 * (1 - alpha));
-            data[off + 2] = Math.round(72 * alpha + 249 * (1 - alpha));
+            // Under-predicted: Crimson (225, 29, 72) over theme neutral
+            data[off] = Math.round(225 * alpha + baseR * (1 - alpha));
+            data[off + 1] = Math.round(29 * alpha + baseG * (1 - alpha));
+            data[off + 2] = Math.round(72 * alpha + baseB * (1 - alpha));
             data[off + 3] = 255;
           } else {
-            // Over-predicted: Blue (2, 132, 199) over neutral slate
-            data[off] = Math.round(2 * alpha + 241 * (1 - alpha));
-            data[off + 1] = Math.round(132 * alpha + 245 * (1 - alpha));
-            data[off + 2] = Math.round(199 * alpha + 249 * (1 - alpha));
+            // Over-predicted: Blue (2, 132, 199) over theme neutral
+            data[off] = Math.round(2 * alpha + baseR * (1 - alpha));
+            data[off + 1] = Math.round(132 * alpha + baseG * (1 - alpha));
+            data[off + 2] = Math.round(199 * alpha + baseB * (1 - alpha));
             data[off + 3] = 255;
           }
         }
@@ -74,7 +94,7 @@ const PixelMatrixCanvas = ({
     }
 
     ctx.putImageData(imgData, 0, 0);
-  }, [dataArray, size, type, resiGain]);
+  }, [dataArray, size, type, resiGain, isDarkTheme]);
 
   const handleClick = (e) => {
     const canvas = canvasRef.current;
@@ -590,7 +610,7 @@ const FourPictureComparison = ({
     if (type === 'orig') return imageSrc;
     if (type === 'recon') return reconImgUrl;
     if (type === 'resi') return residualImgUrl || imageSrc;
-    if (type === 'pred') return reconImgUrl;
+    if (type === 'pred') return null;
     return imageSrc;
   };
 
@@ -863,23 +883,57 @@ const FourPictureComparison = ({
             }
           }}
         >
-          <img
-            src={imgSrc}
-            alt={title}
-            onError={(e) => {
-              if (e.currentTarget.src !== imageSrc && imageSrc) {
-                e.currentTarget.src = imageSrc;
-              }
-            }}
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'contain',
-              display: 'block',
-              imageRendering: 'pixelated',
-              filter: type === 'resi' && !residualImgUrl ? 'contrast(300%) invert(20%)' : 'none',
-            }}
-          />
+          {type === 'pred' ? (
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: '24px',
+                textAlign: 'center',
+                background: 'var(--apple-subtle)',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  color: 'var(--apple-blue)',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  background: 'var(--apple-blue-subtle)',
+                }}
+              >
+                [Scope: CU-Level Only]
+              </span>
+              <span style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', maxWidth: '260px' }}>
+                Select a CU to inspect discrete spatial prediction.
+              </span>
+            </div>
+          ) : (
+            <img
+              src={imgSrc}
+              alt={title}
+              onError={(e) => {
+                if (e.currentTarget.src !== imageSrc && imageSrc) {
+                  e.currentTarget.src = imageSrc;
+                }
+              }}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block',
+                imageRendering: 'pixelated',
+                filter: type === 'resi' && !residualImgUrl ? 'contrast(300%) invert(20%)' : 'none',
+              }}
+            />
+          )}
 
           {ctuX !== null && ctuY !== null && (
             <div

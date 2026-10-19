@@ -15,7 +15,14 @@ class JobManager:
         self._jobs: dict[str, JobInfo] = {}
         self._lock = asyncio.Lock()
         
-    async def create_job(self, roi: ROICoordinates, frame: FrameMetadata, job_id: str | None = None) -> JobInfo:
+    async def create_job(
+        self,
+        roi: ROICoordinates,
+        frame: FrameMetadata,
+        job_id: str | None = None,
+        profile: str = "all_intra",
+        frames: int = 1
+    ) -> JobInfo:
         async with self._lock:
             # Memory guard: Auto-prune oldest completed/failed jobs if limit is reached
             if len(self._jobs) >= self._MAX_JOBS:
@@ -26,13 +33,19 @@ class JobManager:
                 to_delete = removable[:(len(self._jobs) - self._PRUNE_TARGET)]
                 for jid in to_delete:
                     del self._jobs[jid]
+                    try:
+                        session_manager.cleanup_session(jid)
+                    except Exception:
+                        pass
 
             job_id = session_manager.create_session(job_id)
             job = JobInfo(
                 job_id=job_id,
                 status=JobStatus.PENDING,
                 roi=roi,
-                frame=frame
+                frame=frame,
+                profile=profile,
+                frames=frames
             )
             self._jobs[job_id] = job
             return job
@@ -43,6 +56,10 @@ class JobManager:
             if not job:
                 raise JobNotFoundError(job_id)
             return job
+
+    def get_job_sync(self, job_id: str) -> JobInfo | None:
+        """Non-blocking synchronous job lookup for stage services"""
+        return self._jobs.get(job_id)
 
     async def update_status(self, job_id: str, status: JobStatus, error_message: str | None = None):
         async with self._lock:

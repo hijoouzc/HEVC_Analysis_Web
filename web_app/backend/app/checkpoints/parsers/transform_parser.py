@@ -48,6 +48,7 @@ class TransformQuantParser(BaseCheckpointParser):
             dct_coeff=dct,
             quant_coeff=quant,
             sig_coeff_count=raw_data.get("sig_coeff_count", sum(1 for q in quant if q != 0)),
+            cbf=raw_data.get("cbf", raw_data.get("sig_coeff_count", 0) > 0),
             dc_coeff=dc_val,
             energy_compaction_ratio=energy_ratio,
             sparsity_ratio=sparsity,

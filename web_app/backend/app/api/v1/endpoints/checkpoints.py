@@ -12,7 +12,9 @@ from app.domain.models.checkpoint import (
     ReconPictureCheckpoint,
     InLoopFilterFullResponse,
     CabacEntropyFullResponse,
-    CuRdoDecisionCheckpoint
+    CuRdoDecisionCheckpoint,
+    HevcSequenceMetadata,
+    CUInspectionResponse
 )
 from app.domain.exceptions import JobNotFoundError, InvalidInputError
 from app.services.analysis_service import analysis_service
@@ -46,11 +48,12 @@ async def get_job_stages(job_id: str):
 async def get_partition_tree(
     job_id: str,
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    poc: int | None = Query(None, description="Optional target Picture Order Count"),
 ):
     """CP_01_PARTITION: Retrieves the complete CTU QuadTree partition tree (depths 0-3)"""
     try:
-        return analysis_service.get_partition_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return analysis_service.get_partition_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -61,6 +64,32 @@ async def get_all_partitions(job_id: str):
     """Retrieves all CTU QuadTree partition trees available in the trace"""
     try:
         return analysis_service.get_all_partitions(job_id)
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/{job_id}/cu-inspect", response_model=CUInspectionResponse)
+async def get_cu_inspection(
+    job_id: str,
+    ctu_x: int = Query(..., description="CTU X index in picture (must be >= 0)"),
+    ctu_y: int = Query(..., description="CTU Y index in picture (must be >= 0)"),
+    cu_x: int = Query(..., description="Target CU pixel X coordinate in picture (must be >= 0)"),
+    cu_y: int = Query(..., description="Target CU pixel Y coordinate in picture (must be >= 0)"),
+    poc: int = Query(0, description="Target Picture Order Count (must be >= 0)"),
+    include_matrices: bool = Query(False, description="Whether to include heavy 2D pixel & coeff arrays")
+):
+    """
+    Tiered CU Inspector (CU 360° Glass-Box):
+    Exposes complete spatial, quadtree partition, RDO decision, intra/inter prediction,
+    and transform/quantization telemetry for any arbitrary CU coordinate.
+    """
+    try:
+        return analysis_service.get_cu_inspection_data(
+            job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc, include_matrices=include_matrices
+        )
+    except InvalidInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -279,6 +308,21 @@ async def get_quant_checkpoints(
 # ==========================================
 # Specialized 8 Checkpoints Standard Endpoints
 # ==========================================
+@router.get("/{job_id}/sequence-metadata", response_model=HevcSequenceMetadata)
+async def get_sequence_metadata(job_id: str):
+    """Retrieves Sequence (SPS) and Picture (PPS) Parameter Sets metadata directly from HM-18.0"""
+    try:
+        data = analysis_service.get_sequence_metadata(job_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail=f"Sequence metadata not found for job '{job_id}'.")
+        return data
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.get("/{job_id}/CP_00_FRAME_GOP", response_model=list[FrameGopCheckpoint])
 async def get_frame_gop(job_id: str):
     """CP_00_FRAME_GOP: Retrieves Frame and GOP structure, temporal layer, and DPB reference lists"""

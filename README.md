@@ -238,10 +238,6 @@ HEVC_reference_software/
 │           ├── TEncGOP.cpp       # Frame GOP structure dumper hook
 │           ├── TEncSampleAdaptiveOffset.cpp # SAO dumper hook
 │           └── TEncSbac.cpp      # CABAC entropy dumper hook
-├── tools/                        # Intra probe CLI tools and standalone visualizer
-│   ├── README_intra_probe.md
-│   ├── intra_probe_main.cpp
-│   └── intra_probe_visualize.py
 ├── web_app/                      # Fullstack Analysis Platform
 │   ├── backend/                  # FastAPI Application
 │   │   ├── app/                  # Application core, API routers, parsers, engine

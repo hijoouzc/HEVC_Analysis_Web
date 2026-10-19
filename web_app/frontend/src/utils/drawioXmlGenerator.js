@@ -53,8 +53,8 @@ export function generateDrawioXml({
   // 1. GEOMETRY CONFIGURATION
   // =========================================================================
   // Spatial 2D CTU Block on Top
-  const spatialBaseX = 6550;
-  const spatialBaseY = 3104;
+  const spatialBaseX = 140;
+  const spatialBaseY = 80;
   const spatialSize = 520; // 520px represents 64x64
   const scale = spatialSize / 64; // 8.125 px per CTU pixel
 
@@ -132,10 +132,10 @@ export function generateDrawioXml({
   // =========================================================================
   // Compute Reingold-Tilford layout coordinates for the tree
   const depthLevelY = {
-    0: 3104, // root connects to top
-    1: 3760, // 32x32 blocks
-    2: 4220, // 16x16 blocks
-    3: 4453  // 8x8 blocks
+    0: 80,   // root connects to top
+    1: 680,  // 32x32 blocks
+    2: 1140, // 16x16 blocks
+    3: 1380  // 8x8 blocks
   };
   const depthBlockSize = {
     0: 520,
@@ -158,10 +158,10 @@ export function generateDrawioXml({
   // Compute layout with sizing proportional to Draw.io dimensions
   const treeLayout = computeTreeLayout(root, {
     depthConfig: {
-      0: { size: 520, y: 3104 },
-      1: { size: 260, y: 3760 },
-      2: { size: 130, y: 4220 },
-      3: { size: 65,  y: 4453 }
+      0: { size: 520, y: 80 },
+      1: { size: 260, y: 680 },
+      2: { size: 130, y: 1140 },
+      3: { size: 65,  y: 1380 }
     },
     siblingGaps: {
       1: 110,
@@ -175,7 +175,10 @@ export function generateDrawioXml({
   const treeMaxX = Math.max(...treeLayout.nodes.map(n => n.layout.x + n.layout.size));
   const treeCenter = (treeMinX + treeMaxX) / 2;
   const spatialCenter = spatialBaseX + spatialSize / 2;
-  const treeShiftX = spatialCenter - treeCenter;
+  let treeShiftX = spatialCenter - treeCenter;
+  if (treeMinX + treeShiftX < 40) {
+    treeShiftX = 40 - treeMinX;
+  }
 
   // Render tree vertex cells
   treeLayout.nodes.forEach(node => {

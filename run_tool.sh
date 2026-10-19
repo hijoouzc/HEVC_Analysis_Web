@@ -66,28 +66,40 @@ if [ ! -d "$FRONTEND_DIR/node_modules" ]; then
     (cd "$FRONTEND_DIR" && npm install)
 fi
 
+is_port_in_use() {
+    python3 -c "import socket; s = socket.socket(socket.AF_INET, socket.SOCK_STREAM); s.settimeout(0.5); res = s.connect_ex(('127.0.0.1', $1)); s.close(); exit(0 if res == 0 else 1)"
+}
+
 # Cleanup handler on exit
 cleanup() {
     echo ""
-    echo "[INFO] Stopping all services..."
-    if [ -n "$BACKEND_PID" ]; then
-        kill "$BACKEND_PID" 2>/dev/null || true
+    echo "[INFO] Stopping services gracefully..."
+    if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+        kill -TERM "$BACKEND_PID" 2>/dev/null || true
     fi
-    if [ -n "$FRONTEND_PID" ]; then
-        kill "$FRONTEND_PID" 2>/dev/null || true
+    if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
+        kill -TERM "$FRONTEND_PID" 2>/dev/null || true
     fi
-    # Also ensure port processes are released
-    fuser -k 8000/tcp 2>/dev/null || true
-    fuser -k 5173/tcp 2>/dev/null || true
     echo "[INFO] Services stopped cleanly."
     exit 0
 }
 
 trap cleanup SIGINT SIGTERM EXIT
 
-# Kill existing stray instances if any
-fuser -k 8000/tcp 2>/dev/null || true
-fuser -k 5173/tcp 2>/dev/null || true
+# Safe non-destructive port availability check
+if is_port_in_use 8000; then
+    OCCUPY_PID=$(lsof -ti :8000 2>/dev/null || fuser 8000/tcp 2>/dev/null || echo "unknown")
+    echo "[ERROR] Port 8000 (Backend) is currently occupied (PID: $OCCUPY_PID)."
+    echo "        Please terminate the conflicting process before starting."
+    exit 1
+fi
+
+if is_port_in_use 5173; then
+    OCCUPY_PID=$(lsof -ti :5173 2>/dev/null || fuser 5173/tcp 2>/dev/null || echo "unknown")
+    echo "[ERROR] Port 5173 (Frontend) is currently occupied (PID: $OCCUPY_PID)."
+    echo "        Please terminate the conflicting process before starting."
+    exit 1
+fi
 
 # 4. Start Backend (FastAPI + Uvicorn)
 echo "[INFO] Starting Backend on http://localhost:8000..."

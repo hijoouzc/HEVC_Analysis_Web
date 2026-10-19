@@ -1,6 +1,5 @@
-import asyncio
 from pathlib import Path
-from app.domain.models.roi import ROICoordinates, FrameMetadata
+from app.domain.models.roi import ROICoordinates
 from app.domain.models.job import JobInfo, LegacyAnalysisResponse
 from app.domain.models.checkpoint import (
     IntraModeData,
@@ -13,30 +12,36 @@ from app.domain.models.checkpoint import (
     FrameGopCheckpoint,
     InterSearchCheckpoint,
     ReconPictureCheckpoint,
-    DeblockingEdgeCheckpoint,
-    SaoDecisionCheckpoint,
     InLoopFilterFullResponse,
-    CabacBinCheckpoint,
     CabacEntropyFullResponse,
-    CuRdoDecisionCheckpoint
+    CuRdoDecisionCheckpoint,
+    HevcSequenceMetadata,
+    CUInspectionResponse
 )
-from app.domain.enums import JobStatus, StageEnum
-from app.domain.exceptions import JobNotFoundError, EncoderExecutionError, InvalidInputError
 from app.engine.interfaces import IEncoderRunner, IVideoProcessor
 from app.engine.ffmpeg_adapter import ffmpeg_adapter
 from app.engine.hm_runner import hm_runner
 from app.storage.session_manager import session_manager, SessionManager
 from app.storage.trace_reader import trace_reader, TraceReader
 from app.checkpoints.registry import checkpoint_registry, CheckpointRegistry
-from app.checkpoints.parsers.intra_search_parser import intra_search_parser, build_intra_pipeline_data
-from app.checkpoints.parsers.intra_ref_parser import intra_ref_parser
-from app.checkpoints.parsers.partition_parser import partition_parser
-from app.checkpoints.parsers.transform_parser import transform_quant_parser
-from app.checkpoints.parsers.cu_rdo_decision_parser import cu_rdo_decision_parser
 from app.services.job_manager import job_manager, JobManager as JobManagerClass
+from app.services.stages.base import BaseStageService
+from app.services.stages.gop_stage import GopStageService
+from app.services.stages.partition_stage import PartitionStageService
+from app.services.stages.intra_stage import IntraStageService
+from app.services.stages.inter_stage import InterStageService
+from app.services.stages.transform_stage import TransformStageService
+from app.services.stages.recon_stage import ReconStageService
+from app.services.stages.filter_stage import FilterStageService
+from app.services.stages.cabac_stage import CabacStageService
+from app.services.pipeline_orchestrator import PipelineOrchestrator
 
 class AnalysisService:
-    """Orchestrates HEVC video processing, HM encoder execution, and checkpoint analysis"""
+    """
+    Facade service orchestrating HEVC video processing, HM encoder execution,
+    and checkpoint analysis across modularized stage services.
+    Conforms strictly to reference software HM-18.0 pipeline decomposition.
+    """
     
     def __init__(
         self,
@@ -54,23 +59,57 @@ class AnalysisService:
         self.registry = registry or checkpoint_registry
         self.job_mgr = job_mgr or job_manager
 
+    @property
+    def _gop_stage(self) -> GopStageService:
+        return GopStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _partition_stage(self) -> PartitionStageService:
+        return PartitionStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _transform_stage(self) -> TransformStageService:
+        return TransformStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _intra_stage(self) -> IntraStageService:
+        return IntraStageService(
+            self.storage, self.reader, self.registry, self.job_mgr,
+            partition_service=self._partition_stage,
+            transform_service=self._transform_stage
+        )
+
+    @property
+    def _inter_stage(self) -> InterStageService:
+        return InterStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _recon_stage(self) -> ReconStageService:
+        return ReconStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _filter_stage(self) -> FilterStageService:
+        return FilterStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _cabac_stage(self) -> CabacStageService:
+        return CabacStageService(self.storage, self.reader, self.registry, self.job_mgr)
+
+    @property
+    def _orchestrator(self) -> PipelineOrchestrator:
+        return PipelineOrchestrator(
+            video_processor=self.video_processor,
+            encoder_runner=self.encoder_runner,
+            storage=self.storage,
+            reader=self.reader,
+            registry=self.registry,
+            job_mgr=self.job_mgr,
+            intra_stage=self._intra_stage
+        )
+
     @staticmethod
     def compute_frame_dimensions(orig_w: int, orig_h: int, scale_mode: str) -> tuple[int, int]:
-        """Compute aligned width & height conforming to HEVC 8-pixel alignment and scale_mode."""
-        if scale_mode == "fast":
-            target_max_w, target_max_h = 640, 360
-            if orig_w > target_max_w or orig_h > target_max_h:
-                scale = min(target_max_w / orig_w, target_max_h / orig_h)
-                calc_w = max(64, int(orig_w * scale))
-                calc_h = max(64, int(orig_h * scale))
-            else:
-                calc_w, calc_h = orig_w, orig_h
-        else:
-            calc_w, calc_h = orig_w, orig_h
-
-        calc_w = max(64, round(calc_w / 8) * 8)
-        calc_h = max(64, round(calc_h / 8) * 8)
-        return calc_w, calc_h
+        return PipelineOrchestrator.compute_frame_dimensions(orig_w, orig_h, scale_mode)
 
     def _resolve_target_roi(
         self,
@@ -79,18 +118,8 @@ class AnalysisService:
         ctu_x: int | None = None,
         ctu_y: int | None = None,
     ) -> tuple[int | None, int | None, int | None]:
-        """Resolve ROI parameters from explicit args or fallback to the job's recorded ROI."""
-        target_cu, target_x, target_y = cu_size, ctu_x, ctu_y
-        if target_cu is None or target_x is None or target_y is None:
-            job = self.job_mgr._jobs.get(job_id)
-            if job and job.roi:
-                if target_cu is None and job.roi.cu_size > 0:
-                    target_cu = job.roi.cu_size
-                if target_x is None:
-                    target_x = job.roi.ctu_x
-                if target_y is None:
-                    target_y = job.roi.ctu_y
-        return target_cu, target_x, target_y
+        base = BaseStageService(self.storage, self.reader, self.registry, self.job_mgr)
+        return base.resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
 
     @staticmethod
     def _build_roi_predicate(
@@ -101,138 +130,24 @@ class AnalysisService:
         cu_x: int | None = None,
         cu_y: int | None = None,
     ):
-        """Create a predicate function to filter trace events by event name and ROI."""
-        def predicate(e: dict) -> bool:
-            if event_name is not None and e.get("event") != event_name:
-                return False
-            if cu_size is not None:
-                e_size = e.get("cu_size") if e.get("cu_size") is not None else e.get("pu_size")
-                if e_size != cu_size:
-                    return False
-            if ctu_x is not None and e.get("ctu_x") != ctu_x:
-                return False
-            if ctu_y is not None and e.get("ctu_y") != ctu_y:
-                return False
-            if cu_x is not None:
-                e_x = e.get("cu_x") if e.get("cu_x") is not None else e.get("pu_x")
-                if e_x is not None and e_x != cu_x:
-                    return False
-            if cu_y is not None:
-                e_y = e.get("cu_y") if e.get("cu_y") is not None else e.get("pu_y")
-                if e_y is not None and e_y != cu_y:
-                    return False
-            return True
-        return predicate
+        return BaseStageService.build_roi_predicate(event_name, cu_size, ctu_x, ctu_y, cu_x, cu_y)
 
     @staticmethod
     def _build_fallback_ref_checkpoint(raw_mode: dict) -> IntraRefCheckpoint:
-        """Construct IntraRefCheckpoint from RDO_INTRA_SEARCH event when INTRA_REF_SAMPLES is absent."""
-        ref_top = raw_mode.get("ref_top", [])
-        ref_left = raw_mode.get("ref_left", [])
-        ref_top_u = raw_mode.get("ref_top_u", [])
-        ref_left_u = raw_mode.get("ref_left_u", [])
-        ref_top_v = raw_mode.get("ref_top_v", [])
-        ref_left_v = raw_mode.get("ref_left_v", [])
-        return IntraRefCheckpoint(
-            poc=raw_mode.get("poc", 0),
-            ctu_x=raw_mode.get("ctu_x", 0),
-            ctu_y=raw_mode.get("ctu_y", 0),
-            cu_size=raw_mode.get("cu_size", 8),
-            ref_unfilt_top=ref_top,
-            ref_unfilt_left=ref_left,
-            ref_filt_top=ref_top,
-            ref_filt_left=ref_left,
-            ref_unfilt_top_u=ref_top_u,
-            ref_unfilt_left_u=ref_left_u,
-            ref_unfilt_top_v=ref_top_v,
-            ref_unfilt_left_v=ref_left_v,
-            ref_filt_top_u=ref_top_u,
-            ref_filt_left_u=ref_left_u,
-            ref_filt_top_v=ref_top_v,
-            ref_filt_left_v=ref_left_v,
-            luma_ref_count=len(ref_top)
-        )
+        return IntraStageService._build_fallback_ref_checkpoint(raw_mode)
 
     async def execute_analysis_pipeline(
         self,
         job_id: str,
         input_image_path: Path,
         roi: ROICoordinates,
-        scale_mode: str = "native"
+        scale_mode: str = "native",
+        profile: str = "all_intra",
+        frames: int = 1
     ) -> JobInfo:
-        session_dir = self.storage.get_session_dir(job_id)
-        yuv_output = self.storage.get_yuv_path(job_id)
-        
-        try:
-            await self.job_mgr.update_status(job_id, JobStatus.RUNNING)
-            
-            # 1. Convert & Crop with FFmpeg
-            frame_meta = await self.video_processor.process_image_to_yuv(
-                input_image=input_image_path,
-                output_yuv=yuv_output,
-                roi=roi,
-                scale_mode=scale_mode
-            )
-            
-            # 2. Run Encoder
-            trace_path = await self.encoder_runner.run_encode(
-                yuv_input=yuv_output,
-                session_dir=session_dir,
-                frame_meta=frame_meta,
-                roi=roi
-            )
-            
-            # 3. Read trace events matching target cu_size
-            target_cu_size = roi.cu_size if roi.cu_size > 0 else 8
-            raw_modes = self.reader.read_all(
-                trace_path,
-                event_filter="RDO_INTRA_SEARCH",
-                limit=35,
-                predicate=lambda e: e.get("cu_size") == target_cu_size
-            )
-            if not raw_modes:
-                raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35)
-            if not raw_modes:
-                raise EncoderExecutionError("No Intra Search trace events were captured from encoder.")
-                
-            parsed_modes = [intra_search_parser.parse_event(m) for m in raw_modes]
-            summary = intra_search_parser.compute_summary(parsed_modes)
-            
-            # Check and register all available stages dynamically with O(1) checks
-            stages = []
-            if self.reader.has_event(trace_path, "FRAME_GOP"):
-                stages.append(StageEnum.CP_00_FRAME_GOP.value)
-            if self.reader.has_event(trace_path, "CTU_PARTITION"):
-                stages.append(StageEnum.CP_01_PARTITION.value)
-            if self.reader.has_event(trace_path, "INTRA_REF_SAMPLES"):
-                stages.append(StageEnum.CP_02_INTRA_REF.value)
-            stages.append(StageEnum.CP_02_INTRA_SEARCH.value)
-            stages.append(StageEnum.CP_03_INTRA_SEARCH.value)
-            if self.reader.has_event(trace_path, "INTER_SEARCH"):
-                stages.append(StageEnum.CP_03_INTER_SEARCH.value)
-            if self.reader.has_event(trace_path, "TRANSFORM_QUANT"):
-                stages.append(StageEnum.CP_04_TRANSFORM_RQT.value)
-                stages.append(StageEnum.CP_06_TRANSFORM.value)
-                stages.append(StageEnum.CP_07_QUANT.value)
-            if self.reader.has_event(trace_path, "RECON_PICTURE"):
-                stages.append(StageEnum.CP_05_RECON_PICTURE.value)
-            if self.reader.has_event(trace_path, "DEBLOCKING_EDGE") or self.reader.has_event(trace_path, "SAO_DECISION"):
-                stages.append(StageEnum.CP_06_INLOOP_FILTER.value)
-            if self.reader.has_event(trace_path, "CABAC_BIN"):
-                stages.append(StageEnum.CP_07_CABAC_ENTROPY.value)
-                
-            await self.job_mgr.set_result(
-                job_id=job_id,
-                best_mode=summary.best_mode,
-                best_cost=summary.best_cost,
-                stages=stages
-            )
-            
-            return await self.job_mgr.get_job(job_id)
-            
-        except Exception as e:
-            await self.job_mgr.update_status(job_id, JobStatus.FAILED, error_message=str(e))
-            raise
+        return await self._orchestrator.execute_analysis_pipeline(
+            job_id, input_image_path, roi, scale_mode=scale_mode, profile=profile, frames=frames
+        )
 
     async def run_synchronous_analysis(
         self,
@@ -242,73 +157,58 @@ class AnalysisService:
         cu_size: int = 8,
         scale_mode: str = "native"
     ) -> LegacyAnalysisResponse:
-        """Backward-compatible endpoint for existing frontend App.jsx"""
-        job_id = self.storage.create_session()
-        input_image = self.storage.get_input_image_path(job_id)
-        
-        def _write_bytes(p: Path, data: bytes) -> None:
-            with open(p, "wb") as f:
-                f.write(data)
-        await asyncio.to_thread(_write_bytes, input_image, image_bytes)
-            
-        roi = ROICoordinates(ctu_x=ctu_x, ctu_y=ctu_y, cu_size=cu_size)
-        
-        # Calculate provisional metadata from image non-blockingly
-        from PIL import Image
-        def _get_dims(p: Path) -> tuple[int, int]:
-            with Image.open(p) as img:
-                return img.size
-        orig_w, orig_h = await asyncio.to_thread(_get_dims, input_image)
-            
-        calc_w, calc_h = self.compute_frame_dimensions(orig_w, orig_h, scale_mode)
-        num_ctu_w = (calc_w + 63) // 64
-        num_ctu_h = (calc_h + 63) // 64
-
-        frame_meta = FrameMetadata(
-            width=calc_w,
-            height=calc_h,
-            aligned_width=calc_w,
-            aligned_height=calc_h,
-            max_ctu_x=max(0, num_ctu_w - 1),
-            max_ctu_y=max(0, num_ctu_h - 1),
-            ctu_size=64
-        )
-        
-        await self.job_mgr.create_job(roi=roi, frame=frame_meta, job_id=job_id)
-        job_info = await self.execute_analysis_pipeline(job_id, input_image, roi, scale_mode=scale_mode)
-        
-        # Retrieve raw modes for legacy format
-        trace_path = self.storage.get_trace_path(job_id)
-        target_cu_size = roi.cu_size if roi.cu_size > 0 else 8
-        raw_modes = self.reader.read_all(
-            trace_path,
-            event_filter="RDO_INTRA_SEARCH",
-            limit=35,
-            predicate=lambda e: e.get("cu_size") == target_cu_size
-        )
-        if not raw_modes:
-            raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35)
-        
-        # Retrieve intra ref data if available
-        ref_checkpoint = None
-        try:
-            ref_checkpoint = self.get_intra_ref_data(job_id, cu_size=target_cu_size, ctu_x=roi.ctu_x, ctu_y=roi.ctu_y)
-        except Exception:
-            pass
-        
-        return LegacyAnalysisResponse(
-            status="success",
-            job_id=job_id,
-            data=raw_modes,
-            width=job_info.frame.width,
-            height=job_info.frame.height,
-            ctu_x=job_info.roi.ctu_x,
-            ctu_y=job_info.roi.ctu_y,
-            best_mode=job_info.best_mode or 0,
-            best_cost=job_info.best_cost or 0.0,
-            ref_samples=ref_checkpoint.model_dump() if ref_checkpoint else None
+        return await self._orchestrator.run_synchronous_analysis(
+            image_bytes, ctu_x=ctu_x, ctu_y=ctu_y, cu_size=cu_size, scale_mode=scale_mode
         )
 
+    # Stage CP_00: Frame & GOP
+    def get_sequence_metadata(self, job_id: str) -> HevcSequenceMetadata | None:
+        return self._gop_stage.get_sequence_metadata(job_id)
+
+    def get_frame_gop_data(self, job_id: str) -> list[FrameGopCheckpoint]:
+        return self._gop_stage.get_frame_gop_data(job_id)
+
+    # Stage CP_01: Partition QuadTree & RDO
+    def get_partition_data(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None,
+        poc: int | None = None,
+    ) -> CTUPartitionCheckpoint:
+        return self._partition_stage.get_partition_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
+
+    def get_all_partitions(self, job_id: str) -> list[CTUPartitionCheckpoint]:
+        return self._partition_stage.get_all_partitions(job_id)
+
+    def get_rdo_decisions(
+        self,
+        job_id: str,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None,
+        cu_size: int | None = None
+    ) -> list[CuRdoDecisionCheckpoint]:
+        return self._partition_stage.get_cu_rdo_decisions(
+            job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, cu_size=cu_size
+        )
+
+    def get_cu_inspection_data(
+        self,
+        job_id: str,
+        ctu_x: int,
+        ctu_y: int,
+        cu_x: int,
+        cu_y: int,
+        poc: int = 0,
+        include_matrices: bool = False,
+    ) -> CUInspectionResponse:
+        return self._partition_stage.get_cu_inspection_data(
+            job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc, include_matrices=include_matrices
+        )
+
+    # Stage CP_02: Intra Search & Reference Samples
     def get_intra_search_data(
         self,
         job_id: str,
@@ -319,203 +219,12 @@ class AnalysisService:
         cu_x: int | None = None,
         cu_y: int | None = None
     ) -> list[IntraModeData]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-            
-        target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
-        if target_cu is None or target_cu <= 0:
-            target_cu = 8
-        predicate = None
-        if target_cu is not None or target_x is not None or target_y is not None or cu_x is not None or cu_y is not None:
-            predicate = self._build_roi_predicate(cu_size=target_cu, ctu_x=target_x, ctu_y=target_y, cu_x=cu_x, cu_y=cu_y)
-
-        raw_modes = self.reader.read_all(
-            trace_path,
-            event_filter="RDO_INTRA_SEARCH",
-            limit=35,
-            predicate=predicate,
-            ctu_x=target_x,
-            ctu_y=target_y
+        return self._intra_stage.get_intra_search_data(
+            job_id, mode=mode, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y
         )
-        explicit_roi_requested = (ctu_x is not None or ctu_y is not None or cu_x is not None or cu_y is not None)
-        if not raw_modes and predicate is not None and not explicit_roi_requested:
-            raw_modes = self.reader.read_all(trace_path, event_filter="RDO_INTRA_SEARCH", limit=35)
-            
-        parsed = [intra_search_parser.parse_event(m) for m in raw_modes]
-        ranked = intra_search_parser.enrich_and_rank(parsed)
-        
-        if mode is not None:
-            return [m for m in ranked if m.mode == mode]
-        return ranked
 
     def get_intra_search_summary(self, job_id: str) -> IntraSearchSummary:
-        modes = self.get_intra_search_data(job_id)
-        return intra_search_parser.compute_summary(modes)
-
-    def get_intra_pipeline_data(
-        self,
-        job_id: str,
-        cu_size: int | None = None,
-        ctu_x: int | None = None,
-        ctu_y: int | None = None,
-        cu_x: int | None = None,
-        cu_y: int | None = None
-    ) -> IntraPipelineFullResponse:
-        modes = self.get_intra_search_data(
-            job_id,
-            cu_size=cu_size,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y
-        )
-        ref_checkpoint = self.get_intra_ref_data(
-            job_id,
-            cu_size=cu_size,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y
-        )
-        
-        target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
-        active_cu_size = target_cu or (modes[0].cu_size if modes else 8)
-        active_ctu_x = target_x if target_x is not None else (modes[0].ctu_x if modes else 0)
-        active_ctu_y = target_y if target_y is not None else (modes[0].ctu_y if modes else 0)
-        poc = modes[0].poc if modes else 0
-
-        # Disambiguate PU within CTU so multiple PUs of same size don't mix
-        target_pu_x = cu_x
-        target_pu_y = cu_y
-        if target_pu_x is None and modes and modes[0].pu_x is not None:
-            target_pu_x = modes[0].pu_x
-        if target_pu_y is None and modes and modes[0].pu_y is not None:
-            target_pu_y = modes[0].pu_y
-
-        # Query Partition QuadTree for Left and Above Neighbor modes if available
-        left_mode, above_mode = None, None
-        try:
-            part = self.get_partition_data(job_id, ctu_x=active_ctu_x, ctu_y=active_ctu_y)
-            for node in part.nodes:
-                if node.mode == "INTRA" and node.intra_dir is not None:
-                    if left_mode is None:
-                        left_mode = node.intra_dir
-                    elif above_mode is None:
-                        above_mode = node.intra_dir
-        except Exception:
-            pass
-
-        transform_events = []
-        try:
-            transform_events = self.get_transform_quant_data(
-                job_id,
-                comp="Y",
-                ctu_x=active_ctu_x,
-                ctu_y=active_ctu_y,
-                cu_x=target_pu_x,
-                cu_y=target_pu_y,
-                cu_size=active_cu_size
-            )
-        except Exception:
-            pass
-
-        mpm_raw_event = None
-        full_rdo_events = []
-        chroma_raw_event = None
-        try:
-            trace_path = self.storage.get_trace_path(job_id)
-            if trace_path.exists():
-                all_mpm = self.reader.read_all(trace_path, event_filter="INTRA_MPM_DERIVATION", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
-                if not all_mpm:
-                    all_mpm = self.reader.read_all(trace_path, event_filter="INTRA_MPM_DERIVATION")
-                for e in all_mpm:
-                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
-                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
-                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
-                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
-                            continue
-                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
-                            continue
-                        mpm_raw_event = e
-                        if target_pu_x is None:
-                            target_pu_x = e.get("pu_x", e.get("cu_x"))
-                        if target_pu_y is None:
-                            target_pu_y = e.get("pu_y", e.get("cu_y"))
-                        break
-
-                all_rdo = self.reader.read_all(trace_path, event_filter="INTRA_FULL_RDO", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
-                if not all_rdo:
-                    all_rdo = self.reader.read_all(trace_path, event_filter="INTRA_FULL_RDO")
-                for e in all_rdo:
-                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
-                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
-                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
-                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
-                            continue
-                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
-                            continue
-                        if target_pu_x is None:
-                            target_pu_x = e.get("pu_x", e.get("cu_x"))
-                        if target_pu_y is None:
-                            target_pu_y = e.get("pu_y", e.get("cu_y"))
-                        full_rdo_events.append(e)
-
-                tu_pred_events = []
-                all_tu_pred = self.reader.read_all(trace_path, event_filter="INTRA_TU_PRED", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
-                if not all_tu_pred:
-                    all_tu_pred = self.reader.read_all(trace_path, event_filter="INTRA_TU_PRED")
-                for e in all_tu_pred:
-                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
-                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
-                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
-                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
-                            continue
-                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
-                            continue
-                        tu_pred_events.append(e)
-
-                all_chroma = self.reader.read_all(trace_path, event_filter="INTRA_CHROMA_SEARCH", ctu_x=active_ctu_x, ctu_y=active_ctu_y)
-                if not all_chroma:
-                    all_chroma = self.reader.read_all(trace_path, event_filter="INTRA_CHROMA_SEARCH")
-                for e in all_chroma:
-                    if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
-                       (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
-                       (cu_size is None or e.get("pu_size", e.get("cu_size")) == active_cu_size):
-                        if target_pu_x is not None and e.get("pu_x", e.get("cu_x")) != target_pu_x:
-                            continue
-                        if target_pu_y is not None and e.get("pu_y", e.get("cu_y")) != target_pu_y:
-                            continue
-                        chroma_raw_event = e
-                        break
-                if not chroma_raw_event and active_cu_size == 4:
-                    # In HEVC 4:2:0, chroma is not split below 4x4; 4x4 PUs share the 8x8 CU's chroma evaluation
-                    for e in all_chroma:
-                        if (ctu_x is None or e.get("ctu_x") == active_ctu_x) and \
-                           (ctu_y is None or e.get("ctu_y") == active_ctu_y) and \
-                           (e.get("pu_size", e.get("cu_size")) == 8):
-                            chroma_raw_event = e
-                            break
-        except Exception:
-            pass
-
-        return build_intra_pipeline_data(
-            modes=modes,
-            ref_checkpoint=ref_checkpoint,
-            cu_size=active_cu_size,
-            ctu_x=active_ctu_x,
-            ctu_y=active_ctu_y,
-            poc=poc,
-            left_mode=left_mode,
-            above_mode=above_mode,
-            transform_events=transform_events,
-            mpm_raw_event=mpm_raw_event,
-            full_rdo_events=full_rdo_events if full_rdo_events else None,
-            chroma_raw_event=chroma_raw_event,
-            cu_x=target_pu_x,
-            cu_y=target_pu_y,
-            tu_pred_events=tu_pred_events if tu_pred_events else None
-        )
+        return self._intra_stage.get_intra_search_summary(job_id)
 
     def get_intra_ref_data(
         self,
@@ -526,50 +235,9 @@ class AnalysisService:
         cu_x: int | None = None,
         cu_y: int | None = None
     ) -> IntraRefCheckpoint:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-            
-        target_cu, target_x, target_y = self._resolve_target_roi(job_id, cu_size, ctu_x, ctu_y)
-        if target_cu is None or target_cu <= 0:
-            target_cu = 8
-        ref_pred = self._build_roi_predicate(
-            event_name="INTRA_REF_SAMPLES",
-            cu_size=target_cu,
-            ctu_x=target_x,
-            ctu_y=target_y,
-            cu_x=cu_x,
-            cu_y=cu_y
+        return self._intra_stage.get_intra_ref_data(
+            job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y
         )
-
-        raw_ref = self.reader.find_one(trace_path, ref_pred)
-        if not raw_ref and (cu_x is not None or cu_y is not None):
-            # Fallback to CTU-level if specific PU position ref wasn't found
-            ref_pred_no_pos = self._build_roi_predicate(
-                event_name="INTRA_REF_SAMPLES",
-                cu_size=target_cu,
-                ctu_x=target_x,
-                ctu_y=target_y
-            )
-            raw_ref = self.reader.find_one(trace_path, ref_pred_no_pos)
-        if not raw_ref:
-            raw_ref = self.reader.find_one(trace_path, lambda e: e.get("event") == "INTRA_REF_SAMPLES")
-            
-        if not raw_ref:
-            rdo_pred = self._build_roi_predicate(
-                event_name="RDO_INTRA_SEARCH",
-                cu_size=target_cu,
-                cu_x=cu_x,
-                cu_y=cu_y
-            )
-            raw_mode = self.reader.find_one(trace_path, rdo_pred)
-            if not raw_mode:
-                raw_mode = self.reader.find_one(trace_path, lambda e: e.get("event") == "RDO_INTRA_SEARCH")
-            if not raw_mode:
-                raise JobNotFoundError(job_id)
-            return self._build_fallback_ref_checkpoint(raw_mode)
-            
-        return intra_ref_parser.parse_event(raw_ref)
 
     def compare_intra_modes(
         self,
@@ -578,119 +246,31 @@ class AnalysisService:
         mode_b: int,
         cu_size: int | None = None
     ) -> IntraComparisonResult:
-        modes = self.get_intra_search_data(job_id, cu_size=cu_size)
-        m_a = next((m for m in modes if m.mode == mode_a), None)
-        m_b = next((m for m in modes if m.mode == mode_b), None)
-        
-        if not m_a:
-            raise InvalidInputError(f"Mode {mode_a} not found in job {job_id}")
-        if not m_b:
-            raise InvalidInputError(f"Mode {mode_b} not found in job {job_id}")
-            
-        diff_matrix = [pa - pb for pa, pb in zip(m_a.pred_data, m_b.pred_data)]
-        sad_diff = sum(abs(d) for d in diff_matrix)
-        cost_diff = round(m_b.cost - m_a.cost, 4)
-        better_mode = m_a.mode if m_a.cost <= m_b.cost else m_b.mode
-        
-        # Residual and SSE comparison
-        resi_diff = [ra - rb for ra, rb in zip(m_a.resi_data, m_b.resi_data)] if m_a.resi_data and m_b.resi_data else []
-        sse_a = sum(ra * ra for ra in m_a.resi_data) if m_a.resi_data else 0
-        sse_b = sum(rb * rb for rb in m_b.resi_data) if m_b.resi_data else 0
-        sse_diff = sse_b - sse_a
-        
-        return IntraComparisonResult(
-            mode_a=m_a.mode,
-            mode_b=m_b.mode,
-            direction_a=m_a.direction_name,
-            direction_b=m_b.direction_name,
-            cost_a=m_a.cost,
-            cost_b=m_b.cost,
-            cost_difference=cost_diff,
-            better_mode=better_mode,
-            pixel_sad_diff=sad_diff,
-            pixel_diff_matrix=diff_matrix,
-            resi_diff_matrix=resi_diff,
-            sse_a=sse_a,
-            sse_b=sse_b,
-            sse_diff=sse_diff,
-            cu_size=m_a.cu_size
+        return self._intra_stage.compare_intra_modes(job_id, mode_a=mode_a, mode_b=mode_b, cu_size=cu_size)
+
+    def get_intra_pipeline_data(
+        self,
+        job_id: str,
+        cu_size: int | None = None,
+        ctu_x: int | None = None,
+        ctu_y: int | None = None,
+        cu_x: int | None = None,
+        cu_y: int | None = None
+    ) -> IntraPipelineFullResponse:
+        return self._intra_stage.get_intra_pipeline_data(
+            job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y
         )
 
-    def get_partition_data(
+    # Stage CP_03: Inter Search
+    def get_inter_search_data(
         self,
         job_id: str,
         ctu_x: int | None = None,
         ctu_y: int | None = None
-    ) -> CTUPartitionCheckpoint:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
+    ) -> list[InterSearchCheckpoint]:
+        return self._inter_stage.get_inter_search_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
 
-        target_cu, target_x, target_y = self._resolve_target_roi(job_id, None, ctu_x, ctu_y)
-        raw_part = None
-        if target_x is not None and target_y is not None:
-            raw_part = self.reader.find_one(
-                trace_path,
-                lambda e: e.get("ctu_x") == target_x and e.get("ctu_y") == target_y,
-                event_filter="CTU_PARTITION",
-                ctu_x=target_x,
-                ctu_y=target_y
-            )
-
-        if not raw_part:
-            raw_part = self.reader.find_one(trace_path, lambda e: True, event_filter="CTU_PARTITION")
-
-        if not raw_part:
-            return CTUPartitionCheckpoint(cu_size=64, nodes=[], ctu_x=target_x or 0, ctu_y=target_y or 0)
-
-        parsed = partition_parser.parse_event(raw_part)
-        if target_x is not None and (parsed.ctu_x is None or parsed.ctu_x == 0):
-            parsed.ctu_x = target_x
-        if target_y is not None and (parsed.ctu_y is None or parsed.ctu_y == 0):
-            parsed.ctu_y = target_y
-
-        # Merge CTU_ACTUAL_BITS if available
-        try:
-            actual_bits_ev = self.reader.find_one(
-                trace_path,
-                lambda e: e.get("ctu_x") == parsed.ctu_x and e.get("ctu_y") == parsed.ctu_y,
-                event_filter="CTU_ACTUAL_BITS",
-                ctu_x=parsed.ctu_x,
-                ctu_y=parsed.ctu_y
-            )
-            if actual_bits_ev:
-                parsed.ctu_actual_bits = int(actual_bits_ev.get("actual_bits_ctu", 0))
-                if actual_bits_ev.get("ctu_rs_addr") is not None:
-                    parsed.ctu_rs_addr = int(actual_bits_ev["ctu_rs_addr"])
-        except Exception:
-            pass
-
-        return parsed
-
-    def get_all_partitions(self, job_id: str) -> list[CTUPartitionCheckpoint]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-            
-        raw_parts = self.reader.read_all(trace_path, event_filter="CTU_PARTITION")
-        try:
-            ctu_bits_events = self.reader.read_all(trace_path, event_filter="CTU_ACTUAL_BITS")
-            bits_map = {f"{e.get('ctu_x')}_{e.get('ctu_y')}": e for e in ctu_bits_events}
-        except Exception:
-            bits_map = {}
-
-        results = []
-        for p in raw_parts:
-            part = partition_parser.parse_event(p)
-            key = f"{part.ctu_x}_{part.ctu_y}"
-            if key in bits_map:
-                ev = bits_map[key]
-                part.ctu_actual_bits = int(ev.get("actual_bits_ctu", 0))
-                if ev.get("ctu_rs_addr") is not None:
-                    part.ctu_rs_addr = int(ev["ctu_rs_addr"])
-            results.append(part)
-        return results
-
+    # Stage CP_04: Transform & Quant
     def get_transform_quant_data(
         self,
         job_id: str,
@@ -702,246 +282,35 @@ class AnalysisService:
         cu_size: int | None = None,
         intra_mode: int | None = None
     ) -> list[TransformQuantCheckpoint]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-            
-        raw_events = self.reader.read_all(trace_path, event_filter="TRANSFORM_QUANT", ctu_x=ctu_x, ctu_y=ctu_y)
-        # Pre-filter dictionaries to avoid unnecessary Pydantic model instantiations
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
-        if cu_x is not None:
-            raw_events = [e for e in raw_events if (e.get("cu_x") == cu_x or e.get("pu_x") == cu_x)]
-        if cu_y is not None:
-            raw_events = [e for e in raw_events if (e.get("cu_y") == cu_y or e.get("pu_y") == cu_y)]
-        if cu_size is not None:
-            raw_events = [e for e in raw_events if (e.get("cu_width") == cu_size or e.get("cu_size") == cu_size or e.get("tu_size") == cu_size or e.get("width") == cu_size)]
-        if intra_mode is not None:
-            raw_events = [e for e in raw_events if e.get("intra_mode") == intra_mode]
-        if comp and comp.strip():
-            target_comp = comp.strip().upper()
-            raw_events = [e for e in raw_events if (e.get("component") or e.get("comp") or "Y").upper() == target_comp]
+        return self._transform_stage.get_transform_quant_data(
+            job_id, comp=comp, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, cu_size=cu_size, intra_mode=intra_mode
+        )
 
-        return [transform_quant_parser.parse_event(e) for e in raw_events]
-
-    def get_rdo_decisions(
-        self,
-        job_id: str,
-        ctu_x: int | None = None,
-        ctu_y: int | None = None,
-        cu_x: int | None = None,
-        cu_y: int | None = None,
-        cu_size: int | None = None
-    ) -> list[CuRdoDecisionCheckpoint]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-            
-        raw_events = self.reader.read_all(trace_path, event_filter="CU_RDO_DECISION", ctu_x=ctu_x, ctu_y=ctu_y)
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
-        if cu_x is not None:
-            raw_events = [e for e in raw_events if e.get("cu_x") == cu_x]
-        if cu_y is not None:
-            raw_events = [e for e in raw_events if e.get("cu_y") == cu_y]
-        if cu_size is not None:
-            raw_events = [e for e in raw_events if e.get("cu_size") == cu_size]
-
-        return [cu_rdo_decision_parser.parse_event(e) for e in raw_events]
-
-    def get_frame_gop_data(self, job_id: str) -> list[FrameGopCheckpoint]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-        raw_events = self.reader.read_all(trace_path, event_filter="FRAME_GOP")
-        return [
-            FrameGopCheckpoint(
-                poc=e.get("poc", 0),
-                slice_type=e.get("slice_type", "I"),
-                qp=e.get("qp", 22),
-                temporal_id=e.get("temporal_id", 0),
-                ref_l0=e.get("ref_l0", []),
-                ref_l1=e.get("ref_l1", [])
-            )
-            for e in raw_events
-        ]
-
-    def get_inter_search_data(
-        self,
-        job_id: str,
-        ctu_x: int | None = None,
-        ctu_y: int | None = None
-    ) -> list[InterSearchCheckpoint]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-        raw_events = self.reader.read_all(trace_path, event_filter="INTER_SEARCH", ctu_x=ctu_x, ctu_y=ctu_y)
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
-        return [
-            InterSearchCheckpoint(
-                poc=e.get("poc", 0),
-                ctu_x=e.get("ctu_x", 0),
-                ctu_y=e.get("ctu_y", 0),
-                cu_x=e.get("cu_x", 0),
-                cu_y=e.get("cu_y", 0),
-                cu_size=e.get("cu_size", 16),
-                depth=e.get("depth", 0),
-                pu_idx=e.get("pu_idx", 0),
-                pu_x=e.get("pu_x", 0),
-                pu_y=e.get("pu_y", 0),
-                pu_w=e.get("pu_w", 16),
-                pu_h=e.get("pu_h", 16),
-                ref_list=e.get("ref_list", 0),
-                ref_idx=e.get("ref_idx", 0),
-                mvp_idx=e.get("mvp_idx", 0),
-                mv_x=e.get("mv_x", 0),
-                mv_y=e.get("mv_y", 0),
-                mvd_x=e.get("mvd_x", 0),
-                mvd_y=e.get("mvd_y", 0),
-                cost=float(e.get("cost", 0.0)),
-                dist=int(e.get("dist", 0)),
-                bits=int(e.get("bits", 0))
-            )
-            for e in raw_events
-        ]
-
+    # Stage CP_05: Reconstruction Picture
     def get_recon_picture_data(
         self,
         job_id: str,
         ctu_x: int | None = None,
         ctu_y: int | None = None
     ) -> list[ReconPictureCheckpoint]:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-        raw_events = self.reader.read_all(trace_path, event_filter="RECON_PICTURE", ctu_x=ctu_x, ctu_y=ctu_y)
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
-        return [
-            ReconPictureCheckpoint(
-                poc=e.get("poc", 0),
-                ctu_x=e.get("ctu_x", 0),
-                ctu_y=e.get("ctu_y", 0),
-                cu_x=e.get("cu_x", 0),
-                cu_y=e.get("cu_y", 0),
-                cu_w=e.get("cu_size", e.get("cu_w", 16)),
-                cu_h=e.get("cu_size", e.get("cu_h", 16)),
-                reco_y=e.get("reco_y", []),
-                reco_u=e.get("reco_u", []),
-                reco_v=e.get("reco_v", [])
-            )
-            for e in raw_events
-        ]
+        return self._recon_stage.get_recon_picture_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
 
+    # Stage CP_06: In-Loop Filtering
     def get_inloop_filter_data(
         self,
         job_id: str,
         ctu_x: int | None = None,
         ctu_y: int | None = None
     ) -> InLoopFilterFullResponse:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-        raw_edges = self.reader.read_all(trace_path, event_filter="DEBLOCKING_EDGE", ctu_x=ctu_x, ctu_y=ctu_y)
-        raw_sao = self.reader.read_all(trace_path, event_filter="SAO_DECISION", ctu_x=ctu_x, ctu_y=ctu_y)
-        if ctu_x is not None:
-            raw_edges = [e for e in raw_edges if e.get("ctu_x") == ctu_x]
-            raw_sao = [s for s in raw_sao if s.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_edges = [e for e in raw_edges if e.get("ctu_y") == ctu_y]
-            raw_sao = [s for s in raw_sao if s.get("ctu_y") == ctu_y]
+        return self._filter_stage.get_inloop_filter_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
 
-        edges = [
-            DeblockingEdgeCheckpoint(
-                poc=e.get("poc", 0),
-                ctu_x=e.get("ctu_x", 0),
-                ctu_y=e.get("ctu_y", 0),
-                edge_x=e.get("edge_x", 0),
-                edge_y=e.get("edge_y", 0),
-                dir=e.get("dir", 0),
-                bs=e.get("bs", 0),
-                beta=e.get("beta", 0),
-                tc=e.get("tc", 0),
-                p_before=e.get("p_before", []),
-                q_before=e.get("q_before", []),
-                p_after=e.get("p_after", []),
-                q_after=e.get("q_after", [])
-            )
-            for e in raw_edges
-        ]
-
-        sao_res = None
-        if raw_sao:
-            s = raw_sao[0]
-            sao_res = SaoDecisionCheckpoint(
-                poc=s.get("poc", 0),
-                ctu_x=s.get("ctu_x", 0),
-                ctu_y=s.get("ctu_y", 0),
-                sao_mode=s.get("sao_mode", 0),
-                offset_y=s.get("offset_y", []),
-                offset_u=s.get("offset_u", []),
-                offset_v=s.get("offset_v", [])
-            )
-
-        bs2 = sum(1 for ed in edges if ed.bs == 2)
-        bs1 = sum(1 for ed in edges if ed.bs == 1)
-
-        return InLoopFilterFullResponse(
-            poc=edges[0].poc if edges else 0,
-            ctu_x=ctu_x or 0,
-            ctu_y=ctu_y or 0,
-            edges=edges,
-            sao=sao_res,
-            total_edges=len(edges),
-            bs2_edges=bs2,
-            bs1_edges=bs1
-        )
-
+    # Stage CP_07: CABAC Entropy
     def get_cabac_entropy_data(
         self,
         job_id: str,
         limit: int = 500
     ) -> CabacEntropyFullResponse:
-        trace_path = self.storage.get_trace_path(job_id)
-        if not trace_path.exists():
-            raise JobNotFoundError(job_id)
-        raw_bins = self.reader.read_all(trace_path, event_filter="CABAC_BIN")
-        
-        bins = []
-        breakdown: dict[str, int] = {}
-        total_bits = 0
-        for b in raw_bins:
-            elem = b.get("syntax_element", "other")
-            bit_count = int(b.get("bits", 1))
-            total_bits += bit_count
-            breakdown[elem] = breakdown.get(elem, 0) + bit_count
-            if len(bins) < limit:
-                bins.append(
-                    CabacBinCheckpoint(
-                        syntax_element=elem,
-                        bin=int(b.get("bin", 0)),
-                        ctx_idx=int(b.get("ctx_idx", 0)),
-                        p_state_idx=int(b.get("p_state_idx", 0)),
-                        val_mps=int(b.get("val_mps", 0)),
-                        bits=bit_count
-                    )
-                )
-
-        return CabacEntropyFullResponse(
-            bins=bins,
-            total_bins=len(raw_bins),
-            total_bits=total_bits,
-            syntax_breakdown=breakdown
-        )
+        return self._cabac_stage.get_cabac_entropy_data(job_id, limit=limit)
 
 
 analysis_service = AnalysisService()

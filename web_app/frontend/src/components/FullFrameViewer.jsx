@@ -255,33 +255,28 @@ function FullFrameViewer({
   onSelectCU = null,
   committedCtuKeys = null
 }) {
-  const [viewMode, setViewMode] = useState(isAnalyzed ? 'partition' : 'original');
+  const [userViewMode, setUserViewMode] = useState(null);
+  const viewMode = userViewMode ?? (isAnalyzed ? 'partition' : 'original');
+  const setViewMode = useCallback((valOrFn) => {
+    setUserViewMode(prev => {
+      const current = prev ?? (isAnalyzed ? 'partition' : 'original');
+      return typeof valOrFn === 'function' ? valOrFn(current) : valOrFn;
+    });
+  }, [isAnalyzed]);
+
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (clean transparent) or 'depth'
   const [showGrid, setShowGrid] = useState(true);
   const [showBoundary, setShowBoundary] = useState(false);
   const [gridColor, setGridColor] = useState('white'); // 'white' (default: pure white), 'yellow' (#FACC15), 'cyan' (#38BDF8)
   const showCtuNumbers = false;
   const [selectedCu, setSelectedCu] = useState(null);
-  const [selectedOverride, setSelectedOverride] = useState(null);
+  const [uncontrolledCtu, setUncontrolledCtu] = useState(null);
   const [showHmModal, setShowHmModal] = useState(false);
-  const [prevPropsCtu, setPrevPropsCtu] = useState({ x: ctuX, y: ctuY });
-  const [prevIsAnalyzed, setPrevIsAnalyzed] = useState(isAnalyzed);
-
-  if (isAnalyzed !== prevIsAnalyzed) {
-    setPrevIsAnalyzed(isAnalyzed);
-    setViewMode(isAnalyzed ? 'partition' : 'original');
-  }
 
   const activeCu = propsSelectedCu !== undefined ? propsSelectedCu : selectedCu;
 
-  // Synchronize local state when props change without effect setState
-  if (ctuX !== prevPropsCtu.x || ctuY !== prevPropsCtu.y) {
-    setPrevPropsCtu({ x: ctuX, y: ctuY });
-    setSelectedOverride(null);
-  }
-
-  const activeCtuX = selectedOverride !== null ? selectedOverride.x : ctuX;
-  const activeCtuY = selectedOverride !== null ? selectedOverride.y : ctuY;
+  const activeCtuX = onSelectCTU ? ctuX : (uncontrolledCtu !== null ? uncontrolledCtu.x : ctuX);
+  const activeCtuY = onSelectCTU ? ctuY : (uncontrolledCtu !== null ? uncontrolledCtu.y : ctuY);
   const localCtu = useMemo(() => {
     if (activeCtuX === null || activeCtuY === null || activeCtuX === undefined || activeCtuY === undefined) {
       return null;
@@ -301,7 +296,7 @@ function FullFrameViewer({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [setViewMode]);
 
   const { width, height } = imageDims;
   const ctuSize = 64;
@@ -342,13 +337,13 @@ function FullFrameViewer({
   const handleCtuClick = useCallback((x, y) => {
     if (localCtu && localCtu.x === x && localCtu.y === y && !activeCu) {
       // Clicked on already selected CTU (with no active CU) -> Deselect CTU!
-      setSelectedOverride({ x: null, y: null });
+      if (!onSelectCTU) setUncontrolledCtu(null);
       setSelectedCu(null);
       if (onSelectCTU) onSelectCTU(null, null);
       if (onSelectCU) onSelectCU(null);
     } else {
       // Clicked on a CTU -> Select it!
-      setSelectedOverride({ x, y });
+      if (!onSelectCTU) setUncontrolledCtu({ x, y });
       setSelectedCu(null);
       if (onSelectCTU) onSelectCTU(x, y);
       if (onSelectCU) onSelectCU(null);
@@ -365,7 +360,7 @@ function FullFrameViewer({
     } else {
       // Clicked on a CU -> Select it!
       setSelectedCu(leaf);
-      setSelectedOverride({ x: leafCtuX, y: leafCtuY });
+      if (!onSelectCTU) setUncontrolledCtu({ x: leafCtuX, y: leafCtuY });
       if (onSelectCTU) onSelectCTU(leafCtuX, leafCtuY);
       if (onSelectCU) onSelectCU(leaf);
     }

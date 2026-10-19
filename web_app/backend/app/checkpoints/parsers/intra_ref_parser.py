@@ -37,7 +37,7 @@ class IntraRefParser(BaseCheckpointParser):
             pu_y=raw_data.get("pu_y"),
             cu_x=raw_data.get("cu_x", raw_data.get("pu_x")),
             cu_y=raw_data.get("cu_y", raw_data.get("pu_y")),
-            strong_smoothing=raw_data.get("strong_smoothing", False),
+            strong_smoothing=bool(raw_data.get("strong_smoothing", raw_data.get("strong_smoothing_eligible", False))),
             ref_unfilt_top=unfilt_top,
             ref_unfilt_left=unfilt_left,
             ref_filt_top=filt_top,

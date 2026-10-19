@@ -55,17 +55,19 @@ const AnalysisInspector = ({
   const cachedPart = ctuPartitionsMap[`${ctuX}_${ctuY}`] || partitionData;
   const leafCount = cachedPart?.leaf_nodes || cachedPart?.nodes?.filter(n => !n.split).length || 1;
 
-  // Spatial Reference Availability (ITU-T H.265 Section 8.4.4.2 & HM-18.0 getCuAbove/getCuLeft)
+  // Geometric Picture-Boundary Candidates
+  const cuPixelX = selectedCu?.abs_x ?? (selectedCu?.x !== undefined ? (ctuPx + selectedCu.x) : ctuPx);
+  const cuPixelY = selectedCu?.abs_y ?? (selectedCu?.y !== undefined ? (ctuPy + selectedCu.y) : ctuPy);
+  const cuPixelW = selectedCu?.width || cuW;
+
   const neighbors = useMemo(() => {
-    const x = ctuX ?? 0;
-    const y = ctuY ?? 0;
     return {
-      tl: { label: 'TL', name: 'Top-Left', avail: x > 0 && y > 0 },
-      t:  { label: 'T',  name: 'Above',    avail: y > 0 },
-      tr: { label: 'TR', name: 'Above-Right', avail: y > 0 && x + 1 < numCols },
-      l:  { label: 'L',  name: 'Left',     avail: x > 0 },
+      tl: { label: 'TL', name: 'Top-Left', avail: cuPixelX > 0 && cuPixelY > 0 },
+      t:  { label: 'T',  name: 'Above',    avail: cuPixelY > 0 },
+      tr: { label: 'TR', name: 'Above-Right', avail: cuPixelY > 0 && (cuPixelX + cuPixelW) < width },
+      l:  { label: 'L',  name: 'Left',     avail: cuPixelX > 0 },
     };
-  }, [ctuX, ctuY, numCols]);
+  }, [cuPixelX, cuPixelY, cuPixelW, width]);
 
   return (
     <aside className="workspace-inspector" aria-label="Analysis Inspector">
@@ -209,17 +211,17 @@ const AnalysisInspector = ({
         </div>
       </Card>
 
-      {/* Section 3: Spatial Neighbor Reference Availability */}
+      {/* Section 3: Picture-Boundary Candidates */}
       <Card style={{ padding: '12px 14px' }}>
         <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px', color: 'var(--apple-label-2)' }}>
-          Spatial Neighbor Availability
+          Picture-Boundary Candidates
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', textAlign: 'center' }}>
           {Object.entries(neighbors).map(([k, n]) => (
             <div
               key={k}
-              title={`${n.name} (${n.label}): ${n.avail ? 'Available for Reference' : 'Outside Picture Border'}`}
+              title={`${n.name} (${n.label}): ${n.avail ? 'Inside Picture Bounds (Candidate)' : 'Outside Picture Border'}`}
               style={{
                 padding: '5px 2px',
                 borderRadius: '5px',
@@ -232,7 +234,7 @@ const AnalysisInspector = ({
                 {n.label}
               </div>
               <div style={{ fontSize: '8.5px', color: 'var(--apple-label-2)', marginTop: '2px' }}>
-                {n.avail ? 'Available' : 'Border'}
+                {n.avail ? 'Candidate' : 'Border'}
               </div>
             </div>
           ))}

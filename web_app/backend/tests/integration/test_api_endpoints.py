@@ -213,3 +213,25 @@ def test_modern_job_and_checkpoint_api(client, dummy_png_bytes, sample_trace_fil
     rdo_dec_res = client.get(f"/api/v1/checkpoints/{job_id}/rdo-decisions")
     assert rdo_dec_res.status_code == 200
     assert isinstance(rdo_dec_res.json(), list)
+
+def test_submit_job_full_frame_and_inter_profile(client, dummy_png_bytes, sample_trace_file, monkeypatch):
+    mock_runner = MockEncoderRunner(fixture_path=sample_trace_file)
+    monkeypatch.setattr(analysis_service, "encoder_runner", mock_runner)
+    
+    files = {"file": ("test_multi.png", dummy_png_bytes, "image/png")}
+    data = {
+        "ctu_x": "-1",
+        "ctu_y": "-1",
+        "all_ctus": "true",
+        "profile": "low_delay_p",
+        "frames": "3"
+    }
+    submit_res = client.post("/api/v1/jobs/submit", files=files, data=data)
+    assert submit_res.status_code == 202
+    job_info = submit_res.json()
+    assert job_info["job_id"] is not None
+    assert job_info["roi"]["all_ctus"] is True
+    assert job_info["roi"]["ctu_x"] == -1
+    assert job_info["roi"]["ctu_y"] == -1
+    assert job_info["profile"] == "low_delay_p"
+    assert job_info["frames"] == 3

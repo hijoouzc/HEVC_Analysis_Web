@@ -3578,34 +3578,7 @@ Void TEncSearch::predInterSearch( TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv* 
 #endif
 
 #if ENABLE_VISUAL_DUMP
-    VisualDumper* pDumper = VisualDumper::getInstance();
-    const Int dumpPoc = pcCU->getSlice()->getPOC();
-    const UInt maxCuW = pcCU->getSlice()->getSPS()->getMaxCUWidth();
-    const UInt maxCuH = pcCU->getSlice()->getSPS()->getMaxCUHeight();
-    const Int dumpCtuX = pcCU->getCUPelX() / maxCuW;
-    const Int dumpCtuY = pcCU->getCUPelY() / maxCuH;
-    const Int dumpCuX = pcCU->getCUPelX();
-    const Int dumpCuY = pcCU->getCUPelY();
-    const Int dumpCuSize = pcCU->getWidth(0);
-    const Int dumpPuX = dumpCuX + g_auiRasterToPelX[g_auiZscanToRaster[uiPartAddr]];
-    const Int dumpPuY = dumpCuY + g_auiRasterToPelY[g_auiZscanToRaster[uiPartAddr]];
-
-    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
-    {
-      Int chosenRefList = (uiLastMode == 2 ? 2 : (uiLastMode == 0 ? 0 : 1));
-      Int chosenRefIdx = (uiLastMode == 1 ? iRefIdx[1] : (uiLastMode == 0 ? iRefIdx[0] : iRefIdxBi[0]));
-      TComMv chosenMv = (uiLastMode == 1 ? cMv[1] : (uiLastMode == 0 ? cMv[0] : cMvBi[0]));
-      TComMv chosenMvd = (uiLastMode == 1 ? (cMv[1] - cMvPred[1][iRefIdx[1]]) : (uiLastMode == 0 ? (cMv[0] - cMvPred[0][iRefIdx[0]]) : (cMvBi[0] - cMvPredBi[0][iRefIdxBi[0]])));
-      Int chosenMvpIdx = (uiLastMode == 1 ? aaiMvpIdx[1][iRefIdx[1]] : (uiLastMode == 0 ? aaiMvpIdx[0][iRefIdx[0]] : aaiMvpIdxBi[0][iRefIdxBi[0]]));
-      Double chosenCost = (uiLastMode == 2 ? uiCostBi : (uiLastMode == 0 ? uiCost[0] : uiCost[1]));
-
-      pDumper->dumpInterSearch(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY, dumpCuSize, pcCU->getDepth(0),
-                              iPartIdx, dumpPuX, dumpPuY, iRoiWidth, iRoiHeight,
-                              chosenRefList, chosenRefIdx, chosenMvpIdx,
-                              chosenMv.getHor(), chosenMv.getVer(),
-                              chosenMvd.getHor(), chosenMvd.getVer(),
-                              chosenCost, 0, uiMEBits);
-    }
+    Double chosenInterCost = (uiLastMode == 2 ? uiCostBi : (uiLastMode == 0 ? uiCost[0] : uiCost[1]));
 #endif
 
     if ( pcCU->getPartitionSize( uiPartAddr ) != SIZE_2Nx2N )
@@ -3647,6 +3620,9 @@ Void TEncSearch::predInterSearch( TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv* 
 
       if ( uiMRGCost < uiMECost )
       {
+#if ENABLE_VISUAL_DUMP
+        chosenInterCost = uiMRGCost;
+#endif
         // set Merge result
         pcCU->setMergeFlagSubParts ( true,          uiPartAddr, iPartIdx, pcCU->getDepth( uiPartAddr ) );
         pcCU->setMergeIndexSubParts( uiMRGIndex,    uiPartAddr, iPartIdx, pcCU->getDepth( uiPartAddr ) );
@@ -3671,6 +3647,46 @@ Void TEncSearch::predInterSearch( TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv* 
         pcCU->getCUMvField( REF_PIC_LIST_1 )->setAllMvField( cMEMvField[1], ePartSize, uiPartAddr, 0, iPartIdx );
       }
     }
+
+#if ENABLE_VISUAL_DUMP
+    VisualDumper* pDumper = VisualDumper::getInstance();
+    const Int dumpPoc = pcCU->getSlice()->getPOC();
+    const UInt maxCuW = pcCU->getSlice()->getSPS()->getMaxCUWidth();
+    const UInt maxCuH = pcCU->getSlice()->getSPS()->getMaxCUHeight();
+    const Int dumpCtuX = pcCU->getCUPelX() / maxCuW;
+    const Int dumpCtuY = pcCU->getCUPelY() / maxCuH;
+    const Int dumpCuX = pcCU->getCUPelX();
+    const Int dumpCuY = pcCU->getCUPelY();
+    const Int dumpCuSize = pcCU->getWidth(uiPartAddr);
+    const Int dumpPuX = dumpCuX + g_auiRasterToPelX[g_auiZscanToRaster[uiPartAddr]];
+    const Int dumpPuY = dumpCuY + g_auiRasterToPelY[g_auiZscanToRaster[uiPartAddr]];
+
+    if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
+    {
+      const UInt interDir = pcCU->getInterDir(uiPartAddr);
+      const Int chosenRefList = (interDir == 3 ? 2 : (interDir == 1 ? 0 : 1));
+
+      const Int refIdxL0 = (interDir & 1) ? pcCU->getCUMvField(REF_PIC_LIST_0)->getRefIdx(uiPartAddr) : -1;
+      const TComMv mvL0   = (interDir & 1) ? pcCU->getCUMvField(REF_PIC_LIST_0)->getMv(uiPartAddr) : cMvZero;
+      const TComMv mvdL0  = (interDir & 1) ? pcCU->getCUMvField(REF_PIC_LIST_0)->getMvd(uiPartAddr) : cMvZero;
+      const Int mvpIdxL0  = (interDir & 1) ? pcCU->getMVPIdx(REF_PIC_LIST_0, uiPartAddr) : -1;
+
+      const Int refIdxL1 = (interDir & 2) ? pcCU->getCUMvField(REF_PIC_LIST_1)->getRefIdx(uiPartAddr) : -1;
+      const TComMv mvL1   = (interDir & 2) ? pcCU->getCUMvField(REF_PIC_LIST_1)->getMv(uiPartAddr) : cMvZero;
+      const TComMv mvdL1  = (interDir & 2) ? pcCU->getCUMvField(REF_PIC_LIST_1)->getMvd(uiPartAddr) : cMvZero;
+      const Int mvpIdxL1  = (interDir & 2) ? pcCU->getMVPIdx(REF_PIC_LIST_1, uiPartAddr) : -1;
+
+      pDumper->dumpInterSearch(dumpPoc, dumpCtuX, dumpCtuY, dumpCuX, dumpCuY, dumpCuSize, pcCU->getDepth(uiPartAddr),
+                               iPartIdx, dumpPuX, dumpPuY, iRoiWidth, iRoiHeight,
+                               chosenRefList, refIdxL0, mvpIdxL0,
+                               mvL0.getHor(), mvL0.getVer(),
+                               mvdL0.getHor(), mvdL0.getVer(),
+                               chosenInterCost, 0, uiMEBits,
+                               refIdxL1, mvpIdxL1,
+                               mvL1.getHor(), mvL1.getVer(),
+                               mvdL1.getHor(), mvdL1.getVer());
+    }
+#endif
 
 #if MCTS_ENC_CHECK
     if (m_pcEncCfg->getTMCTSSEITileConstraint() && (!checkTMctsMvp(pcCU, iPartIdx)))

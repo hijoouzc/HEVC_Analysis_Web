@@ -166,13 +166,20 @@ const IntraPredictionFlow = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Auto-reset pixel selection on channel or dimension changes to prevent reticle overflow
-  const currentPixelContextKey = `${channel}_${blockSize}_${selectedCu?.abs_x}_${selectedCu?.abs_y}_${selectedCu?.width}`;
-  const [pixelContextKey, setPixelContextKey] = useState(currentPixelContextKey);
-  if (pixelContextKey !== currentPixelContextKey) {
-    setPixelContextKey(currentPixelContextKey);
-    setSelectedPixel(null);
-  }
+  // Auto-reset pixel selection on channel or dimension/position changes to prevent reticle overflow
+  const cuX = selectedCu?.abs_x ?? selectedCu?.x ?? 0;
+  const cuY = selectedCu?.abs_y ?? selectedCu?.y ?? 0;
+  const cuW = selectedCu?.width ?? blockSize;
+  const cuH = selectedCu?.height ?? cuW;
+  const currentPixelContextKey = `${jobId || ''}_${channel}_${cuX}_${cuY}_${cuW}x${cuH}`;
+
+  const prevPixelContextKeyRef = useRef(currentPixelContextKey);
+  useEffect(() => {
+    if (prevPixelContextKeyRef.current !== currentPixelContextKey) {
+      prevPixelContextKeyRef.current = currentPixelContextKey;
+      setSelectedPixel(null);
+    }
+  }, [currentPixelContextKey]);
 
   const handleSelectPixel = useCallback((coord) => {
     setSelectedPixel(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));

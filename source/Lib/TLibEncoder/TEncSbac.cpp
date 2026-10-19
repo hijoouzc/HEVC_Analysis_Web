@@ -765,6 +765,7 @@ Void TEncSbac::codeIntraDirChroma( TComDataCU* pcCU, UInt uiAbsPartIdx )
                             m_pcBinIf->getNumWrittenBits());
     }
 #endif
+
     UInt uiAllowedChromaDir[ NUM_CHROMA_MODE ];
     pcCU->getAllowedChromaDir( uiAbsPartIdx, uiAllowedChromaDir );
 

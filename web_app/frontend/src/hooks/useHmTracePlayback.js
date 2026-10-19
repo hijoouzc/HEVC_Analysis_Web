@@ -248,35 +248,40 @@ export function useHmTracePlayback({
   // Micro Stepping (CU-by-CU within active CTU)
   const stepNextCu = useCallback(() => {
     if (activeLeafNodes.length === 0) return;
-    setActiveCuIdx((prev) => {
-      const nextIdx = (prev + 1) % activeLeafNodes.length;
-      const targetNode = activeLeafNodes[nextIdx];
-      if (targetNode) {
-        setInspectedCu(targetNode);
-        if (onSelectCU) onSelectCU(targetNode);
-      }
-      return nextIdx;
-    });
-  }, [activeLeafNodes, onSelectCU]);
+    setActiveCuIdx((prev) => (prev + 1) % activeLeafNodes.length);
+  }, [activeLeafNodes.length]);
 
   const stepPrevCu = useCallback(() => {
     if (activeLeafNodes.length === 0) return;
-    setActiveCuIdx((prev) => {
-      const nextIdx = prev <= 0 ? activeLeafNodes.length - 1 : prev - 1;
-      const targetNode = activeLeafNodes[nextIdx];
-      if (targetNode) {
-        setInspectedCu(targetNode);
-        if (onSelectCU) onSelectCU(targetNode);
-      }
-      return nextIdx;
-    });
-  }, [activeLeafNodes, onSelectCU]);
+    setActiveCuIdx((prev) => (prev <= 0 ? activeLeafNodes.length - 1 : prev - 1));
+  }, [activeLeafNodes.length]);
+
+  // Safeguard against out-of-bounds indices when activeLeafNodes shrinks
+  const safeCuIdx = Math.min(activeCuIdx, Math.max(0, activeLeafNodes.length - 1));
+
+  // Synchronize inspected node and notify external callback once per discrete committed selection using composite key
+  const lastNotifiedKeyRef = useRef(null);
+  useEffect(() => {
+    if (activeLeafNodes.length === 0) return;
+    const targetNode = activeLeafNodes[safeCuIdx];
+    if (!targetNode) return;
+
+    const nodeKey = `${currentCtu?.ctuX ?? 0}_${currentCtu?.ctuY ?? 0}_${targetNode.x}_${targetNode.y}_${targetNode.width}x${targetNode.height}`;
+    if (nodeKey !== lastNotifiedKeyRef.current) {
+      lastNotifiedKeyRef.current = nodeKey;
+      setInspectedCu(targetNode);
+      if (onSelectCU) onSelectCU(targetNode);
+    }
+  }, [safeCuIdx, activeLeafNodes, currentCtu, onSelectCU]);
 
   // Dedicated inspection handler: strictly NEVER alters playhead
   const handleSelectInspectedCu = useCallback((cu) => {
+    if (!cu) return;
+    const nodeKey = `${currentCtu?.ctuX ?? 0}_${currentCtu?.ctuY ?? 0}_${cu.x}_${cu.y}_${cu.width}x${cu.height}`;
+    lastNotifiedKeyRef.current = nodeKey;
     setInspectedCu(cu);
     if (onSelectCU) onSelectCU(cu);
-  }, [onSelectCU]);
+  }, [currentCtu, onSelectCU]);
 
   const isCompleted = playheadCtuIdx >= totalCtus;
   const isTargetCtuActive = Boolean(

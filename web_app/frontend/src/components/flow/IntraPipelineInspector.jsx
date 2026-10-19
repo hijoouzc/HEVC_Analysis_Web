@@ -15,7 +15,9 @@ const STAGE_INSPECTOR_CONFIG = {
     stageName: 'Step 1: Reference Boundary Initialization & MDIS Filter',
     cppFunction: 'TComPrediction::initIntraPatternChType(tuRecurseWithPU, compID, bUseFilter)',
     cppFile: 'source/Lib/TLibCommon/TComPrediction.cpp',
-    standardRef: 'ITU-T H.265 Section 8.4.4.2.2 & 8.4.4.2.3',
+    // Trace documentation: ITU-T H.265 Section 8.4.4.2.2 & 8.4.4.2.3
+    standardRef: 'Reference Sample Substitution & Filtering',
+    normativeClause: '8.4.4.2.2',
     mathFormula: 'MDIS 3-Tap Filter:  p\'[i] = (p[i-1] + 2·p[i] + p[i+1] + 2) >> 2',
     snippet: HM_INTRA_PREDICTION_SNIPPET
   },
@@ -23,7 +25,9 @@ const STAGE_INSPECTOR_CONFIG = {
     stageName: 'Step 2: Rough Mode Decision (RMD) 35-Mode Funnel',
     cppFunction: 'TEncSearch::estIntraPredLumaQT() — FOR EACH OF 35 MODES',
     cppFile: 'source/Lib/TLibEncoder/TEncSearch.cpp',
-    standardRef: 'ITU-T H.265 Section 8.4.2 (RMD Fast Search)',
+    // Trace documentation: ITU-T H.265 Section 8.4.2 (RMD Fast Search)
+    standardRef: 'Rough Mode Decision (RMD)',
+    normativeClause: '8.4.2',
     mathFormula: 'RMD Cost:  J_RMD = SATD(Org, Pred) + λ_Had · R_mode',
     snippet: HM_EST_INTRAPRED_LUMA_SNIPPET
   },
@@ -31,7 +35,9 @@ const STAGE_INSPECTOR_CONFIG = {
     stageName: 'Step 3: Candidate Selection & Most Probable Modes (MPM)',
     cppFunction: 'TComDataCU::getIntraDirPredictor(partIdx, uiPreds, COMPONENT_Y, &iMode)',
     cppFile: 'source/Lib/TLibCommon/TComDataCU.cpp',
-    standardRef: 'ITU-T H.265 Section 8.4.2 (MPM Derivation)',
+    // Trace documentation: ITU-T H.265 Section 8.4.2 (MPM Derivation)
+    standardRef: 'Most Probable Modes (MPM)',
+    normativeClause: '8.4.2',
     mathFormula: 'Candidate Pool:  Candidates = Top_K(RMD) ∪ { MPM_0, MPM_1, MPM_2 }',
     snippet: HM_EST_INTRAPRED_LUMA_SNIPPET
   },
@@ -39,7 +45,9 @@ const STAGE_INSPECTOR_CONFIG = {
     stageName: 'Step 4: Full RDO Phase & QuadTree TU Recursion',
     cppFunction: 'TEncSearch::xRecurIntraCodingLumaQT(pcOrg, pcPred, pcResi, ...)',
     cppFile: 'source/Lib/TLibEncoder/TEncSearch.cpp & TComTrQuant.cpp',
-    standardRef: 'ITU-T H.265 Section 8.4.4 / 8.7 (RDO & Transform)',
+    // Trace documentation: ITU-T H.265 Section 8.4.4 / 8.7 (RDO & Transform)
+    standardRef: 'Residual QuadTree (RQT) & Transform',
+    normativeClause: '8.7',
     mathFormula: 'True RD Cost:  J_RDO = D_SSE(Org, Reco) + λ_mode · R_CABAC   |   S\' = Clip3(0, 255, P + R\')',
     snippet: HM_RECUR_INTRA_CODING_SNIPPET
   },
@@ -47,7 +55,9 @@ const STAGE_INSPECTOR_CONFIG = {
     stageName: 'Step 5: Chroma Intra Search & Winner Commitment',
     cppFunction: 'TEncSearch::estIntraPredChromaQT() & TEncCu::xCheckBestMode()',
     cppFile: 'source/Lib/TLibEncoder/TEncSearch.cpp & TEncCu.cpp',
-    standardRef: 'ITU-T H.265 Section 8.4.3 (Chroma Prediction)',
+    // Trace documentation: ITU-T H.265 Section 8.4.3 (Chroma Prediction)
+    standardRef: 'Chroma Intra Prediction',
+    normativeClause: '8.4.3',
     mathFormula: 'Chroma Candidates:  { Planar, Ver, Hor, DC, DM_CHROMA } \\ { BestLuma } ∪ { 34 }',
     snippet: HM_CHROMA_INTRA_SNIPPET
   }

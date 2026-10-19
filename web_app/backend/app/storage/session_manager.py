@@ -1,8 +1,16 @@
+import re
 import shutil
 import uuid
 from pathlib import Path
 from app.core.config import settings
-from app.domain.exceptions import JobNotFoundError
+from app.domain.exceptions import JobNotFoundError, InvalidInputError
+
+JOB_ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+def validate_job_id(job_id: str) -> str:
+    if not job_id or not isinstance(job_id, str) or not JOB_ID_REGEX.match(job_id):
+        raise InvalidInputError(f"Invalid job identifier: '{job_id}'")
+    return job_id
 
 class SessionManager:
     def __init__(self, base_sessions_dir: Path | None = None):
@@ -10,8 +18,13 @@ class SessionManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
         
     def create_session(self, job_id: str | None = None) -> str:
-        job_id = job_id or uuid.uuid4().hex[:12]
-        session_dir = self.base_dir / job_id
+        if job_id is not None:
+            job_id = validate_job_id(job_id)
+        else:
+            job_id = uuid.uuid4().hex[:12]
+        session_dir = (self.base_dir / job_id).resolve()
+        if not session_dir.is_relative_to(self.base_dir):
+            raise InvalidInputError(f"Security restriction: Session path escape attempt detected.")
         session_dir.mkdir(parents=True, exist_ok=True)
         # Safely prune stale sessions to avoid disk leaks
         try:
@@ -21,7 +34,10 @@ class SessionManager:
         return job_id
         
     def get_session_dir(self, job_id: str) -> Path:
-        session_dir = self.base_dir / job_id
+        validate_job_id(job_id)
+        session_dir = (self.base_dir / job_id).resolve()
+        if not session_dir.is_relative_to(self.base_dir):
+            raise InvalidInputError(f"Security restriction: Session path escape attempt detected.")
         if not session_dir.exists():
             raise JobNotFoundError(job_id)
         return session_dir
@@ -45,9 +61,13 @@ class SessionManager:
         return self.get_session_dir(job_id) / "recon.png"
         
     def cleanup_session(self, job_id: str) -> None:
-        session_dir = self.base_dir / job_id
-        if session_dir.exists():
-            shutil.rmtree(session_dir, ignore_errors=True)
+        try:
+            validate_job_id(job_id)
+            session_dir = (self.base_dir / job_id).resolve()
+            if session_dir.is_relative_to(self.base_dir) and session_dir.exists():
+                shutil.rmtree(session_dir, ignore_errors=True)
+        except Exception:
+            pass
 
     def cleanup_old_sessions(self, max_age_hours: int = 24, max_keep: int = 50) -> int:
         """

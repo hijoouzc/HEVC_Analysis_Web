@@ -65,12 +65,25 @@ class Settings(BaseModel):
     @property
     def DEFAULT_CFG(self) -> Path:
         return self.PROJECT_ROOT / "cfg/encoder_intra_main.cfg"
+
+    def get_cfg_for_profile(self, profile: str) -> Path:
+        """Resolves standard HM encoder configuration file based on profile name"""
+        normalized = profile.lower().replace("-", "_").strip()
+        if normalized in ["low_delay_p", "lowdelay_p", "inter"]:
+            return self.PROJECT_ROOT / "cfg/encoder_lowdelay_P_main.cfg"
+        elif normalized in ["random_access", "randomaccess"]:
+            return self.PROJECT_ROOT / "cfg/encoder_randomaccess_main.cfg"
+        return self.DEFAULT_CFG
         
     # Encoder defaults
     CTU_SIZE: int = 64
     DEFAULT_CU_SIZE: int = 8
     DEFAULT_FPS: int = 50
     DEFAULT_FRAMES: int = 1
+    
+    # Upload & Security constraints
+    MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50 MB
+    MAX_IMAGE_PIXELS: int = 4096 * 4096      # 16 Megapixels safeguard against Decompression Bomb
     
     # CORS configuration
     @property

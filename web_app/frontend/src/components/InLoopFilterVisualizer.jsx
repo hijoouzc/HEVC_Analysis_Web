@@ -133,11 +133,13 @@ function InLoopFilterVisualizer({
               <div style={{ overflowX: 'auto', maxHeight: '240px' }}>
                 <Table striped>
                   <TableHeader>
-                    <TableHead>Edge Origin</TableHead>
-                    <TableHead>Direction</TableHead>
-                    <TableHead>Strength (bS)</TableHead>
-                    <TableHead>Threshold β</TableHead>
-                    <TableHead>Threshold tC</TableHead>
+                    <TableRow>
+                      <TableHead>Edge Origin</TableHead>
+                      <TableHead>Direction</TableHead>
+                      <TableHead>Strength (bS)</TableHead>
+                      <TableHead>Threshold β</TableHead>
+                      <TableHead>Threshold tC</TableHead>
+                    </TableRow>
                   </TableHeader>
                   <TableBody>
                     {edges.map((edge, idx) => (
@@ -207,9 +209,9 @@ function InLoopFilterVisualizer({
                 lineHeight: 1.4,
               }}
             >
-              HM In-Loop Standards:
-              <br />&bull; DBF: ITU-T H.265 Section 8.7.2
-              <br />&bull; SAO: ITU-T H.265 Section 8.7.3
+              In-Loop Filters:
+              <br />&bull; DBF: Deblocking Filter (bS)
+              <br />&bull; SAO: Sample Adaptive Offset
             </div>
           </div>
         </Card>

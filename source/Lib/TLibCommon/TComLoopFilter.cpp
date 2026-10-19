@@ -662,8 +662,8 @@ Void TComLoopFilter::xEdgeFilterLuma( TComDataCU* const pcCU, const UInt uiAbsZo
         const Int dumpCtuY = pcCU->getCtuRsAddr() / pcCU->getPic()->getFrameWidthInCtus();
         if (pDumper->isCtuActive(dumpPoc, dumpCtuX, dumpCtuY))
         {
-          const Int edgeX = pcCU->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[uiBsAbsIdx]];
-          const Int edgeY = pcCU->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[uiBsAbsIdx]];
+          const Int edgeX = pcCU->getCUPelX() + g_auiRasterToPelX[g_auiZscanToRaster[uiBsAbsIdx]] + (edgeDir == EDGE_HOR ? iBlkIdx * 4 : 0);
+          const Int edgeY = pcCU->getCUPelY() + g_auiRasterToPelY[g_auiZscanToRaster[uiBsAbsIdx]] + (edgeDir == EDGE_VER ? iBlkIdx * 4 : 0);
           Pel pBuf[4], qBuf[4];
           Pel* pCenter = piTmpSrc + iSrcStep * (iIdx * uiPelsInPart + iBlkIdx * 4);
           for (Int k = 0; k < 4; ++k)

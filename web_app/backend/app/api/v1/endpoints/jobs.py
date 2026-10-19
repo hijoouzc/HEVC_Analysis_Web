@@ -1,7 +1,6 @@
 import asyncio
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
-from PIL import Image, ImageChops
 from app.domain.models.job import JobInfo
 from app.domain.models.roi import ROICoordinates, FrameMetadata
 from app.domain.exceptions import JobNotFoundError
@@ -9,9 +8,40 @@ from app.services.job_manager import job_manager
 from app.services.analysis_service import analysis_service
 from app.storage.session_manager import session_manager
 from app.engine.ffmpeg_adapter import ffmpeg_adapter
+from app.engine.image_processor import image_processor
 from app.core.config import settings
 
 router = APIRouter()
+
+async def read_and_validate_upload_file(file: UploadFile, max_bytes: int = settings.MAX_UPLOAD_SIZE) -> bytes:
+    chunk_size = 65536
+    total_read = 0
+    buffer = bytearray()
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        total_read += len(chunk)
+        if total_read > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Uploaded file exceeds maximum permitted size of {max_bytes // (1024 * 1024)}MB."
+            )
+        buffer.extend(chunk)
+    
+    if len(buffer) < 8:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty or corrupted.")
+
+    is_png = buffer[:8] == b"\x89PNG\r\n\x1a\n"
+    is_jpeg = buffer[:3] == b"\xff\xd8\xff"
+    is_bmp = buffer[:2] == b"BM"
+    is_webp = buffer[:4] == b"RIFF" and buffer[8:12] == b"WEBP"
+    if not (is_png or is_jpeg or is_bmp or is_webp):
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported image format. Allowed formats: PNG, JPEG, BMP, WebP."
+        )
+    return bytes(buffer)
 
 @router.post("/submit", response_model=JobInfo, status_code=202)
 async def submit_analysis_job(
@@ -20,10 +50,13 @@ async def submit_analysis_job(
     ctu_x: int = Form(0),
     ctu_y: int = Form(0),
     cu_size: int = Form(0),
-    scale_mode: str = Form("native")
+    scale_mode: str = Form("native"),
+    all_ctus: bool = Form(False),
+    profile: str = Form("all_intra"),
+    frames: int = Form(1)
 ):
     try:
-        content = await file.read()
+        content = await read_and_validate_upload_file(file)
         job_id = session_manager.create_session()
         input_image = session_manager.get_input_image_path(job_id)
         
@@ -37,10 +70,16 @@ async def submit_analysis_job(
         num_ctu_w = (calc_w + ctu_size - 1) // ctu_size
         num_ctu_h = (calc_h + ctu_size - 1) // ctu_size
 
+        is_all_ctus = all_ctus or ctu_x < 0 or ctu_y < 0
+        target_ctu_x = -1 if is_all_ctus else max(0, min(ctu_x, max(0, num_ctu_w - 1)))
+        target_ctu_y = -1 if is_all_ctus else max(0, min(ctu_y, max(0, num_ctu_h - 1)))
+        clamped_frames = max(1, min(frames, 10))
+
         roi = ROICoordinates(
-            ctu_x=max(0, min(ctu_x, max(0, num_ctu_w - 1))),
-            ctu_y=max(0, min(ctu_y, max(0, num_ctu_h - 1))),
-            cu_size=cu_size
+            ctu_x=target_ctu_x,
+            ctu_y=target_ctu_y,
+            cu_size=cu_size,
+            all_ctus=is_all_ctus
         )
         frame_meta = FrameMetadata(
             width=calc_w,
@@ -52,7 +91,13 @@ async def submit_analysis_job(
             ctu_size=ctu_size
         )
         
-        job_info = await job_manager.create_job(roi=roi, frame=frame_meta, job_id=job_id)
+        job_info = await job_manager.create_job(
+            roi=roi,
+            frame=frame_meta,
+            job_id=job_id,
+            profile=profile,
+            frames=clamped_frames
+        )
         
         # Enqueue pipeline execution in background
         background_tasks.add_task(
@@ -60,7 +105,9 @@ async def submit_analysis_job(
             job_id=job_id,
             input_image_path=input_image,
             roi=roi,
-            scale_mode=scale_mode
+            scale_mode=scale_mode,
+            profile=profile,
+            frames=clamped_frames
         )
         
         return job_info
@@ -74,44 +121,10 @@ async def get_job_status(job_id: str):
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
-def _write_file_bytes(target: Path, data: bytes) -> None:
-    with open(target, "wb") as f:
-        f.write(data)
-
-def _read_image_dims(img_path: Path) -> tuple[int, int]:
-    with Image.open(img_path) as img:
-        return img.size
-
-def _generate_residual_image(input_img: Path, recon_png: Path, residual_png: Path, gain: int, img_w: int, img_h: int) -> None:
-    if recon_png.exists():
-        with Image.open(input_img) as orig_raw, Image.open(recon_png) as recon_raw:
-            orig = orig_raw.convert("RGB")
-            recon = recon_raw.convert("RGB")
-            # Both must match target YUV dimensions to ensure 1:1 CTU overlay alignment
-            if orig.size != (img_w, img_h):
-                orig = orig.resize((img_w, img_h), Image.Resampling.LANCZOS)
-            if recon.size != (img_w, img_h):
-                recon = recon.resize((img_w, img_h), Image.Resampling.NEAREST)
-            diff = ImageChops.difference(orig, recon)
-            if gain != 1:
-                diff = diff.point(lambda p: min(255, p * gain))
-            diff.save(residual_png)
-    else:
-        empty = Image.new("RGB", (img_w, img_h), (0, 0, 0))
-        empty.save(residual_png)
-
-def _generate_fallback_plane(input_img: Path, plane_png: Path, norm_type: str, img_w: int, img_h: int) -> None:
-    with Image.open(input_img) as img:
-        if img.size != (img_w, img_h):
-            img = img.resize((img_w, img_h), Image.Resampling.LANCZOS)
-        img_ycbcr = img.convert("YCbCr")
-        y_plane, cb_plane, cr_plane = img_ycbcr.split()
-        if norm_type == "y":
-            y_plane.save(plane_png)
-        elif norm_type == "u":
-            cb_plane.save(plane_png)
-        else:
-            cr_plane.save(plane_png)
+_write_file_bytes = image_processor.write_file_bytes
+_read_image_dims = image_processor.read_image_dims
+_generate_residual_image = image_processor.generate_residual_image
+_generate_fallback_plane = image_processor.generate_fallback_plane
 
 @router.get("/{job_id}/images/{image_type}")
 async def get_job_image(job_id: str, image_type: str, gain: int = 4):

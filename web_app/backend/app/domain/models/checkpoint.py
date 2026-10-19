@@ -21,6 +21,8 @@ class CUPartitionNode(BaseModel):
     height: int
     split: bool
     mode: str | None = None          # INTRA, INTER, SKIP
+    part_size: int | None = None     # HM PartSize (0=2Nx2N, 1=2NxN, ...)
+    cu_transquant_bypass_flag: bool | None = None
     intra_dir: int | None = None     # Mode index 0-34 if INTRA
     qp: int | None = None
     cost: float | None = None
@@ -193,6 +195,7 @@ class TransformQuantCheckpoint(BaseModel):
     # Frequency & Transform Domain flags
     is_dst: bool = False
     is_transform_skip: bool = False
+    cbf: bool = False
     tu_depth: int = 0
     cu_x: int | None = None
     cu_y: int | None = None
@@ -331,6 +334,48 @@ class CheckpointSummaryResponse(BaseModel):
 # ==========================================
 # CP_00_FRAME_GOP Models
 # ==========================================
+class SpsMetadata(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    sps_id: int = 0
+    pic_width_in_luma_samples: int = 0
+    pic_height_in_luma_samples: int = 0
+    max_cu_width: int = 64
+    max_cu_height: int = 64
+    max_total_cu_depth: int = 4
+    log2_min_coding_block_size: int = 3
+    log2_diff_max_min_coding_block_size: int = 3
+    quadtree_tu_log2_min_size: int = 2
+    quadtree_tu_log2_max_size: int = 5
+    quadtree_tu_max_depth_intra: int = 3
+    quadtree_tu_max_depth_inter: int = 3
+    chroma_format_idc: int = 1
+    bit_depth_luma: int = 8
+    bit_depth_chroma: int = 8
+    use_sao: bool = True
+    use_strong_intra_smoothing: bool = True
+    use_amp: bool = False
+
+class PpsMetadata(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    pps_id: int = 0
+    sps_id: int = 0
+    pic_init_qp_minus26: int = 0
+    constrained_intra_pred_flag: bool = False
+    transquant_bypass_enabled_flag: bool = False
+    use_transform_skip: bool = False
+    use_dqp: bool = False
+    max_cu_dqp_depth: int = 0
+    loop_filter_across_slices_enabled_flag: bool = True
+    deblocking_filter_control_present_flag: bool = False
+
+class HevcSequenceMetadata(BaseModel):
+    """Sequence & Picture Parameter Set metadata from HM-18.0 TComSPS and TComPPS"""
+    model_config = ConfigDict(extra="ignore")
+    event: str = "SEQUENCE_METADATA"
+    stage: str = "CP_00_FRAME_GOP"
+    sps: SpsMetadata = Field(default_factory=SpsMetadata)
+    pps: PpsMetadata = Field(default_factory=PpsMetadata)
+
 class FrameGopCheckpoint(BaseModel):
     poc: int = 0
     slice_type: str = "I"
@@ -362,6 +407,12 @@ class InterSearchCheckpoint(BaseModel):
     mv_y: int = 0
     mvd_x: int = 0
     mvd_y: int = 0
+    ref_idx_l1: int | None = None
+    mvp_idx_l1: int | None = None
+    mv_x_l1: int | None = None
+    mv_y_l1: int | None = None
+    mvd_x_l1: int | None = None
+    mvd_y_l1: int | None = None
     cost: float = 0.0
     dist: int = 0
     bits: int = 0
@@ -434,4 +485,82 @@ class CabacEntropyFullResponse(BaseModel):
     total_bins: int = 0
     total_bits: int = 0
     syntax_breakdown: dict[str, int] = Field(default_factory=dict)
+
+# ==========================================
+# CU 360-Degree Glass-Box Inspection Models
+# ==========================================
+class CUInspectionSpatial(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    ctu_x: int
+    ctu_y: int
+    cu_x: int
+    cu_y: int
+    cu_size: int
+    depth: int
+    split: bool
+    mode: str = "INTRA"  # INTRA, INTER, SKIP
+    part_size: int | None = None
+    cu_transquant_bypass_flag: bool = False
+    qp: int = 32
+    cost: float = 0.0
+
+class CUInspectionIntra(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    intra_dir: int | None = None
+    direction_name: str | None = None
+    is_mpm: bool = False
+    strong_smoothing: bool = False
+    winner_cost: float | None = None
+    distortion: float | None = None
+    bits: float | None = None
+
+class CUInspectionInter(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    is_skipped: bool = False
+    mv_l0: list[int] = Field(default_factory=list)
+    ref_idx_l0: int = -1
+    mv_l1: list[int] = Field(default_factory=list)
+    ref_idx_l1: int = -1
+    mvd_l0: list[int] = Field(default_factory=list)
+
+class CUInspectionTransform(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    tu_x: int = 0
+    tu_y: int = 0
+    width: int = 0
+    height: int = 0
+    component: str = "Y"
+    tu_depth: int = 0
+    is_dst: bool = False
+    is_transform_skip: bool = False
+    cbf: bool = False
+    sig_coeff_count: int = 0
+    energy_compaction_ratio: float = 0.0
+    sparsity_ratio: float = 0.0
+    qp: int = 32
+
+class CUInspectionMatrices(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    residual: list[int] = Field(default_factory=list)
+    transform_coeff: list[int] = Field(default_factory=list)
+    quant_coeff: list[int] = Field(default_factory=list)
+    dequant_coeff: list[int] = Field(default_factory=list)
+    prediction: list[int] = Field(default_factory=list)
+    reconstruction: list[int] = Field(default_factory=list)
+
+class CUInspectionResponse(BaseModel):
+    """CU 360-Degree Glass-Box Inspection Result"""
+    model_config = ConfigDict(extra="ignore")
+    is_available: bool = True
+    status: str = "FOUND"  # FOUND, NOT_FOUND_IN_TREE, NOT_ENCODED_YET
+    job_id: str
+    poc: int = 0
+    spatial: CUInspectionSpatial | None = None
+    rdo: CuRdoDecisionCheckpoint | None = None
+    intra: CUInspectionIntra | None = None
+    inter: CUInspectionInter | None = None
+    transform: CUInspectionTransform | None = None
+    transforms: list[CUInspectionTransform] = Field(default_factory=list)
+    matrices: CUInspectionMatrices | None = None
+
 

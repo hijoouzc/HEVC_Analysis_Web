@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import React, { useState, useEffect, useMemo, useDeferredValue, useRef } from 'react';
 import {
   runHevcQuadtreeSimulation,
   generateSyntheticCtuPattern,
@@ -99,7 +99,13 @@ function RdoQuadtreeSimulator({
 
   // Simulation execution result (synced with HM encoder ground-truth when available)
   const isGroundTruthActive = patternType === 'image' && Boolean(partitionData?.nodes?.length);
-  const simResult = useMemo(() => {
+  const [workerResult, setWorkerResult] = useState(null);
+  const [_isCalculating, setIsCalculating] = useState(false);
+  const workerRef = useRef(null);
+  const activeRequestIdRef = useRef(0);
+
+  // Synchronous calculation function (used for initial render, tests, and error fallback)
+  const runSyncSimulation = useCallback(() => {
     return runHevcQuadtreeSimulation({
       ctuPatch: activeCtuPatch,
       qp: deferredQp,
@@ -107,7 +113,68 @@ function RdoQuadtreeSimulator({
       rdoDecisions: isGroundTruthActive ? currentCtuDecisions : null,
       candidateDetails: isGroundTruthActive ? candidateDetails : null
     });
+  }, [activeCtuPatch, deferredQp, isGroundTruthActive, partitionData, currentCtuDecisions, candidateDetails]);
+
+  // Synchronous fallback (and initial value) for immediate render & tests
+  const syncSimResult = useMemo(() => {
+    return runSyncSimulation();
+  }, [runSyncSimulation]);
+
+  // Web Worker lifecycle: run simulation off the main UI thread
+  useEffect(() => {
+    if (typeof window !== 'undefined' && typeof Worker !== 'undefined') {
+      try {
+        const worker = new Worker(
+          new URL('../workers/rdoSimulator.worker.js', import.meta.url),
+          { type: 'module' }
+        );
+        workerRef.current = worker;
+        worker.onmessage = (e) => {
+          if (e.data?.id === activeRequestIdRef.current) {
+            if (e.data?.status === 'success' && e.data?.result) {
+              setWorkerResult(e.data.result);
+            } else if (e.data?.status === 'error') {
+              console.warn('Worker error, falling back to sync simulation:', e.data?.error);
+              setWorkerResult(runSyncSimulation());
+            }
+            setIsCalculating(false);
+          }
+        };
+        worker.onerror = (err) => {
+          console.warn('Worker runtime error, falling back to sync simulation:', err);
+          setWorkerResult(runSyncSimulation());
+          setIsCalculating(false);
+        };
+        return () => {
+          worker.terminate();
+          workerRef.current = null;
+        };
+      } catch (err) {
+        console.warn('Simulator Web Worker not supported in this environment, using main thread:', err);
+      }
+    }
+  }, [runSyncSimulation]);
+
+  // Post simulation request to worker when inputs change; invalidate previous result
+  useEffect(() => {
+    const reqId = ++activeRequestIdRef.current;
+    if (workerRef.current) {
+      setWorkerResult(null);
+      setIsCalculating(true);
+      workerRef.current.postMessage({
+        id: reqId,
+        params: {
+          ctuPatch: activeCtuPatch,
+          qp: deferredQp,
+          groundTruthNodes: isGroundTruthActive ? partitionData.nodes : null,
+          rdoDecisions: isGroundTruthActive ? currentCtuDecisions : null,
+          candidateDetails: isGroundTruthActive ? candidateDetails : null
+        }
+      });
+    }
   }, [activeCtuPatch, deferredQp, isGroundTruthActive, partitionData?.nodes, currentCtuDecisions, candidateDetails]);
+
+  const simResult = workerResult || syncSimResult;
 
   const totalSteps = simResult.totalSteps || 1;
   const safeStepIdx = Math.min(stepIdx, totalSteps - 1);

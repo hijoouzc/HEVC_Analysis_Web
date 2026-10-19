@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from app.core.config import settings
 from app.api.v1.router import api_v1_router
 from app.services.analysis_service import analysis_service
@@ -32,6 +33,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    application.add_middleware(
+        GZipMiddleware,
+        minimum_size=1024,
+    )
+
     # V1 API
     application.include_router(api_v1_router, prefix=settings.API_V1_STR)
 
@@ -55,7 +61,8 @@ def create_app() -> FastAPI:
         scale_mode: str = Form("native")
     ):
         try:
-            content = await file.read()
+            from app.api.v1.endpoints.jobs import read_and_validate_upload_file
+            content = await read_and_validate_upload_file(file)
             response = await analysis_service.run_synchronous_analysis(
                 image_bytes=content,
                 ctu_x=ctu_x,

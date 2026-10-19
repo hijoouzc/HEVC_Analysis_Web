@@ -9,6 +9,13 @@ def test_roi_coordinates_defaults():
     assert roi.ctu_x == 0
     assert roi.ctu_y == 0
     assert roi.cu_size == 0
+    assert roi.all_ctus is False
+
+def test_roi_coordinates_full_frame():
+    roi = ROICoordinates(ctu_x=-1, ctu_y=-1, all_ctus=True)
+    assert roi.ctu_x == -1
+    assert roi.ctu_y == -1
+    assert roi.all_ctus is True
 
 def test_frame_metadata_validation():
     meta = FrameMetadata(

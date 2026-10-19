@@ -42,6 +42,9 @@
 #if FAST_BIT_EST
 #include "TLibCommon/ContextModel.h"
 #endif
+#if ENABLE_VISUAL_DUMP
+#include "TLibCommon/VisualDumper.h"
+#endif
 
 //! \ingroup TLibEncoder
 //! \{
@@ -212,6 +215,14 @@ Void TEncTop::init(Bool isFieldCoding)
     xInitPPS(pps1, sps0);
     xInitScalingLists(sps0, pps1);
   }
+
+#if ENABLE_VISUAL_DUMP
+  VisualDumper* pDumper = VisualDumper::getInstance();
+  if (pDumper != NULL && pDumper->isEnabled())
+  {
+    pDumper->dumpSequenceParams(&sps0, &pps0);
+  }
+#endif
 
   // initialize processing unit classes
   m_cGOPEncoder.  init( this );

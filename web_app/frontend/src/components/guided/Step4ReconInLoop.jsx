@@ -46,7 +46,7 @@ export function Step4ReconInLoop({
         processDesc=""
         outputItems={["Recon S'", 'Distortion (SSE)']}
         hmFunction="TComPic::getPicYuvRec"
-        specReference="ITU-T H.265 Section 8.6.4 (Inverse Transformation) & Section 8.7 (In-loop filter)"
+        specReference="Picture Reconstruction & In-Loop Filtering (DBF / SAO)"
         formula="S'_trial = Clip3(0, (1 << bitDepth) - 1, P + R'); Distortion D = sum((S_orig - S'_trial)^2)"
       />
 

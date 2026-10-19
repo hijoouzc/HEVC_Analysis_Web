@@ -13,27 +13,39 @@ class HMEncoderRunner:
     def __init__(self, encoder_bin: Path | None = None, cfg_path: Path | None = None, max_concurrent: int = 2):
         self.encoder_bin = encoder_bin or settings.ENCODER_BIN
         self.cfg_path = cfg_path or settings.DEFAULT_CFG
-        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._max_concurrent = max_concurrent
+        self._semaphore: asyncio.Semaphore | None = None
         
+    def _get_semaphore(self) -> asyncio.Semaphore:
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self._max_concurrent)
+        return self._semaphore
+
     async def run_encode(
         self,
         yuv_input: Path,
         session_dir: Path,
         frame_meta: FrameMetadata,
-        roi: ROICoordinates
+        roi: ROICoordinates,
+        cfg_path: Path | None = None,
+        frames: int | None = None
     ) -> Path:
+        effective_cfg = cfg_path or self.cfg_path
+        effective_frames = frames if (frames is not None and frames > 0) else settings.DEFAULT_FRAMES
+
         if not self.encoder_bin.exists():
             raise EncoderExecutionError(f"Encoder binary not found at: {self.encoder_bin}")
-        if not self.cfg_path.exists():
-            raise EncoderExecutionError(f"Config file not found at: {self.cfg_path}")
+        if not effective_cfg.exists():
+            raise EncoderExecutionError(f"Config file not found at: {effective_cfg}")
             
         trace_output = session_dir / "trace.jsonl"
         if trace_output.exists():
             trace_output.unlink()
             
         env = os.environ.copy()
-        env["VISUAL_CTU_X"] = str(roi.ctu_x)
-        env["VISUAL_CTU_Y"] = str(roi.ctu_y)
+        is_all_ctus = getattr(roi, "all_ctus", False) or roi.ctu_x < 0 or roi.ctu_y < 0
+        env["VISUAL_CTU_X"] = "-1" if is_all_ctus else str(roi.ctu_x)
+        env["VISUAL_CTU_Y"] = "-1" if is_all_ctus else str(roi.ctu_y)
         env["VISUAL_CU_SIZE"] = str(roi.cu_size)
         env["VISUAL_DUMP_EXIT"] = "0"
         env["VISUAL_OUTPUT_DIR"] = str(session_dir)
@@ -42,19 +54,18 @@ class HMEncoderRunner:
         bitstream_output = session_dir / "str.bin"
         cmd = [
             str(self.encoder_bin),
-            "-c", str(self.cfg_path),
+            "-c", str(effective_cfg),
             "-i", str(yuv_input),
             "-o", str(recon_output),
             "-b", str(bitstream_output),
             "-wdt", str(frame_meta.aligned_width),
             "-hgt", str(frame_meta.aligned_height),
             "-fr", str(settings.DEFAULT_FPS),
-            "-f", str(settings.DEFAULT_FRAMES)
+            "-f", str(effective_frames)
         ]
         
-        start_time = time.time()
-        
-        async with self._semaphore:
+        sem = self._get_semaphore()
+        async with sem:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
@@ -77,24 +88,8 @@ class HMEncoderRunner:
             err_msg = stderr.decode(errors="replace") if stderr else f"HM Encoder process exited with code {proc.returncode}."
             raise EncoderExecutionError(err_msg, proc.returncode)
 
-        # Copy trace to legacy dump_data/trace.jsonl for direct external file observers
         if trace_output.exists() and trace_output.stat().st_size > 0:
-            try:
-                settings.LEGACY_DUMP_DIR.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(trace_output, settings.LEGACY_DUMP_DIR / "trace.jsonl")
-            except Exception:
-                pass
             return trace_output
-            
-        # Only fallback to legacy trace if written during THIS current job execution
-        legacy_trace = settings.LEGACY_DUMP_DIR / "trace.jsonl"
-        if legacy_trace.exists() and legacy_trace.stat().st_size > 0:
-            try:
-                if legacy_trace.stat().st_mtime >= (start_time - 1.0):
-                    shutil.copyfile(legacy_trace, trace_output)
-                    return trace_output
-            except OSError:
-                pass
             
         err_msg = stderr.decode(errors="replace") if stderr else "HM Encoder did not generate trace data."
         raise EncoderExecutionError(err_msg, proc.returncode or -1)

@@ -55,7 +55,7 @@ export function Step3ResidualTu({
         processDesc=""
         outputItems={['Residual R', 'Quantized Q']}
         hmFunction="TComTrQuant::transformNxN"
-        specReference="ITU-T H.265 Section 8.6 (Scaling, Transform and Quantization Process)"
+        specReference="Residual Quadtree (RQT) & Quantization"
         formula="R(x,y) = S(x,y) - P(x,y) ➔ C(u,v) = DCT(R) ➔ Q(u,v) = Round(C / Delta_QP)"
       />
 

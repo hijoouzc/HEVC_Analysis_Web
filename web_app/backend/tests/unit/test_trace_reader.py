@@ -72,3 +72,21 @@ def test_trace_reader_ctu_indexing(sample_trace_file):
         ctu_y=99
     )
     assert len(events_ctu99) == 0
+
+def test_trace_reader_cache_stats(sample_trace_file):
+    TraceReader.clear_cache()
+    stats = TraceReader.get_cache_stats()
+    assert stats["cached_files"] == 0
+    assert stats["total_events"] == 0
+    assert stats["json_parser"] in ("orjson", "json")
+
+    TraceReader.read_all(sample_trace_file)
+    stats2 = TraceReader.get_cache_stats()
+    assert stats2["cached_files"] == 1
+    assert stats2["total_events"] == 38
+
+    TraceReader.clear_cache()
+    stats3 = TraceReader.get_cache_stats()
+    assert stats3["cached_files"] == 0
+    assert stats3["total_events"] == 0
+

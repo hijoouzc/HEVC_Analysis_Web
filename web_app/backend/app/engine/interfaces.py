@@ -7,7 +7,9 @@ class IVideoProcessor(Protocol):
         self,
         input_image: Path,
         output_yuv: Path,
-        roi: ROICoordinates
+        roi: ROICoordinates,
+        scale_mode: str = "native",
+        frames: int = 1
     ) -> FrameMetadata:
         """Processes input image to pixel-exact YUV 4:2:0 file aligned with CTU grid"""
         ...
@@ -18,7 +20,9 @@ class IEncoderRunner(Protocol):
         yuv_input: Path,
         session_dir: Path,
         frame_meta: FrameMetadata,
-        roi: ROICoordinates
+        roi: ROICoordinates,
+        cfg_path: Path | None = None,
+        frames: int | None = None
     ) -> Path:
         """Executes HEVC reference encoder and returns path to generated trace.jsonl"""
         ...

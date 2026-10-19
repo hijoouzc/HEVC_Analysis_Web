@@ -2,9 +2,10 @@ from pydantic import BaseModel, Field
 
 class ROICoordinates(BaseModel):
     poc: int = Field(default=0, ge=0, description="Picture Order Count")
-    ctu_x: int = Field(default=0, ge=0, description="CTU X index (0-based)")
-    ctu_y: int = Field(default=0, ge=0, description="CTU Y index (0-based)")
+    ctu_x: int = Field(default=0, ge=-1, description="CTU X index (0-based, or -1 for all CTUs)")
+    ctu_y: int = Field(default=0, ge=-1, description="CTU Y index (0-based, or -1 for all CTUs)")
     cu_size: int = Field(default=0, description="Target CU Size (0 = all sizes 64..4, or specific: 64, 32, 16, 8, 4)")
+    all_ctus: bool = Field(default=False, description="When true, trace and analyze all CTUs across the entire frame")
 
 class FrameMetadata(BaseModel):
     width: int = Field(..., gt=0, description="Original image width")

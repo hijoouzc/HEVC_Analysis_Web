@@ -27,3 +27,12 @@ def test_intra_ref_parser_diff_calculation():
     assert parsed.filter_applied is True
     assert parsed.max_filter_diff == 2
     assert parsed.avg_filter_diff > 0.0
+
+def test_intra_ref_parser_strong_smoothing_eligible():
+    raw_data = {
+        "poc": 0, "ctu_x": 0, "ctu_y": 0, "cu_size": 32,
+        "event": "INTRA_REF_SAMPLES",
+        "strong_smoothing_eligible": True
+    }
+    parsed = intra_ref_parser.parse_event(raw_data)
+    assert parsed.strong_smoothing is True

@@ -18,6 +18,12 @@ const SetupScreen = ({
   imagePreview,
   partitionData,
   ctuPartitionsMap,
+  allCtus = false,
+  setAllCtus,
+  profile = 'all_intra',
+  setProfile,
+  frames = 1,
+  setFrames,
   onFileChange,
   onSelectCTU,
   onReAnalyze,
@@ -88,11 +94,99 @@ const SetupScreen = ({
 
         <Card style={{ padding: '14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--apple-label)' }}>Selected CTU</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--apple-label)' }}>Analysis Scope</span>
             <Badge variant="blue">
-              {ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : '(0, 0)'}
+              {allCtus ? 'Full Frame' : (ctuX !== null && ctuY !== null ? `CTU (${ctuX}, ${ctuY})` : '(0, 0)')}
             </Badge>
           </div>
+
+          {/* Scope Toggle Button Group */}
+          {setAllCtus && (
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+              <button
+                type="button"
+                onClick={() => setAllCtus(false)}
+                style={{
+                  flex: 1,
+                  padding: '6px 8px',
+                  fontSize: '11px',
+                  fontWeight: !allCtus ? 600 : 400,
+                  borderRadius: '6px',
+                  border: !allCtus ? '1px solid var(--apple-blue)' : '1px solid var(--separator)',
+                  background: !allCtus ? 'rgba(0, 122, 255, 0.12)' : 'var(--fill-3)',
+                  color: !allCtus ? 'var(--apple-blue)' : 'var(--apple-label-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 120ms ease',
+                }}
+              >
+                Target CTU
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllCtus(true)}
+                style={{
+                  flex: 1,
+                  padding: '6px 8px',
+                  fontSize: '11px',
+                  fontWeight: allCtus ? 600 : 400,
+                  borderRadius: '6px',
+                  border: allCtus ? '1px solid var(--apple-blue)' : '1px solid var(--separator)',
+                  background: allCtus ? 'rgba(0, 122, 255, 0.12)' : 'var(--fill-3)',
+                  color: allCtus ? 'var(--apple-blue)' : 'var(--apple-label-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 120ms ease',
+                }}
+              >
+                Full Frame
+              </button>
+            </div>
+          )}
+
+          {/* Encoder Profile Selector */}
+          {setProfile && (
+            <div style={{ marginBottom: '10px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--apple-label-2)', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+                Encoder Profile
+              </div>
+              <select
+                value={profile}
+                onChange={(e) => setProfile(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px',
+                  fontSize: '11.5px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--separator)',
+                  background: 'var(--fill-3)',
+                  color: 'var(--apple-label)',
+                  fontFamily: 'var(--font-mono)',
+                  outline: 'none',
+                }}
+              >
+                <option value="all_intra">All-Intra (Intra Prediction)</option>
+                <option value="low_delay_p">Low-Delay-P (Inter Prediction)</option>
+                <option value="random_access">Random-Access (Hierarchical B)</option>
+              </select>
+            </div>
+          )}
+
+          {/* Frames Slider if Inter Prediction */}
+          {setFrames && profile !== 'all_intra' && (
+            <div style={{ marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--apple-label-2)', marginBottom: '4px', fontFamily: 'var(--font-mono)' }}>
+                <span>Encoding Frames:</span>
+                <span style={{ color: 'var(--apple-label)', fontWeight: 600 }}>{frames} frames</span>
+              </div>
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={frames}
+                onChange={(e) => setFrames(parseInt(e.target.value, 10))}
+                style={{ width: '100%', accentColor: 'var(--apple-blue)' }}
+              />
+            </div>
+          )}
 
           <div
             style={{
@@ -106,9 +200,9 @@ const SetupScreen = ({
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--apple-label-2)' }}>CTU Position:</span>
+              <span style={{ color: 'var(--apple-label-2)' }}>CTU Focus:</span>
               <span style={{ color: 'var(--apple-label)', fontWeight: 700 }}>
-                {ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : '(0, 0)'}
+                {allCtus ? 'All CTUs' : (ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : '(0, 0)')}
               </span>
             </div>
           </div>
@@ -120,7 +214,7 @@ const SetupScreen = ({
             disabled={!file || loading}
             style={{ width: '100%' }}
           >
-            {loading ? 'Analyzing...' : 'Start HM Analysis'}
+            {loading ? 'Analyzing...' : (allCtus ? 'Analyze Entire Frame' : 'Start HM Analysis')}
           </Button>
 
           <Button

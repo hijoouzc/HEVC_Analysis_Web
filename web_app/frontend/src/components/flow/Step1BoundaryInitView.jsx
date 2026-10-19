@@ -447,7 +447,7 @@ export default function Step1BoundaryInitView({
               • <strong>16×16 &amp; 32×32 CU:</strong> Applied to all modes except near-horizontal (9..11) and near-vertical (25..27).
             </div>
             <div>
-              • <strong>Chroma (Cb/Cr):</strong> Strictly BYPASSED per H.265 Section 8.4.4.2.3.
+              • <strong>Chroma (Cb/Cr):</strong> Filtering Bypassed
             </div>
           </div>
 

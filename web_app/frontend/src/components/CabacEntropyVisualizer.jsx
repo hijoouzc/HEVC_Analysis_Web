@@ -158,13 +158,15 @@ function CabacEntropyVisualizer({
           <div style={{ overflowX: 'auto', maxHeight: '420px' }}>
             <Table striped>
               <TableHeader>
-                <TableHead>#</TableHead>
-                <TableHead>Syntax Element</TableHead>
-                <TableHead>Bin</TableHead>
-                <TableHead>ctxIdx</TableHead>
-                <TableHead>pStateIdx (0..62)</TableHead>
-                <TableHead>valMPS</TableHead>
-                <TableHead align="right">Bits</TableHead>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>Syntax Element</TableHead>
+                  <TableHead>Bin</TableHead>
+                  <TableHead>ctxIdx</TableHead>
+                  <TableHead>pStateIdx (0..62)</TableHead>
+                  <TableHead>valMPS</TableHead>
+                  <TableHead align="right">Bits</TableHead>
+                </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredBins.map((b, idx) => (

@@ -124,7 +124,7 @@ function InterSearchVisualizer({
               color: 'var(--apple-label-tertiary)',
             }}
           >
-            Standard Hook: TEncSearch::predInterSearch() &bull; Section 8.5
+            Standard Hook: TEncSearch::predInterSearch() &bull; Inter Prediction
           </div>
         </Card>
       ) : (
@@ -149,14 +149,16 @@ function InterSearchVisualizer({
             <div style={{ overflowX: 'auto', maxHeight: '380px' }}>
               <Table striped>
                 <TableHeader>
-                  <TableHead>PU Index</TableHead>
-                  <TableHead>PU Size (samples)</TableHead>
-                  <TableHead>Ref</TableHead>
-                  <TableHead>MV (x, y)</TableHead>
-                  <TableHead>MVD (x, y)</TableHead>
-                  <TableHead>MVP</TableHead>
-                  <TableHead align="right">Cost</TableHead>
-                  <TableHead align="right">Bits</TableHead>
+                  <TableRow>
+                    <TableHead>PU Index</TableHead>
+                    <TableHead>PU Size (samples)</TableHead>
+                    <TableHead>Ref</TableHead>
+                    <TableHead>MV (x, y)</TableHead>
+                    <TableHead>MVD (x, y)</TableHead>
+                    <TableHead>MVP</TableHead>
+                    <TableHead align="right">Cost</TableHead>
+                    <TableHead align="right">Bits</TableHead>
+                  </TableRow>
                 </TableHeader>
                 <TableBody>
                   {interSearchData.map((pu, idx) => (

@@ -10,7 +10,7 @@ export function CompactStepRibbon({
   _stepNumber = 1,
   inputItems = [],
   processTitle = '',
-  processDesc = '',
+  _processDesc = '',
   outputItems = [],
   hmFunction = '',
   specReference = '',
@@ -80,11 +80,6 @@ export function CompactStepRibbon({
           >
             <span style={{ color: 'var(--apple-blue)', fontWeight: 700 }}>OP:</span>
             <span style={{ color: 'var(--apple-label)', fontWeight: 600 }}>{processTitle}</span>
-            {processDesc && (
-              <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>
-                ({processDesc})
-              </span>
-            )}
           </div>
 
           <span style={{ color: 'var(--separator)', fontSize: '13px', userSelect: 'none' }}>➔</span>

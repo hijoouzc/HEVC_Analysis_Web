@@ -81,3 +81,12 @@ async def test_job_manager_memory_pruning():
     await jm.create_job(roi=roi, frame=frame, job_id="job_trigger")
     # Should prune completed down to PRUNE_TARGET (3) + 1 new = 4
     assert len(jm._jobs) <= 4
+
+def test_session_manager_path_traversal_rejection(temp_session_manager):
+    from app.domain.exceptions import InvalidInputError
+    with pytest.raises(InvalidInputError):
+        temp_session_manager.create_session("../../etc/malicious")
+    with pytest.raises(InvalidInputError):
+        temp_session_manager.get_session_dir("../../etc/passwd")
+    with pytest.raises(InvalidInputError):
+        temp_session_manager.get_session_dir("valid/../../traversal")

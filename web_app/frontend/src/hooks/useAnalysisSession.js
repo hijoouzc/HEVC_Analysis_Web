@@ -1,7 +1,39 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { getIntraModeInfo } from '../utils/colorUtils';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const MAX_CTU_CACHE = 16;
+
+/**
+ * LRU Cache update helper: maintains recency order and keeps size <= maxCapacity.
+ */
+function updateLruCache(prevCache, key, value, maxCapacity = MAX_CTU_CACHE) {
+  const newCache = { ...prevCache };
+  if (key in newCache) {
+    delete newCache[key];
+  } else {
+    const keys = Object.keys(newCache);
+    if (keys.length >= maxCapacity) {
+      delete newCache[keys[0]];
+    }
+  }
+  newCache[key] = value;
+  return newCache;
+}
+
+/**
+ * Builds a query string safely from an object of parameters.
+ */
+function buildQuery(paramsObj) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(paramsObj)) {
+    if (v !== null && v !== undefined) {
+      q.set(k, String(v));
+    }
+  }
+  const str = q.toString();
+  return str ? `?${str}` : '';
+}
 
 /**
  * Custom Hook: useAnalysisSession
@@ -40,6 +72,19 @@ export function useAnalysisSession() {
   const [rdoDecisions, setRdoDecisions] = useState([]);
   const [ctuPartitionsMap, setCtuPartitionsMap] = useState({});
   const [ctuAnalysisCache, setCtuAnalysisCache] = useState({});
+  const [allCtus, setAllCtus] = useState(false);
+  const [profile, setProfile] = useState('all_intra');
+  const [frames, setFrames] = useState(1);
+
+  const checkpointAbortRef = useRef(null);
+  const selectBlockAbortRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (checkpointAbortRef.current) checkpointAbortRef.current.abort();
+      if (selectBlockAbortRef.current) selectBlockAbortRef.current.abort();
+    };
+  }, []);
 
   // Auto-play mode loop
   useEffect(() => {
@@ -119,63 +164,71 @@ export function useAnalysisSession() {
     }
   }, [computeDims]);
 
-  // Helper to fetch checkpoints for a completed job
+  // Helper to fetch checkpoints for a completed job with AbortController
   const fetchCheckpoints = useCallback(async (currentJobId, targetX, targetY, targetCuSize, targetCuX = null, targetCuY = null) => {
-    const ctuParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
-      ? `&ctu_x=${targetX}&ctu_y=${targetY}`
-      : '';
-    const ctuOnlyParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
-      ? `?ctu_x=${targetX}&ctu_y=${targetY}`
-      : '';
-    const cuPosParams = (targetCuX !== null && targetCuX !== undefined && targetCuY !== null && targetCuY !== undefined)
-      ? `&cu_x=${targetCuX}&cu_y=${targetCuY}`
-      : '';
-
-    const [p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac, rdoDecs] = await Promise.all([
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_01_PARTITION${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/partitions`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_02_INTRA_REF?cu_size=${targetCuSize}${ctuParams}${cuPosParams}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_04_TRANSFORM_RQT${ctuOnlyParams}${cuPosParams}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${ctuOnlyParams}${cuPosParams}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_00_FRAME_GOP`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTER_SEARCH${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_05_RECON_PICTURE${ctuOnlyParams}`).then(r => r.ok ? r.json() : []),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_06_INLOOP_FILTER${ctuOnlyParams}`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_CABAC_ENTROPY?limit=300`).then(r => r.ok ? r.json() : null),
-      fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/rdo-decisions${ctuOnlyParams}${cuPosParams}`).then(r => r.ok ? r.json() : []),
-    ]);
-
-    if (p) {
-      const keyX = p.ctu_x !== undefined ? p.ctu_x : targetX;
-      const keyY = p.ctu_y !== undefined ? p.ctu_y : targetY;
-      const normalized = { ...p, ctu_x: keyX, ctu_y: keyY };
-      setPartitionData(normalized);
-      setCtuPartitionsMap(prev => ({
-        ...prev,
-        [`${keyX}_${keyY}`]: normalized
-      }));
+    if (checkpointAbortRef.current) {
+      checkpointAbortRef.current.abort();
     }
-    if (Array.isArray(allParts) && allParts.length > 0) {
-      setCtuPartitionsMap(prev => {
-        const updated = { ...prev };
-        allParts.forEach(part => {
-          const kX = part.ctu_x !== undefined ? part.ctu_x : targetX;
-          const kY = part.ctu_y !== undefined ? part.ctu_y : targetY;
-          updated[`${kX}_${kY}`] = { ...part, ctu_x: kX, ctu_y: kY };
+    const controller = new AbortController();
+    checkpointAbortRef.current = controller;
+    const signal = controller.signal;
+
+    const ctuQuery = buildQuery({ ctu_x: targetX, ctu_y: targetY });
+    const cuQuery = buildQuery({ ctu_x: targetX, ctu_y: targetY, cu_x: targetCuX, cu_y: targetCuY });
+    const refQuery = buildQuery({ cu_size: targetCuSize, ctu_x: targetX, ctu_y: targetY, cu_x: targetCuX, cu_y: targetCuY });
+
+    try {
+      const [p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac, rdoDecs] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_01_PARTITION${ctuQuery}`, { signal }).then(r => r.ok ? r.json() : null),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/partitions`, { signal }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_02_INTRA_REF${refQuery}`, { signal }).then(r => r.ok ? r.json() : null),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_04_TRANSFORM_RQT${cuQuery}`, { signal }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_QUANT${cuQuery}`, { signal }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_00_FRAME_GOP`, { signal }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTER_SEARCH${ctuQuery}`, { signal }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_05_RECON_PICTURE${ctuQuery}`, { signal }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_06_INLOOP_FILTER${ctuQuery}`, { signal }).then(r => r.ok ? r.json() : null),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_07_CABAC_ENTROPY?limit=300`, { signal }).then(r => r.ok ? r.json() : null),
+        fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/rdo-decisions${cuQuery}`, { signal }).then(r => r.ok ? r.json() : []),
+      ]);
+
+      if (signal.aborted) return {};
+
+      if (p) {
+        const keyX = p.ctu_x !== undefined ? p.ctu_x : targetX;
+        const keyY = p.ctu_y !== undefined ? p.ctu_y : targetY;
+        const normalized = { ...p, ctu_x: keyX, ctu_y: keyY };
+        setPartitionData(normalized);
+        setCtuPartitionsMap(prev => ({
+          ...prev,
+          [`${keyX}_${keyY}`]: normalized
+        }));
+      }
+      if (Array.isArray(allParts) && allParts.length > 0) {
+        setCtuPartitionsMap(prev => {
+          const updated = { ...prev };
+          allParts.forEach(part => {
+            const kX = part.ctu_x !== undefined ? part.ctu_x : targetX;
+            const kY = part.ctu_y !== undefined ? part.ctu_y : targetY;
+            updated[`${kX}_${kY}`] = { ...part, ctu_x: kX, ctu_y: kY };
+          });
+          return updated;
         });
-        return updated;
-      });
+      }
+      if (ref) setRefSamples(ref);
+      if (Array.isArray(transform) && transform.length > 0) setTransformData(transform);
+      if (Array.isArray(quant) && quant.length > 0) setQuantData(quant);
+      if (Array.isArray(gop)) setFrameGopData(gop);
+      if (Array.isArray(inter)) setInterSearchData(inter);
+      if (Array.isArray(recon)) setReconPictureData(recon);
+      if (inloop) setInloopFilterData(inloop);
+      if (cabac) setCabacEntropyData(cabac);
+      if (Array.isArray(rdoDecs)) setRdoDecisions(rdoDecs);
+      return { p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac, rdoDecs };
+    } catch (err) {
+      if (err.name === 'AbortError') return {};
+      throw err;
     }
-    if (ref) setRefSamples(ref);
-    if (Array.isArray(transform) && transform.length > 0) setTransformData(transform);
-    if (Array.isArray(quant) && quant.length > 0) setQuantData(quant);
-    if (Array.isArray(gop)) setFrameGopData(gop);
-    if (Array.isArray(inter)) setInterSearchData(inter);
-    if (Array.isArray(recon)) setReconPictureData(recon);
-    if (inloop) setInloopFilterData(inloop);
-    if (cabac) setCabacEntropyData(cabac);
-    if (Array.isArray(rdoDecs)) setRdoDecisions(rdoDecs);
-    return { p, allParts, ref, transform, quant, gop, inter, recon, inloop, cabac, rdoDecs };
   }, []);
 
   // Poll job status until COMPLETED or FAILED
@@ -198,13 +251,23 @@ export function useAnalysisSession() {
     throw new Error('Analysis timed out after 60 seconds.');
   }, []);
 
-  const handleUpload = useCallback(async (e, customX = null, customY = null, customCuSize = null, targetMode = null) => {
+  const handleUpload = useCallback(async (
+    e,
+    customX = null,
+    customY = null,
+    customCuSize = null,
+    targetMode = null,
+    options = {}
+  ) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!file) return;
 
     const targetX = customX !== null ? customX : (ctuX !== null ? ctuX : 0);
     const targetY = customY !== null ? customY : (ctuY !== null ? ctuY : 0);
     const targetCuSize = customCuSize !== null ? customCuSize : (cuSize !== null ? cuSize : 8);
+    const targetAllCtus = options.allCtus !== undefined ? options.allCtus : allCtus;
+    const targetProfile = options.profile || profile;
+    const targetFrames = options.frames || frames;
 
     setCtuX(targetX);
     setCtuY(targetY);
@@ -216,10 +279,13 @@ export function useAnalysisSession() {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('ctu_x', targetX);
-    formData.append('ctu_y', targetY);
+    formData.append('ctu_x', targetAllCtus ? -1 : targetX);
+    formData.append('ctu_y', targetAllCtus ? -1 : targetY);
     formData.append('cu_size', targetCuSize);
     formData.append('scale_mode', 'native');
+    formData.append('all_ctus', targetAllCtus ? 'true' : 'false');
+    formData.append('profile', targetProfile);
+    formData.append('frames', targetFrames);
 
     try {
       // 1. Attempt Modern Asynchronous Job Workflow (HTTP 202 + Polling)
@@ -246,10 +312,8 @@ export function useAnalysisSession() {
       // If async job succeeded:
       if (jobInfo && currentJobId) {
         setLoadingStatus('Parsing Checkpoints...');
-        const ctuParams = (targetX !== null && targetX !== undefined && targetY !== null && targetY !== undefined)
-          ? `&ctu_x=${targetX}&ctu_y=${targetY}`
-          : '';
-        const modesRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTRA_SEARCH?cu_size=${targetCuSize}${ctuParams}`);
+        const modesQuery = buildQuery({ cu_size: targetCuSize, ctu_x: targetX, ctu_y: targetY });
+        const modesRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTRA_SEARCH${modesQuery}`);
         const modesData = modesRes.ok ? await modesRes.json() : [];
 
         if (modesData.length > 0) {
@@ -262,16 +326,13 @@ export function useAnalysisSession() {
 
           const { ref } = await fetchCheckpoints(currentJobId, targetX, targetY, targetCuSize);
 
-          // Update client cache for 0ms instant reload
-          setCtuAnalysisCache(prev => ({
-            ...prev,
-            [`${targetX}_${targetY}_${targetCuSize}`]: {
-              data: modesData,
-              refSamples: ref || null,
-              bestMode: jobInfo.best_mode,
-              bestCost: jobInfo.best_cost,
-              jobId: currentJobId
-            }
+          // Update client cache for 0ms instant reload with bounded LRU
+          setCtuAnalysisCache(prev => updateLruCache(prev, `${targetX}_${targetY}_${targetCuSize}`, {
+            data: modesData,
+            refSamples: ref || null,
+            bestMode: jobInfo.best_mode,
+            bestCost: jobInfo.best_cost,
+            jobId: currentJobId
           }));
 
           // Intelligently select active mode
@@ -346,7 +407,7 @@ export function useAnalysisSession() {
       setLoading(false);
       setLoadingStatus('');
     }
-  }, [file, ctuX, ctuY, cuSize, data, currentModeIdx, pollJobCompletion, fetchCheckpoints]);
+  }, [file, ctuX, ctuY, cuSize, data, currentModeIdx, pollJobCompletion, fetchCheckpoints, allCtus, profile, frames]);
 
   const safeModeIdx = (data && data.length > 0) ? Math.min(Math.max(0, currentModeIdx), data.length - 1) : 0;
   const currentMode = (data && data.length > 0) ? data[safeModeIdx] : null;
@@ -467,38 +528,46 @@ export function useAnalysisSession() {
     }
 
     if (jobId) {
+      if (selectBlockAbortRef.current) {
+        selectBlockAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      selectBlockAbortRef.current = controller;
+      const signal = controller.signal;
+
       try {
-        const ctuParams = (ctuX !== null && ctuY !== null) ? `&ctu_x=${ctuX}&ctu_y=${ctuY}` : '';
-        const cuPosParams = `&cu_x=${resolvedAbsX}&cu_y=${resolvedAbsY}`;
+        // Queries backend with specific cu_x=${resolvedAbsX} and cu_y=${resolvedAbsY} coordinates
+        const queryWithCu = buildQuery({ cu_size: targetSize, ctu_x: ctuX, ctu_y: ctuY, cu_x: resolvedAbsX, cu_y: resolvedAbsY });
+        const queryCtuOnly = buildQuery({ cu_size: targetSize, ctu_x: ctuX, ctu_y: ctuY });
         const [modesRes, refRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH?cu_size=${targetSize}${ctuParams}${cuPosParams}`),
-          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF?cu_size=${targetSize}${ctuParams}${cuPosParams}`)
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH${queryWithCu}`, { signal }),
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF${queryWithCu}`, { signal })
         ]);
         let modesData = modesRes.ok ? await modesRes.json() : [];
         let refData = refRes.ok ? await refRes.json() : null;
 
         if (!modesData || modesData.length === 0) {
-          const fallbackRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH?cu_size=${targetSize}${ctuParams}`);
+          const fallbackRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH${queryCtuOnly}`, { signal });
           if (fallbackRes.ok) modesData = await fallbackRes.json();
         }
         if (!refData) {
-          const fallbackRef = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF?cu_size=${targetSize}${ctuParams}`);
+          const fallbackRef = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF${queryCtuOnly}`, { signal });
           if (fallbackRef.ok) refData = await fallbackRef.json();
         }
+
+        if (signal.aborted) return;
 
         if (modesData && modesData.length > 0) {
           setData(modesData);
           if (refData) setRefSamples(refData);
-          setCtuAnalysisCache(prev => ({
-            ...prev,
-            [cacheKey]: {
-              data: modesData,
-              refSamples: refData,
-              jobId
-            }
+          setCtuAnalysisCache(prev => updateLruCache(prev, cacheKey, {
+            data: modesData,
+            refSamples: refData,
+            jobId
           }));
         }
       } catch (err) {
+        if (err.name === 'AbortError') return;
         console.warn('Failed to switch block position checkpoints:', err);
       }
     }
@@ -561,6 +630,12 @@ export function useAnalysisSession() {
     setSelectedCu,
     ctuPartitionsMap,
     hasDesync,
+    allCtus,
+    setAllCtus,
+    profile,
+    setProfile,
+    frames,
+    setFrames,
     API_BASE_URL,
     handleFileChange,
     handleUpload,

@@ -1,0 +1,83 @@
+{
+  "small": {
+    "tier": "small",
+    "file_size_bytes": 60226,
+    "event_count": 38,
+    "payload_bytes": 952,
+    "content_encoding": "none",
+    "cold_parse_ms": {
+      "median": 0.3414389939280227,
+      "p95": 0.37041799805592746,
+      "min": 0.3143209978588857,
+      "max": 0.37041799805592746
+    },
+    "rss_delta_mb": {
+      "median": 0.25,
+      "max": 0.43359375
+    },
+    "warm_query_us": {
+      "median": 16.026500816224143,
+      "p95": 20.99000266753137
+    },
+    "endpoint_roundtrip_ms": {
+      "median": 36.703912999655586,
+      "p95": 43.52201099391095,
+      "min": 33.90657300042221,
+      "max": 43.52201099391095
+    }
+  },
+  "medium": {
+    "tier": "medium",
+    "file_size_bytes": 6380643,
+    "event_count": 16933,
+    "payload_bytes": 327,
+    "content_encoding": "none",
+    "cold_parse_ms": {
+      "median": 30.530819996783976,
+      "p95": 31.964573994628154,
+      "min": 30.180401998222806,
+      "max": 31.964573994628154
+    },
+    "rss_delta_mb": {
+      "median": 21.625,
+      "max": 21.80859375
+    },
+    "warm_query_us": {
+      "median": 16.197500372072682,
+      "p95": 21.200998162385076
+    },
+    "endpoint_roundtrip_ms": {
+      "median": 74.49085099506192,
+      "p95": 80.64285100408597,
+      "min": 72.85896399844205,
+      "max": 80.64285100408597
+    }
+  },
+  "large": {
+    "tier": "large",
+    "file_size_bytes": 27326531,
+    "event_count": 42195,
+    "payload_bytes": 327,
+    "content_encoding": "none",
+    "cold_parse_ms": {
+      "median": 143.7572619979619,
+      "p95": 148.0637460044818,
+      "min": 142.78593500057468,
+      "max": 148.0637460044818
+    },
+    "rss_delta_mb": {
+      "median": 90.06640625,
+      "max": 90.24609375
+    },
+    "warm_query_us": {
+      "median": 16.106001567095518,
+      "p95": 22.02099858550355
+    },
+    "endpoint_roundtrip_ms": {
+      "median": 170.06385100103216,
+      "p95": 174.1858189998311,
+      "min": 168.44237300392706,
+      "max": 174.1858189998311
+    }
+  }
+}

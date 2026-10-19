@@ -14,7 +14,10 @@ class MockEncoderRunner:
         yuv_input: Path,
         session_dir: Path,
         frame_meta: FrameMetadata,
-        roi: ROICoordinates
+        roi: ROICoordinates,
+        cfg_path: Path | None = None,
+        frames: int | None = None,
+        **kwargs
     ) -> Path:
         if not self.fixture_path.exists():
             raise EncoderExecutionError(f"Fixture trace file not found: {self.fixture_path}")

@@ -232,7 +232,7 @@ export default function Step5ChromaWinnerView({
             xCheckBestMode
           </Badge>
           <span style={{ fontSize: '0.70rem', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono' }}>
-            [H.265 Section 8.4.3 &amp; Table 8-2]
+            [Chroma Mode Mapping]
           </span>
         </div>
 
@@ -591,7 +591,7 @@ export default function Step5ChromaWinnerView({
             BITSTREAM SYNTAX ELEMENTS (CABAC)
           </div>
           <div style={{ fontSize: '0.68rem', color: 'var(--apple-label-secondary)', lineHeight: 1.45 }}>
-            ITU-T H.265 Section 7.3.8.5: Coding unit syntax fields written into the slice NAL payload:
+            Coding unit syntax elements emitted to bitstream:
           </div>
 
           <div style={{

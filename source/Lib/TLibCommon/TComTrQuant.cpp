@@ -1540,9 +1540,9 @@ Void TComTrQuant::transformNxN(       TComTU        & rTu,
         Int ctuY = pcCU->getCUPelY() / maxCUHeight;
         const Int cuX = pcCU->getCUPelX();
         const Int cuY = pcCU->getCUPelY();
-        const Int cuWidth = pcCU->getWidth(0);
-        const Int cuHeight = pcCU->getHeight(0);
-        const Int cuDepth = pcCU->getDepth(0);
+        const Int cuWidth = pcCU->getWidth(uiAbsPartIdx);
+        const Int cuHeight = pcCU->getHeight(uiAbsPartIdx);
+        const Int cuDepth = pcCU->getDepth(uiAbsPartIdx);
         const PredMode predMode = pcCU->getPredictionMode(uiAbsPartIdx);
         const Int intraMode = predMode == MODE_INTRA
                             ? static_cast<Int>(pcCU->getIntraDir(CHANNEL_TYPE_LUMA, uiAbsPartIdx))
@@ -1551,6 +1551,7 @@ Void TComTrQuant::transformNxN(       TComTU        & rTu,
         Int tuX = pcCU->getCUPelX() + g_auiRasterToPelX[ g_auiZscanToRaster[uiAbsPartIdx] ];
         Int tuY = pcCU->getCUPelY() + g_auiRasterToPelY[ g_auiZscanToRaster[uiAbsPartIdx] ];
         tuX >>= getComponentScaleX(compID, chromaFormat);
+        tuY >>= getComponentScaleY(compID, chromaFormat);
         const Bool isDST = rTu.useDST(compID);
         const Bool isTransformSkip = (pcCU->getTransformSkip(uiAbsPartIdx, compID) != 0);
         pDumper->dumpTransformQuant(poc, ctuX, ctuY, cuX, cuY, cuWidth, cuHeight, cuDepth,
@@ -1710,9 +1711,9 @@ Void TComTrQuant::invTransformNxN(      TComTU        &rTu,
     Int ctuY = pcCU->getCUPelY() / maxCUHeight;
     const Int cuX = pcCU->getCUPelX();
     const Int cuY = pcCU->getCUPelY();
-    const Int cuWidth = pcCU->getWidth(0);
-    const Int cuHeight = pcCU->getHeight(0);
-    const Int cuDepth = pcCU->getDepth(0);
+    const Int cuWidth = pcCU->getWidth(uiAbsPartIdx);
+    const Int cuHeight = pcCU->getHeight(uiAbsPartIdx);
+    const Int cuDepth = pcCU->getDepth(uiAbsPartIdx);
     const PredMode predMode = pcCU->getPredictionMode(uiAbsPartIdx);
     const Int intraMode = predMode == MODE_INTRA
                         ? static_cast<Int>(pcCU->getIntraDir(CHANNEL_TYPE_LUMA, uiAbsPartIdx))

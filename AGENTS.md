@@ -23,7 +23,6 @@ HEVC_reference_software/
 ├── agent -> .agents                  # Root symlink for `./agent` convention
 ├── source/                           # HM-18.0 C++ reference software source code
 │   └── Lib/TLibCommon/VisualDumper.* # Telemetry hook singleton
-├── tools/                            # Standalone probe CLI & visualizer tools
 ├── docs/                             # In-depth IEEE & engineering documentation
 └── web_app/
     ├── backend/                      # Python 3.12+ FastAPI telemetry & session server
@@ -39,7 +38,7 @@ When approaching specialized tasks in this repository, consult and follow the co
 1. **`hevc-pixel-accurate-design`** ([`SKILL.md`](file:///.agents/skills/hevc-pixel-accurate-design/SKILL.md)):
    - Enforce discrete sample rendering (`imageSmoothingEnabled = false`), ITU-R BT.709 color matrices, signed residual heatmaps, and zero browser blurring.
 2. **`hevc-hm18-telemetry-pipeline`** ([`SKILL.md`](file:///.agents/skills/hevc-hm18-telemetry-pipeline/SKILL.md)):
-   - C++ `VisualDumper` hooks (`CP_00` to `CP_07`), `trace.jsonl` streaming, asynchronous job submission, and `TAppEncoderIntraProbe` CLI usage.
+   - C++ `VisualDumper` hooks (`CP_00` to `CP_07`), `trace.jsonl` streaming, and asynchronous job submission.
 3. **`hevc-intra-prediction-analysis`** ([`SKILL.md`](file:///.agents/skills/hevc-intra-prediction-analysis/SKILL.md)):
    - $4N+1$ perimeter samples, MDIS 3-tap filtering, 35 intra modes (Planar, DC, 33 Angular with 1/32-pel math), 3 MPM derivation, and 4:2:0 chroma modes.
 4. **`hevc-guided-flow-sync`** ([`SKILL.md`](file:///.agents/skills/hevc-guided-flow-sync/SKILL.md)):
