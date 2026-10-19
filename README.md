@@ -49,26 +49,31 @@ The platform features a seamless dual-mode architecture tailored for both struct
 
 ### 1. 5-Step Guided Journey (`Guided Flow`)
 Organized chronologically following the exact encoder decision lifecycle inside HM `TEncCu::xCompressCU`:
-- **Step 1: Frame & CU Partition**:
+- **Step 1: Frame & CU Partition (`01 Partition`)**:
   - **Incremental Trace Playback**: Full-frame CTU transport bar (`Start Encode`, `Prev/Next CTU`, `Prev/Next CU`, `Reset`, and speed controls `0.5s`, `1.0s`, `2.0s`).
   - **Split CU vs Leaf CU Inspection**: Seamless inspection of parent split nodes ($64\times 64$, $32\times 32$) vs final leaf coding units.
   - **Playhead Decoupling**: Inspecting any CU node preserves the playback state without altering the current CTU playhead.
-- **Step 2: Intra Prediction**:
+- **Step 2: Intra Prediction (`02 Prediction`)**:
   - **4N+1 Perimeter & MDIS**: Reconstructs top, left, and corner reference samples with Mode Dependent Intra Smoothing (3-tap $[1, 2, 1]/4$ filter).
   - **35 Prediction Modes**: Planar (0), DC (1), and 33 Angular modes (2–34) with exact $1/32$-pel projection rays.
   - **RMD Funnel & 3 MPMs**: Rough Mode Decision SATD pre-screening and Most Probable Mode derivation from spatial neighbors.
-- **Step 3: Transform & Quantization**:
+  - **Real HM Prediction**: Bit-exact prediction matrix extracted directly from HM-18.0 C++ `predIntraAng()`.
+- **Step 3: Transform & Quantization (`03 Residual & TU`)**:
   - **RQT Hierarchy & Call Stack**: Interactive Transform Unit tree visualization with execution call stack stepper.
   - **2D Core Transforms**: Exact integer DCT-II for $8\times 8$–$32\times 32$ and DST-VII for $4\times 4$ luma intra blocks.
   - **Quantization & Sparsity**: Quantized levels $Q(u, v)$, $QP$ / $Q_{\text{step}}$ indicators, and energy compaction metrics.
-- **Step 4: Reconstruction**:
-  - **Picture Buffer & 4-Way Comparison**: Original ($S$), Prediction ($P$), Residual ($R$), and Reconstruction ($S'$).
+- **Step 4: Reconstruction (`04 Reconstruction`)**:
+  - **Picture Buffer & 4-Way Comparison**: Original ($S$), Prediction ($P$), Residual ($R$), and Reconstruction ($S'$) across $Y$, $Cb$, $Cr$ channels.
   - **Mathematical Verification**: Confirms $S' = \text{Clip3}(0, 255, P + R')$.
   - **In-Loop Filtering**: Deblocking Filter (boundary strength $bS \in \{0, 1, 2\}$) and Sample Adaptive Offset (SAO Edge/Band offsets).
-- **Step 5: RDO Decision**:
+- **Step 5: RDO Decision (`05 RD Decision`)**:
   - **Lagrangian Cost Comparison**: Benchmarks Best No-Split Cost ($J_{\text{nosplit}}$) vs Best Split Cost ($J_{\text{split}}$) with verified HM provenance.
   - **Actual CTU Bits**: Displays ground-truth bitstream output measured directly after `encodeCtu()`.
   - **Interactive RDO Simulator**: Sandbox simulation with live $QP$ slider, $\lambda$ multiplier, and Draw.io export.
+- **Unified Controls & Streamlined UI**:
+  - Single-line Apple macOS Tahoe stepper chips bar (`01 Partition` › `02 Prediction` › `03 Residual & TU` › `04 Reconstruction` › `05 RD Decision`).
+  - Unified Channel selector (`Y`, `Cb`, `Cr` via key `C`) and Matrix Values toggle (`Values` / `123` via key `V`).
+  - Zero-clutter, glass-box aesthetic without repetitive status badges or verbose banners.
 
 ### 2. 9-Tab Expert Telemetry Checkpoints (`Expert Mode`)
 Provides unconstrained, deep-dive access to all raw telemetry streams:
@@ -105,6 +110,8 @@ Provides unconstrained, deep-dive access to all raw telemetry streams:
 | `M` / `m` | Toggle View Mode (Guided Journey vs Expert Checkpoints) |
 | `1` – `5` | Switch between Steps 1 through 5 (in Guided Journey mode) |
 | `0` – `8` | Switch directly between Stages 0 through 8 (in Expert mode) |
+| `C` / `c` | Cycle Active Channel (`Y` $\to$ `Cb` $\to$ `Cr` $\to$ `Y`) in Guided Flow |
+| `V` / `v` | Toggle Matrix Cell Values overlay (`showValues`) in Guided Flow |
 | `I` / `i` | Toggle Unified Analysis Inspector panel |
 | `D` / `d` | Toggle Dark / Light theme |
 | `Space` | Toggle playback / pause timeline animation |
@@ -189,7 +196,7 @@ source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Run automated test suite (48 tests)
+# Run automated test suite (76 tests)
 pytest -v
 
 # Start backend server
@@ -203,10 +210,10 @@ cd web_app/frontend
 # Install dependencies
 npm install
 
-# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 84+ files)
+# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 137 files)
 npm run lint
 
-# Run automated test suite (816 tests across 18 comprehensive test suites)
+# Run automated test suite (881 tests across 19 comprehensive test suites)
 npm test
 
 # Start development server
@@ -241,7 +248,7 @@ HEVC_reference_software/
 ├── web_app/                      # Fullstack Analysis Platform
 │   ├── backend/                  # FastAPI Application
 │   │   ├── app/                  # Application core, API routers, parsers, engine
-│   │   ├── tests/                # Unit & Integration test suite (48 tests)
+│   │   ├── tests/                # Unit & Integration test suite (76 tests)
 │   │   └── requirements.txt      # Python dependencies
 │   └── frontend/                 # React 19 + Vite Application
 │       ├── src/

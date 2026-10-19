@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ```bash
 pytest -v
 ```
-All **48 integration and unit tests** should pass (100% success rate, including real encoder execution tests).
+All **76 integration and unit tests** should pass (100% success rate, including real encoder execution tests).
 
 ### 3. Start Development Server
 ```bash

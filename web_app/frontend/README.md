@@ -11,29 +11,36 @@ Implemented strictly following **Apple macOS Tahoe (applecn)** design language a
 The frontend provides two complementary analytical views, easily toggled via the header switch or keyboard shortcut `M`:
 
 ### 1. 5-Step Guided Journey
-A sequential, didactic walk-through of the complete HEVC intra compression pipeline for the selected CTU and CU:
-1. **1. Frame & CTU Tree**:
+A sequential, didactic walk-through of the complete HEVC intra compression pipeline for the selected CTU and CU, streamlined with an Apple macOS Tahoe single-line stepper chips bar (`01 Partition` › `02 Prediction` › `03 Residual & TU` › `04 Reconstruction` › `05 RD Decision`):
+1. **01 Partition (Frame & CU Partition)**:
    - Frame picture viewer with CTU raster overlay and Z-scan traversal order.
    - CTU Spatial Mini-Map (`CtuSpatialMiniMap`) with real-time viewport tracking.
    - Incremental CTU Playback Bar (`useHmTracePlayback`) supporting Play, Pause, Scrubbing, and Speed multipliers ($0.5\times, 1\times, 2\times, 4\times$).
    - Interactive QuadTree partitioning tree with depth-level filtering ($64\times 64 \to 8\times 8$).
-2. **2. Intra Prediction**:
+   - Parent / Intermediate CU node inspection (`SPLIT CU` vs `LEAF CU`) with decoupled playback state.
+2. **02 Prediction (Intra Prediction)**:
    - $4N+1$ perimeter reference samples ($2N$ Above, $2N$ Left, $1$ Above-Left) with boundary availability markers.
    - Mode-Dependent Intra Smoothing (MDIS) 3-tap $[1, 2, 1]/4$ filter inspection.
    - 35 standard prediction modes (Planar, DC, and 33 Angular modes with 1/32-pel accuracy).
-   - Real HM-18.0 Prediction extraction captured directly from C++ `predIntraAng()`.
-3. **3. Transform & Quantization**:
+   - Real HM-18.0 bit-exact prediction matrix captured directly from C++ `predIntraAng()`.
+3. **03 Residual & TU (Transform & Quantization)**:
    - Residual QuadTree (RQT) decomposition tree and interactive TU Call Stack (`TuTreeCallStack`).
    - Forward 2D Core Transforms: Integer DCT-II ($4\times 4$ to $32\times 32$) and DST-VII ($4\times 4$ Luma intra).
    - Quantization scaling matrices, QP shift levels, and quantized transform coefficients.
-4. **4. Recon & In-Loop**:
-   - Exact mathematical reconstruction verification: $S' = \text{Clip}(P + R')$.
+4. **04 Reconstruction (Reconstruction & In-Loop)**:
+   - Exact mathematical reconstruction verification: $S' = \text{Clip3}(0, 255, P + R')$.
+   - 4-Picture Comparison across $Y$, $Cb$, $Cr$ channels ($S$, $P$, $R$, $S'$).
    - Dual before/after comparison slider against pristine source pixels.
    - Deblocking Filter (DBF) boundary strength ($bS \in \{0, 1, 2\}$) and Sample Adaptive Offset (SAO) corrections.
-5. **5. RD Decision**:
+5. **05 RD Decision (Rate-Distortion Optimization)**:
    - Rate-Distortion Optimization: $J = D + \lambda \cdot R$ with verified split vs. non-split decisions.
    - RMD candidate funnel (SATD pruning) vs. Full RDO candidates.
    - Real CTU bit consumption telemetry (`CTU_ACTUAL_BITS`).
+   - Interactive RDO QuadTree Sandbox Simulator.
+- **Unified Bar Controls**:
+  - Global Channel switcher (`Y`, `Cb`, `Cr` via key `C` or chip).
+  - Matrix numerical cell values toggle (`showValues` via key `V`).
+  - Zero-clutter, clean minimalist interface without repetitive badges or redundant ribbons.
 
 ---
 
@@ -107,6 +114,8 @@ Acts as the **Single Source of Truth** for all spatial, block, coding, and seque
 | `M` / `m` | Toggle between 5-Step Guided Journey and 9-Tab Expert Checkpoints |
 | `1` – `5` | Switch directly to Guided Steps 1 through 5 (in Guided mode) |
 | `0` – `8` | Switch directly between Expert Stages 0 through 8 (in Expert mode) |
+| `C` / `c` | Cycle Active Channel (`Y` $\to$ `Cb` $\to$ `Cr` $\to$ `Y`) in Guided Flow |
+| `V` / `v` | Toggle Matrix Cell Values overlay (`showValues`) in Guided Flow |
 | `I` / `i` | Toggle Unified Analysis Inspector panel |
 | `D` / `d` | Toggle Dark / Light theme |
 | `Space` | Toggle CTU auto-play / pause timeline animation |
@@ -145,10 +154,10 @@ npm run preview
 
 ### Code Quality & Testing
 ```bash
-# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 84 files)
+# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 137 files)
 npx oxlint
 
-# Run automated test suites (816 tests across 18 test suites passing)
+# Run automated test suites (881 tests across 19 test suites passing)
 npm test
 ```
 
