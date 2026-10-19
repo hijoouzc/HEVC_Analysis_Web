@@ -19,40 +19,38 @@ Designed with **Apple macOS Tahoe (applecn)** aesthetics and **ITU-R pixel-accur
 
 ---
 
-## Dual-Mode Architecture
+## Architectural Overview & 5-Step Guided Workflow
 
-The platform features a seamless dual-mode architecture tailored for both structured pedagogical walkthroughs and deep-dive microarchitectural telemetry:
+The platform centers around a unified **5-Step Guided Journey** organized chronologically following the exact encoder decision lifecycle inside HM-18.0 `TEncCu::xCompressCU`:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        HEVC Video Analyzer                             │
-├───────────────────────────────────┬────────────────────────────────────┤
-│  Mode 1: 5-Step Guided Journey    │  Mode 2: 9-Tab Expert Telemetry    │
-│  (Sequential HM xCompressCU Flow) │  (Granular VisualDumper Checkpoints)│
-├───────────────────────────────────┼────────────────────────────────────┤
-│ 1. Frame & CU Partition           │  0. Frame & GOP (CP_00)            │
-│ 2. Intra Prediction               │  1. CU QuadTree (CP_01)            │
-│ 3. Transform & Quantization       │  2. Intra Search (CP_02)           │
-│ 4. Reconstruction                 │  3. Inter Search (CP_03)           │
-│ 5. RDO Decision                   │  4. Transform & Quant (CP_04)      │
-│                                   │  5. Recon Picture (CP_05)          │
-│                                   │  6. In-Loop Filter (CP_06)         │
-│                                   │  7. CABAC Entropy (CP_07)          │
-│                                   │  8. RDO Simulator (RDO_SIM)        │
-└───────────────────────────────────┴────────────────────────────────────┘
-         (Press 'M' key to toggle between Guided and Expert modes)
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                              HEVC Video Analyzer (HM-18.0)                             │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│                          Sequential Guided Flow Lifecycle                              │
+├───────────────────┬───────────────────┬───────────────────┬───────────────────┬────────┤
+│ 01 Partition      │ 02 Prediction     │ 03 Residual & TU  │ 04 Reconstruction │ 05 RDO │
+│ (Frame & CU Split)│ (Intra / Inter)   │ (RQT & 2D Core)   │ (Picture & InLoop)│ (Cost) │
+├───────────────────┼───────────────────┼───────────────────┼───────────────────┼────────┤
+│ • CP_00 Frame/GOP │ • CP_02 Intra Ref │ • CP_04 Transform │ • CP_05 Recon     │ • CP_07│
+│ • CP_01 QuadTree  │ • CP_03 Intra/Int │   & RQT Spectrum  │ • CP_06 In-Loop   │ • RDO  │
+│   Raster & Z-scan │   Search Stepper  │ • 2D DCT-II / DST │   Filter (DBF/SAO)│   Sim  │
+└───────────────────┴───────────────────┴───────────────────┴───────────────────┴────────┘
+           (Apple macOS Tahoe stepper chips bar • Single-source inspector panel)
 ```
+
+Instead of disjointed mode toggling, all granular microarchitectural checkpoints (`CP_00` to `CP_07`, `RDO_SIM`) are encapsulated as specialized vertical stage modules (`src/components/stages/`) seamlessly embedded into each step of the guided lifecycle.
 
 ---
 
 ## Key Features
 
 ### 1. 5-Step Guided Journey (`Guided Flow`)
-Organized chronologically following the exact encoder decision lifecycle inside HM `TEncCu::xCompressCU`:
 - **Step 1: Frame & CU Partition (`01 Partition`)**:
   - **Incremental Trace Playback**: Full-frame CTU transport bar (`Start Encode`, `Prev/Next CTU`, `Prev/Next CU`, `Reset`, and speed controls `0.5s`, `1.0s`, `2.0s`).
   - **Split CU vs Leaf CU Inspection**: Seamless inspection of parent split nodes ($64\times 64$, $32\times 32$) vs final leaf coding units.
-  - **Playhead Decoupling**: Inspecting any CU node preserves the playback state without altering the current CTU playhead.
+  - **Playhead Decoupling**: Inspecting any CU node preserves playback state without altering the current CTU playhead.
+  - **CTU Spatial Mini-Map**: Compact spatial mini-map with real-time viewport tracking.
 - **Step 2: Intra Prediction (`02 Prediction`)**:
   - **4N+1 Perimeter & MDIS**: Reconstructs top, left, and corner reference samples with Mode Dependent Intra Smoothing (3-tap $[1, 2, 1]/4$ filter).
   - **35 Prediction Modes**: Planar (0), DC (1), and 33 Angular modes (2–34) with exact $1/32$-pel projection rays.
@@ -75,17 +73,19 @@ Organized chronologically following the exact encoder decision lifecycle inside 
   - Unified Channel selector (`Y`, `Cb`, `Cr` via key `C`) and Matrix Values toggle (`Values` / `123` via key `V`).
   - Zero-clutter, glass-box aesthetic without repetitive status badges or verbose banners.
 
-### 2. 9-Tab Expert Telemetry Checkpoints (`Expert Mode`)
-Provides unconstrained, deep-dive access to all raw telemetry streams:
-- `CP_00 Frame & GOP`: Temporal GOP hierarchy, POC, slice types (I, P, B), and L0/L1 reference lists.
-- `CP_01 CU QuadTree`: Multi-layer SVG/Canvas partition map with boundary forced-split detection.
-- `CP_02 Intra Search`: 5-phase intra search stepper, candidate leaderboard, and chroma modes.
-- `CP_03 Inter Search`: Motion vector estimation (MV, MVD), search windows, and AMVP candidates.
-- `CP_04 Transform & Quant`: Tri-matrix comparison (Residual $R$, DCT Spectrum $C$, Quantized $Q$).
-- `CP_05 Recon Picture`: Full-frame before/after split slider and discrete CU planar inspection ($Y, Cb, Cr$).
-- `CP_06 In-Loop Filter`: Boundary edge profiles ($\beta, t_C$) and SAO classification offsets.
-- `CP_07 CABAC Entropy`: Context modeling (`ctxIdx`), state transitions (`pStateIdx`), and bitrate allocation.
-- `RDO_SIM`: Standalone in-browser HM `xCompressCU` QuadTree simulator.
+---
+
+### 2. Feature-First Vertical Stage Architecture (`components/stages/`)
+Component architecture follows high cohesion and low coupling by organizing stages into dedicated feature folders:
+- `stages/cp00_frame_gop/`: Temporal GOP hierarchy, POC, slice types (I, P, B), and L0/L1 reference lists.
+- `stages/cp01_partition/`: Multi-layer SVG/Canvas partition map, boundary forced-split detection, and QuadTree inspector.
+- `stages/cp02_intra_search/`: 5-phase intra search stepper, candidate leaderboard, and chroma modes.
+- `stages/cp03_inter_search/`: Motion vector estimation (MV, MVD), search windows, and AMVP candidates.
+- `stages/cp04_transform_quant/`: Tri-matrix comparison (Residual $R$, DCT Spectrum $C$, Quantized $Q$).
+- `stages/cp05_recon_picture/`: Full-frame before/after split slider and discrete CU planar inspection ($Y, Cb, Cr$).
+- `stages/cp06_inloop_filter/`: Boundary edge profiles ($\beta, t_C$) and SAO classification offsets.
+- `stages/cp07_cabac_entropy/`: Context modeling (`ctxIdx`), state transitions (`pStateIdx`), and bitrate allocation.
+- `stages/rdo_simulator/`: Standalone in-browser HM `xCompressCU` QuadTree simulator.
 
 ---
 
@@ -97,7 +97,25 @@ Provides unconstrained, deep-dive access to all raw telemetry streams:
 
 ---
 
-### Unified Analysis Inspector (Right Panel)
+### 4. Scoped Query & Caching Architecture
+Optimized network communication via `useAnalysisSession` eliminates redundant round-trips:
+- **Hierarchical Query Scoping**:
+  - **Job Level** (`fetchJobCheckpoints`): Fetches `CP_00_FRAME_GOP` and `partitions` once per encode session.
+  - **CTU Level** (`fetchCtuCheckpoints`): Fetches CTU-wide checkpoints (`CP_01_PARTITION`, `CP_04_TRANSFORM_RQT`, `CP_05_RECON_PICTURE`, `CP_06_INLOOP_FILTER`, `CP_07_CABAC_ENTROPY`, `rdo-decisions`) when CTU selection changes.
+  - **CU Level** (`fetchCuCheckpoints`): Only requests CU-specific data (`CP_02_INTRA_REF`, `CP_03_INTRA_SEARCH`, `CP_03_INTER_SEARCH`) when a leaf CU is actively selected.
+- **Request Cancellation**: In-flight requests for intra pipelines use `AbortController` to cancel stale responses during fast scrubbing.
+- **In-Memory LRU Cache**: Avoids re-fetching previously viewed CTUs and CUs.
+
+---
+
+### 5. Modular Apple Design System (`components/apple/`)
+Built with 10 focused single-responsibility primitives:
+- `AppleCard`, `AppleButton`, `SegmentedControl`, `AppleBadge`, `AppleSlider`, `AppleToggle`, `AppleSelect`, `AppleTabs`, `AppleTooltip`, and `AppleModal`.
+- Clean barrel export (`components/apple/index.jsx`) guarantees full backward-compatibility with 39 named exports.
+
+---
+
+### 6. Unified Analysis Inspector (Right Panel)
 - **Single Source of Truth**: Unified panel displaying target CTU coordinates, CU dimensions, QuadTree depth, selected Intra mode, RDO cost $J$, line buffer availability ($A, B, C, D$), and sequence telemetry.
 - Toggle visibility anytime via the header button or keyboard shortcut `I`.
 
@@ -107,14 +125,12 @@ Provides unconstrained, deep-dive access to all raw telemetry streams:
 
 | Shortcut | Action |
 | :--- | :--- |
-| `M` / `m` | Toggle View Mode (Guided Journey vs Expert Checkpoints) |
-| `1` – `5` | Switch between Steps 1 through 5 (in Guided Journey mode) |
-| `0` – `8` | Switch directly between Stages 0 through 8 (in Expert mode) |
+| `1` – `5` | Switch directly between Guided Steps 1 through 5 |
 | `C` / `c` | Cycle Active Channel (`Y` $\to$ `Cb` $\to$ `Cr` $\to$ `Y`) in Guided Flow |
 | `V` / `v` | Toggle Matrix Cell Values overlay (`showValues`) in Guided Flow |
 | `I` / `i` | Toggle Unified Analysis Inspector panel |
 | `D` / `d` | Toggle Dark / Light theme |
-| `Space` | Toggle playback / pause timeline animation |
+| `Space` | Toggle CTU auto-play / pause timeline animation |
 | `ArrowLeft` / `ArrowRight` | Step backward / forward through modes or CTUs |
 | `Escape` | Deselect active pixel / dismiss overlays |
 
@@ -213,7 +229,7 @@ npm install
 # Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 137 files)
 npm run lint
 
-# Run automated test suite (881 tests across 19 comprehensive test suites)
+# Run automated test suite (19 comprehensive test suites, 100% passed)
 npm test
 
 # Start development server
@@ -252,9 +268,13 @@ HEVC_reference_software/
 │   │   └── requirements.txt      # Python dependencies
 │   └── frontend/                 # React 19 + Vite Application
 │       ├── src/
-│       │   ├── components/       # 9-stage Viewports, FullFrameViewer, RDO Simulator, Apple UI
-│       │   ├── hooks/            # Session management, caching, async polling
-│       │   └── utils/            # HEVC Color utilities, RDO simulator, draw.io generator
+│       │   ├── components/       # Guided Viewports, Inspector, Canvas Visualizers
+│       │   │   ├── apple/        # Modular Apple macOS Tahoe Design System (10 components)
+│       │   │   ├── guided/       # 5-Step Guided Flow orchestration (guidedSteps.js, etc.)
+│       │   │   └── stages/       # Feature-first vertical stage modules (cp00..cp07, rdo_sim)
+│       │   ├── hooks/            # Scoped session queries (useAnalysisSession), playback, cache
+│       │   ├── utils/            # HEVC Color utilities, RDO simulator, draw.io generator
+│       │   └── tests/            # 19 ESM test suites (100% passed)
 │       └── package.json          # Node dependencies
 ├── workspace/                    # Transient encoding sessions & workspace
 ├── run_tool.sh                   # Unified launcher script

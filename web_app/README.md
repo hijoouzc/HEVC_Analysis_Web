@@ -24,18 +24,18 @@ This directory contains the fullstack web application that interfaces with the i
 - **`frontend/`**: React 19 + Vite modern web interface.
   - Apple macOS Tahoe design language with zero rounded corners on video frames, CTUs, and matrix cells (pixel-accurate).
   - Built with **Persistent DOM Shells** across all viewports to completely eliminate layout shifts (zero CLS).
-  - **Dual-Mode Orchestration**:
-    - **5-Step Guided Journey** (Sequential HM `xCompressCU` lifecycle):
-      - Step 1: `01 Partition` (Incremental CTU playback transport bar, Split CU vs Leaf CU inspection, decoupled playhead)
-      - Step 2: `02 Prediction` (35 intra modes, 4N+1 perimeter, MDIS 3-tap filtering, RMD SATD funnel, 3 MPMs, real HM-18.0 bit-exact prediction matrix)
-      - Step 3: `03 Residual & TU` (RQT QuadTree decomposition, TU call stack stepper, 2D core DCT-II/DST-VII, quantization sparsity, QP/$Q_{\text{step}}$)
-      - Step 4: `04 Reconstruction` (Picture buffer pre/post-filter, mathematical verification $S' = \text{Clip3}(0, 255, P + R')$, 4-Picture comparison across $Y, Cb, Cr$)
-      - Step 5: `05 RD Decision` (Lagrangian cost $J_{\text{nosplit}}$ vs $J_{\text{split}}$ with verified provenance, actual CTU bits, interactive RDO simulator)
-      - **Streamlined Apple UI**: Single-line stepper chips bar, global Channel switcher (`Y`, `Cb`, `Cr` via `C`), Matrix Values toggle (`V`), and zero clutter.
-    - **9-Tab Expert Checkpoints**:
-      - `0. Frame & GOP` (`CP_00`), `1. CU QuadTree` (`CP_01`), `2. Intra Search` (`CP_02`), `3. Inter Search` (`CP_03`), `4. Transform & Quant` (`CP_04`), `5. Recon Picture` (`CP_05`), `6. In-Loop Filter` (`CP_06`), `7. CABAC Entropy` (`CP_07`), `8. RDO Simulator` (`RDO_SIM`).
+  - **5-Step Guided Journey** (Sequential HM `xCompressCU` lifecycle):
+    - Step 1: `01 Partition` (Incremental CTU playback transport bar, Split CU vs Leaf CU inspection, decoupled playhead, CTU Spatial Mini-Map)
+    - Step 2: `02 Prediction` (35 intra modes, 4N+1 perimeter, MDIS 3-tap filtering, RMD SATD funnel, 3 MPMs, real HM-18.0 bit-exact prediction matrix)
+    - Step 3: `03 Residual & TU` (RQT QuadTree decomposition, TU call stack stepper, 2D core DCT-II/DST-VII, quantization sparsity, QP/$Q_{\text{step}}$)
+    - Step 4: `04 Reconstruction` (Picture buffer pre/post-filter, mathematical verification $S' = \text{Clip3}(0, 255, P + R')$, 4-Picture comparison across $Y, Cb, Cr$)
+    - Step 5: `05 RD Decision` (Lagrangian cost $J_{\text{nosplit}}$ vs $J_{\text{split}}$ with verified provenance, actual CTU bits, interactive RDO simulator)
+    - **Streamlined Apple UI**: Single-line stepper chips bar, global Channel switcher (`Y`, `Cb`, `Cr` via `C`), Matrix Values toggle (`V`), and zero clutter.
+  - **Feature-First Vertical Stages (`components/stages/`)**: Granular checkpoints (`CP_00` to `CP_07`, `RDO_SIM`) encapsulated as modular feature stages (`cp00_frame_gop` through `cp07_cabac_entropy`, `rdo_simulator`).
+  - **Scoped Query & Caching Architecture**: Hierarchical fetching (`fetchJobCheckpoints`, `fetchCtuCheckpoints`, `fetchCuCheckpoints`), `AbortController` cancellation, and in-memory LRU cache.
+  - **Modular Apple Design System**: 10 single-responsibility primitives in `components/apple/` with backward-compatible barrel export.
   - **Unified Analysis Inspector**: Collapsible right-hand inspector panel serving as the single source of truth for all spatial, block, coding, and line buffer telemetry.
-  - Provides **19 comprehensive test suites** (881 tests, `npm test`, 100% passed) and zero-warning linting (`oxlint` across 137 files).
+  - Provides **19 comprehensive test suites** (`npm test`, 100% passed) and zero-warning linting (`oxlint` across 137 files).
 
 ## Development
 
