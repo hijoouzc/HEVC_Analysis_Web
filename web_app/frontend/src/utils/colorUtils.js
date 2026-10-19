@@ -170,6 +170,21 @@ export const bt709YuvToRgb = (y, cb, cr) => {
 };
 
 /**
+ * Exact ITU-R BT.709 sRGB to YCbCr conversion.
+ * 
+ * @param {number} r - 8-bit Red [0, 255]
+ * @param {number} g - 8-bit Green [0, 255]
+ * @param {number} b - 8-bit Blue [0, 255]
+ * @returns {{ y: number, cb: number, cr: number }}
+ */
+export const bt709RgbToYuv = (r, g, b) => {
+  const y = clamp(Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b), 0, 255);
+  const cb = clamp(Math.round(-0.11457 * r - 0.38543 * g + 0.5 * b + 128), 0, 255);
+  const cr = clamp(Math.round(0.5 * r - 0.45415 * g - 0.04585 * b + 128), 0, 255);
+  return { y, cb, cr };
+};
+
+/**
  * Exact ITU-R BT.601 Full-Range YCbCr (YUV) to sRGB conversion.
  * 
  * @param {number} y  - 8-bit Luma sample [0, 255]
@@ -219,17 +234,17 @@ export const getChromaColorAndTextColor = (val, isU) => {
 };
 
 /**
- * Universal dispatcher for pixel sample styling across any channel (Y, U, V).
+ * Universal dispatcher for pixel sample styling across any channel (Y, U/Cb, V/Cr).
  * 
  * @param {number} val - 8-bit sample value (0-255)
- * @param {'Y'|'U'|'V'} [channel='Y'] - Channel identifier
+ * @param {'Y'|'U'|'V'|'Cb'|'Cr'} [channel='Y'] - Channel identifier
  * @returns {{ bg: string, color: string, border: string, textShadow: string, val: number }}
  */
 export const getSampleColorAndTextColor = (val, channel = 'Y') => {
-  if (channel === 'U') {
+  if (channel === 'U' || channel === 'Cb') {
     return getChromaColorAndTextColor(val, true);
   }
-  if (channel === 'V') {
+  if (channel === 'V' || channel === 'Cr') {
     return getChromaColorAndTextColor(val, false);
   }
   return getLumaColorAndTextColor(val);

@@ -370,19 +370,18 @@ for (const tn of testNodes) {
 // -------------------------------------------------------------
 // TEST SUITE 8: RDO Simulator Tab Integration & Checkpoint Synchronization
 // -------------------------------------------------------------
-console.log('\nTest Suite 8: RDO Simulator Tab Integration & Checkpoint Synchronization');
+console.log('\nTest Suite 8: RDO Simulator Integration & Checkpoint Synchronization');
 
 const appSource = fs.readFileSync(path.join(__dirname, '../../src/App.jsx'), 'utf-8');
 const viewportSource = fs.readFileSync(path.join(__dirname, '../../src/components/app/ActiveStageViewport.jsx'), 'utf-8');
+const step5Source = fs.readFileSync(path.join(__dirname, '../../src/components/guided/Step5RdDecision.jsx'), 'utf-8');
 
-assert(appSource.includes("{ id: 'RDO_SIM', label: '8. RDO Simulator' }"), "App.jsx defines RDO_SIM tab in stageTabs");
-assert(appSource.includes("else if (e.key === '8') setActiveStageTab('RDO_SIM');"), "App.jsx provides key '8' shortcut for RDO Simulator");
-assert(viewportSource.includes("import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';"), "ActiveStageViewport imports RdoQuadtreeSimulator");
-assert(viewportSource.includes("onNavigateToSim={() => setActiveStageTab('RDO_SIM')}"), "ActiveStageViewport connects QuadTreeVisualizer onNavigateToSim to RDO_SIM");
-assert(viewportSource.includes("activeStageTab === 'RDO_SIM'"), "ActiveStageViewport renders RDO_SIM stage section");
-assert(viewportSource.includes("<RdoQuadtreeSimulator"), "ActiveStageViewport mounts RdoQuadtreeSimulator component");
-assert(viewportSource.includes("partitionData={ctuPartitionsMap?.[`${ctuX}_${ctuY}`] || partitionData}"), "ActiveStageViewport passes 100% synchronized CTU partition ground truth to RdoQuadtreeSimulator");
-assert(viewportSource.includes("(val === 'CP_01' || val === 'RDO_SIM')"), "ActiveStageViewport updates partition cache on RDO_SIM tab switch");
+assert(appSource.includes("import RdoQuadtreeSimulator from './components/RdoQuadtreeSimulator';"), "App.jsx imports RdoQuadtreeSimulator");
+assert(appSource.includes("<RdoQuadtreeSimulator"), "App.jsx mounts standalone RdoQuadtreeSimulator");
+assert(step5Source.includes("import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';"), "Step5RdDecision imports RdoQuadtreeSimulator");
+assert(step5Source.includes("<RdoQuadtreeSimulator"), "Step5RdDecision mounts RdoQuadtreeSimulator in Step 5");
+assert(viewportSource.includes("partitionData={ctuPartitionsMap?.[`${ctuX}_${ctuY}`] || partitionData}"), "ActiveStageViewport passes 100% synchronized CTU partition ground truth to Step5");
+assert(viewportSource.includes("onNavigateToStage={() => handleGuidedStepChange('STEP_1')}"), "ActiveStageViewport connects Step 5 RDO simulator back to Step 1 QuadTree");
 
 console.log(`\n=== TEST SUMMARY: ${passCount} PASSED, ${failCount} FAILED ===`);
 if (failCount > 0) process.exit(1);

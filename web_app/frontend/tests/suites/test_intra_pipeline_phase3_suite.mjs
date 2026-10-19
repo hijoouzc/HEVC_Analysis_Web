@@ -26,7 +26,7 @@ function assert(condition, message) {
 // -------------------------------------------------------------------
 console.log('Test Suite 1: Step 1 Reference Boundary & MDIS Filter Conformance');
 
-const step1Code = fs.readFileSync(path.join(__dirname, '../../src/components/flow/Step1BoundaryInitView.jsx'), 'utf-8');
+const step1Code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/Step1BoundaryInitView.jsx'), 'utf-8');
 
 assert(!step1Code.includes('onMouseEnter'), 'Step1BoundaryInitView has zero onMouseEnter listeners');
 assert(!step1Code.includes('onMouseOver'), 'Step1BoundaryInitView has zero onMouseOver listeners');
@@ -62,7 +62,7 @@ assert(smoothed.top[1] === expectedTop1, `Smoothed top[1] matches exact formula:
 // -------------------------------------------------------------------
 console.log('\nTest Suite 2: Step 2 RMD 35-Mode Funnel & Pruning Conformance');
 
-const step2Code = fs.readFileSync(path.join(__dirname, '../../src/components/flow/Step2RmdFunnelView.jsx'), 'utf-8');
+const step2Code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/Step2RmdFunnelView.jsx'), 'utf-8');
 
 assert(!step2Code.includes('onMouseEnter'), 'Step2RmdFunnelView has zero onMouseEnter listeners');
 assert(!step2Code.includes('onMouseOver'), 'Step2RmdFunnelView has zero onMouseOver listeners');
@@ -87,7 +87,7 @@ assert(pruneRateK3 === '91.4', '16x16 / 32x32 block prunes 91.4% of modes (32 ou
 // -------------------------------------------------------------------
 console.log('\nTest Suite 3: IntraPredictionFlow Integration of Phase 3 Components');
 
-const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/IntraPredictionFlow.jsx'), 'utf-8');
+const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx'), 'utf-8');
 
 assert(flowCode.includes('import Step1BoundaryInitView'), 'IntraPredictionFlow imports Step1BoundaryInitView');
 assert(flowCode.includes('import Step2RmdFunnelView'), 'IntraPredictionFlow imports Step2RmdFunnelView');

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import IntraPredictionFlow from '../IntraPredictionFlow';
-import InterSearchVisualizer from '../InterSearchVisualizer';
+import { IntraPredictionFlow } from '../stages/cp02_intra_search';
+import { InterSearchVisualizer } from '../stages/cp03_inter_search';
 import { CompactStepRibbon } from './CompactStepRibbon';
 import { PuPartitionGeometry } from './PuPartitionGeometry';
-import { Badge, SegmentedControl, Button } from '../apple';
+import { Badge, SegmentedControl } from '../apple';
 
 /**
  * Step2Prediction (Guided Flow Step 2)
@@ -36,10 +36,11 @@ export function Step2Prediction({
   frameGopData,
   onSelectBlock = null,
   partitionData = null,
-  onProceedToResidual = null,
-  onProceedToRdo = null,
+  _onProceedToResidual = null,
+  _onProceedToRdo = null,
   channel = 'Y',
   onSelectChannel = null,
+  showValues = undefined,
 }) {
   const [predictionType, setPredictionType] = useState('intra'); // 'intra' | 'inter'
   const [partSize, setPartSize] = useState('2Nx2N');
@@ -77,21 +78,10 @@ export function Step2Prediction({
 
       {/* Parent CU Notice */}
       {isParentCu && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)' }}>
           <Badge variant="purple" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
             SPLIT CU TRIAL: ({selectedCu.x ?? 0}, {selectedCu.y ?? 0}) Split into 4 child CUs in final tree
           </Badge>
-          {onProceedToRdo && (
-            <Button
-              variant="tinted"
-              size="mini"
-              onClick={onProceedToRdo}
-              title="Jump to Step 5: Rate-Distortion Split Decision"
-              style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}
-            >
-              Jump to RDO Decision (Step 5) &rarr;
-            </Button>
-          )}
         </div>
       )}
 
@@ -140,6 +130,7 @@ export function Step2Prediction({
           partitionData={partitionData}
           channel={channel}
           onSelectChannel={onSelectChannel}
+          showValues={showValues}
         />
       ) : (
         /* Inter Prediction Workspace */
@@ -176,20 +167,6 @@ export function Step2Prediction({
               />
             )}
           </div>
-        </div>
-      )}
-      {/* Stream Advance to Step 3 */}
-      {onProceedToResidual && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-          <Button
-            variant="filled"
-            size="small"
-            onClick={onProceedToResidual}
-            title="Proceed to Step 3: Transform & Quantization"
-            style={{ fontSize: '11px', background: 'var(--system-blue)', color: '#FFFFFF', padding: '0 12px', height: '28px' }}
-          >
-            Next: Transform &amp; Quantization &rarr;
-          </Button>
         </div>
       )}
     </div>

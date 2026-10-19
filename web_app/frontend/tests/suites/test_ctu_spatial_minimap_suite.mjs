@@ -98,7 +98,7 @@ console.log('Test Suite 1: ITU-T H.265 Section 6.4.1 Morton Z-Scan Mathematical 
 
 console.log('\nTest Suite 2: CtuSpatialMiniMap Component Conformance');
 {
-  const filePath = resolve(__dirname, '../../src/components/flow/CtuSpatialMiniMap.jsx');
+  const filePath = resolve(__dirname, '../../src/components/stages/cp02_intra_search/CtuSpatialMiniMap.jsx');
   const content = readFileSync(filePath, 'utf8');
 
   // 1. Vector SVG 64x64 Canvas Reticle
@@ -125,7 +125,7 @@ console.log('\nTest Suite 2: CtuSpatialMiniMap Component Conformance');
 
 console.log('\nTest Suite 3: IntraPredictionFlow & ActiveStageViewport Integration');
 {
-  const flowPath = resolve(__dirname, '../../src/components/IntraPredictionFlow.jsx');
+  const flowPath = resolve(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx');
   const flowContent = readFileSync(flowPath, 'utf8');
 
   assert(flowContent.includes('CtuSpatialMiniMap'), 'IntraPredictionFlow imports CtuSpatialMiniMap');

@@ -1,5 +1,5 @@
 export { GuidedJourneyBar } from './GuidedJourneyBar';
-export { GUIDED_STEPS } from './guidedSteps';
+export { GUIDED_STEPS, getStepByNum, getStepById } from './guidedSteps';
 export { GuidedFooterNav } from './GuidedFooterNav';
 export { CompactStepRibbon } from './CompactStepRibbon';
 export { Step1FrameTree } from './Step1FrameTree';

@@ -1,42 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { GUIDED_STEPS } from './guidedSteps';
 
-const SECTIONS = [
-  {
-    id: 'STEP_1',
-    num: '1',
-    title: 'Frame & CU Partition',
-    hmFunction: 'TEncCu::xCompressCU',
-    badge: 'QuadTree',
-  },
-  {
-    id: 'STEP_2',
-    num: '2',
-    title: 'Intra Prediction',
-    hmFunction: 'TEncSearch::estIntraPredLumaQT',
-    badge: 'Prediction',
-  },
-  {
-    id: 'STEP_3',
-    num: '3',
-    title: 'Transform & Quantization',
-    hmFunction: 'TComTrQuant::transformNxN',
-    badge: 'Transform & Quant',
-  },
-  {
-    id: 'STEP_4',
-    num: '4',
-    title: 'Reconstruction',
-    hmFunction: 'TComPic::getPicYuvRec',
-    badge: 'Picture Buffer',
-  },
-  {
-    id: 'STEP_5',
-    num: '5',
-    title: 'RDO Decision',
-    hmFunction: 'TEncCu::xCheckBestMode',
-    badge: 'RDO Engine',
-  },
-];
+export const SECTIONS = GUIDED_STEPS;
 
 /**
  * QuickJumpMenu

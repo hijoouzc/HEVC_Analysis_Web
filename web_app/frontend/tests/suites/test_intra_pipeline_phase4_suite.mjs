@@ -26,7 +26,7 @@ function assert(condition, message) {
 // -------------------------------------------------------------------
 console.log('Test Suite 1: Step 3 Candidates & MPM Derivation Conformance');
 
-const step3Code = fs.readFileSync(path.join(__dirname, '../../src/components/flow/Step3CandidatesView.jsx'), 'utf-8');
+const step3Code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/Step3CandidatesView.jsx'), 'utf-8');
 
 assert(!step3Code.includes('onMouseEnter'), 'Step3CandidatesView has zero onMouseEnter listeners');
 assert(!step3Code.includes('onMouseOver'), 'Step3CandidatesView has zero onMouseOver listeners');
@@ -93,7 +93,7 @@ assert(poolSet.size === 9, 'Top 8 (RMD) ∪ MPM [10, 26, 0] deduplicates to exac
 // -------------------------------------------------------------------
 console.log('\nTest Suite 2: Step 4 Full RDO & 6-Stage Domain Strip Conformance');
 
-const step4Code = fs.readFileSync(path.join(__dirname, '../../src/components/flow/Step4FullRdoView.jsx'), 'utf-8');
+const step4Code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/Step4FullRdoView.jsx'), 'utf-8');
 
 assert(!step4Code.includes('onMouseEnter'), 'Step4FullRdoView has zero onMouseEnter listeners');
 assert(!step4Code.includes('onMouseOver'), 'Step4FullRdoView has zero onMouseOver listeners');
@@ -150,7 +150,7 @@ assert(qStep > 0, `Quantization step size for QP ${qp} is valid: ${qStep.toFixed
 // -------------------------------------------------------------------
 console.log('\nTest Suite 3: IntraPredictionFlow and ActiveStageViewport Integration');
 
-const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/IntraPredictionFlow.jsx'), 'utf-8');
+const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx'), 'utf-8');
 const viewportCode = fs.readFileSync(path.join(__dirname, '../../src/components/app/ActiveStageViewport.jsx'), 'utf-8');
 
 assert(flowCode.includes('import Step3CandidatesView'), 'IntraPredictionFlow imports Step3CandidatesView');

@@ -98,7 +98,7 @@ console.log('Test Suite 1: ITU-R BT.709 Mathematical Colorimetry');
 
 console.log('\nTest Suite 2: ReconPictureVisualizer Component Fidelity');
 {
-  const filePath = resolve(__dirname, '../../src/components/ReconPictureVisualizer.jsx');
+  const filePath = resolve(__dirname, '../../src/components/stages/cp05_recon_picture/ReconPictureVisualizer.jsx');
   const content = readFileSync(filePath, 'utf8');
 
   // 1. Pixelated canvas rendering guarantee
@@ -134,16 +134,19 @@ console.log('\nTest Suite 2: ReconPictureVisualizer Component Fidelity');
   assert(content.includes('Escape'), 'Provides universal Escape shortcut to deselect active pixel');
 }
 
-console.log('\nTest Suite 3: ActiveStageViewport CP_05 Integration');
+console.log('\nTest Suite 3: Guided Step 4 & ActiveStageViewport CP_05 Integration');
 {
+  const step4Path = resolve(__dirname, '../../src/components/guided/Step4ReconInLoop.jsx');
+  const step4Content = readFileSync(step4Path, 'utf8');
   const viewportPath = resolve(__dirname, '../../src/components/app/ActiveStageViewport.jsx');
   const viewportContent = readFileSync(viewportPath, 'utf8');
 
-  assert(viewportContent.includes('<ReconPictureVisualizer'), 'ActiveStageViewport renders ReconPictureVisualizer');
-  assert(viewportContent.includes('imageSrc={imagePreview}'), 'Passes imageSrc prop to ReconPictureVisualizer');
-  assert(viewportContent.includes('jobId={jobId}'), 'Passes jobId prop to ReconPictureVisualizer');
-  assert(viewportContent.includes('API_BASE_URL={API_BASE_URL}'), 'Passes API_BASE_URL prop to ReconPictureVisualizer');
-  assert(viewportContent.includes('FourPictureComparison'), 'Preserves FourPictureComparison split slider in overview mode');
+  assert(step4Content.includes('<ReconPictureVisualizer'), 'Step4ReconInLoop renders ReconPictureVisualizer');
+  assert(step4Content.includes('imageSrc={imageSrc}'), 'Passes imageSrc prop to ReconPictureVisualizer');
+  assert(step4Content.includes('jobId={jobId}'), 'Passes jobId prop to ReconPictureVisualizer');
+  assert(step4Content.includes('API_BASE_URL={API_BASE_URL}'), 'Passes API_BASE_URL prop to ReconPictureVisualizer');
+  assert(step4Content.includes('FourPictureComparison'), 'Preserves FourPictureComparison in Step 4');
+  assert(viewportContent.includes('<Step4ReconInLoop'), 'ActiveStageViewport mounts Step4ReconInLoop');
 }
 
 console.log('\nTest Suite 4: MacroMicroPixelViewer Component BT.709 Colorimetry');

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import FourPictureComparison from '../FourPictureComparison';
-import ReconPictureVisualizer from '../ReconPictureVisualizer';
-import InLoopFilterVisualizer from '../InLoopFilterVisualizer';
+import { FourPictureComparison, ReconPictureVisualizer } from '../stages/cp05_recon_picture';
+import { InLoopFilterVisualizer } from '../stages/cp06_inloop_filter';
 import { CompactStepRibbon } from './CompactStepRibbon';
-import { Badge, SegmentedControl, Button } from '../apple';
+import { Badge, SegmentedControl } from '../apple';
 
 /**
  * Step4ReconInLoop (Guided Flow Step 4)
@@ -25,9 +24,10 @@ export function Step4ReconInLoop({
   onSelectCTU,
   onNavigateToIntra,
   splitDecision = null,
-  onProceedToRdo = null,
+  _onProceedToRdo = null,
   channel: propsChannel = undefined,
   onSelectChannel = null,
+  showValues = undefined,
 }) {
   const [reconTab, setReconTab] = useState('buffer'); // 'buffer' | 'cu_planar' | 'inloop'
   const [internalChannel, setInternalChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
@@ -52,29 +52,31 @@ export function Step4ReconInLoop({
 
       {/* Controls: Chroma Channel Switcher & Recon Mode Switcher */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '8px' }}>
-        {/* Chroma Channel Switcher [ Y | Cb | Cr ] */}
-        <div style={{ display: 'flex', gap: '3px' }}>
-          {['Y', 'Cb', 'Cr'].map((ch) => (
-            <button
-              key={ch}
-              type="button"
-              onClick={() => setChannel(ch)}
-              style={{
-                fontSize: '10px',
-                fontFamily: 'var(--font-mono)',
-                padding: '2px 7px',
-                borderRadius: '4px',
-                background: channel === ch ? 'var(--system-blue)' : 'var(--fill-2)',
-                color: channel === ch ? '#FFFFFF' : 'var(--apple-label)',
-                border: '0.5px solid var(--separator)',
-                cursor: 'pointer',
-                fontWeight: channel === ch ? 700 : 500,
-              }}
-            >
-              {ch}
-            </button>
-          ))}
-        </div>
+        {/* Chroma Channel Switcher [ Y | Cb | Cr ] - Only render when uncontrolled */}
+        {!onSelectChannel && (
+          <div style={{ display: 'flex', gap: '3px' }}>
+            {['Y', 'Cb', 'Cr'].map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => setChannel(ch)}
+                style={{
+                  fontSize: '10px',
+                  fontFamily: 'var(--font-mono)',
+                  padding: '2px 7px',
+                  borderRadius: '4px',
+                  background: channel === ch ? 'var(--system-blue)' : 'var(--fill-2)',
+                  color: channel === ch ? '#FFFFFF' : 'var(--apple-label)',
+                  border: '0.5px solid var(--separator)',
+                  cursor: 'pointer',
+                  fontWeight: channel === ch ? 700 : 500,
+                }}
+              >
+                {ch}
+              </button>
+            ))}
+          </div>
+        )}
 
         <SegmentedControl
           value={reconTab}
@@ -90,21 +92,10 @@ export function Step4ReconInLoop({
 
       {/* Split CU Notice Banner */}
       {wasSplit && reconTab !== 'inloop' && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)' }}>
           <Badge variant="purple" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
             [CU PARTITION NOTICE]: CU split into 4 child CUs; picture buffer committed from child nodes
           </Badge>
-          {onProceedToRdo && (
-            <Button
-              variant="tinted"
-              size="mini"
-              onClick={onProceedToRdo}
-              title="Jump to Step 5: Rate-Distortion Split Decision"
-              style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}
-            >
-              Jump to RDO Decision (Step 5) &rarr;
-            </Button>
-          )}
         </div>
       )}
 
@@ -132,6 +123,8 @@ export function Step4ReconInLoop({
             API_BASE_URL={API_BASE_URL}
             onSelectCTU={onSelectCTU}
             onNavigateToIntra={onNavigateToIntra}
+            channel={channel}
+            showValues={showValues}
           />
         )}
 
@@ -160,21 +153,6 @@ export function Step4ReconInLoop({
           />
         )}
       </div>
-
-      {/* Stream Advance to Step 5 */}
-      {onProceedToRdo && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-          <Button
-            variant="filled"
-            size="small"
-            onClick={onProceedToRdo}
-            title="Proceed to Step 5: RDO Decision"
-            style={{ fontSize: '11px', background: 'var(--system-blue)', color: '#FFFFFF', padding: '0 12px', height: '28px' }}
-          >
-            Next: RDO Decision &rarr;
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

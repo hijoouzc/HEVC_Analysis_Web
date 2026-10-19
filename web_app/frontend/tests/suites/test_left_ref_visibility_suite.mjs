@@ -18,7 +18,7 @@ console.log('\n=== RUNNING LEFT REFERENCE SAMPLES & SAFE CENTERING TEST SUITE ==
 // Test Suite 1: ReferencePerimeter Structural & Mathematical Conformance
 console.log('Test Suite 1: ReferencePerimeter Mathematical Layout');
 {
-  const refPath = resolve(__dirname, '../../src/components/flow/ReferencePerimeter.jsx');
+  const refPath = resolve(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/ReferencePerimeter.jsx');
   const refContent = readFileSync(refPath, 'utf8');
 
   assert(refContent.includes('gridColumn: 1') && refContent.includes('gridRow: 1'), 'Corner sample mapped to col 1, row 1');
@@ -31,7 +31,7 @@ console.log('Test Suite 1: ReferencePerimeter Mathematical Layout');
 // Test Suite 2: IntraPredictionFlow Layout & Safe Centering Immunity
 console.log('\nTest Suite 2: IntraPredictionFlow Safe Centering & Clipping Immunity');
 {
-  const flowPath = resolve(__dirname, '../../src/components/IntraPredictionFlow.jsx');
+  const flowPath = resolve(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx');
   const flowContent = readFileSync(flowPath, 'utf8');
 
   // Verify Card 1 Pinned Header & Safe Centering

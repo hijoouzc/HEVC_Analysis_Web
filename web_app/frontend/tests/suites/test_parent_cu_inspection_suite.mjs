@@ -48,7 +48,7 @@ console.log('\nTest Suite 1: Full Hierarchy Extraction (extractAllCtuNodes vs ex
 
 console.log('\nTest Suite 2: QuadTreeVisualizer Intermediate & Parent Node Inspection');
 {
-  const fileContent = readFileSync(resolve(__dirname, '../../src/components/QuadTreeVisualizer.jsx'), 'utf8');
+  const fileContent = readFileSync(resolve(__dirname, '../../src/components/stages/cp01_partition/QuadTreeVisualizer.jsx'), 'utf8');
 
   // Verify that activeNode resolution searches across all nodes, not strictly leafNodes
   assert(fileContent.includes('const found = nodes.find(n =>'), 'activeNode matches across all partitionData.nodes (including split parents)');
@@ -67,7 +67,7 @@ console.log('\nTest Suite 2: QuadTreeVisualizer Intermediate & Parent Node Inspe
 
 console.log('\nTest Suite 3: FullFrameViewer 2D Frame Layer Parent Selection Conformance');
 {
-  const ffContent = readFileSync(resolve(__dirname, '../../src/components/FullFrameViewer.jsx'), 'utf8');
+  const ffContent = readFileSync(resolve(__dirname, '../../src/components/stages/cp00_frame_gop/FullFrameViewer.jsx'), 'utf8');
 
   assert(ffContent.includes('activeCu.split ? \'rgba(175, 82, 222, 0.20)\''), 'Applies distinctive semi-transparent purple fill to parent CU');
   assert(ffContent.includes('strokeDasharray={activeCu.split ? \'4 2\' : \'none\'}'), 'Applies dashed stroke when parent split CU is active');

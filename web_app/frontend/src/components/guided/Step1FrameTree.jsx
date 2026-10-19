@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import GopReferenceVisualizer from '../GopReferenceVisualizer';
-import QuadTreeVisualizer from '../QuadTreeVisualizer';
+import { GopReferenceVisualizer } from '../stages/cp00_frame_gop';
+import { QuadTreeVisualizer } from '../stages/cp01_partition';
 import { CompactStepRibbon } from './CompactStepRibbon';
 import { Badge, SegmentedControl, Button } from '../apple';
 import { useHmTracePlayback } from '../../hooks/useHmTracePlayback';

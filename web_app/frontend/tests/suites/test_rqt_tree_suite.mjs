@@ -114,7 +114,7 @@ console.log('\nTest Suite 2: computeTuTreeLayout Geometric Square Sizing & Ortho
 // Test Suite 3: TuQuadtreeHierarchyGraph Component Conformance
 console.log('\nTest Suite 3: TuQuadtreeHierarchyGraph Component Conformance');
 {
-  const graphPath = resolve(__dirname, '../../src/components/common/TuQuadtreeHierarchyGraph.jsx');
+  const graphPath = resolve(__dirname, '../../src/components/stages/cp04_transform_quant/TuQuadtreeHierarchyGraph.jsx');
   const graphContent = readFileSync(graphPath, 'utf8');
 
   assert(graphContent.includes('InternalTuPartitionGrid'), 'Implements internal cross partition grid (+) for split TUs');
@@ -131,7 +131,7 @@ console.log('\nTest Suite 3: TuQuadtreeHierarchyGraph Component Conformance');
 // Test Suite 4: TransformQuantVisualizer & Step3ResidualTu Integration
 console.log('\nTest Suite 4: TransformQuantVisualizer & Step3ResidualTu Integration');
 {
-  const tqPath = resolve(__dirname, '../../src/components/TransformQuantVisualizer.jsx');
+  const tqPath = resolve(__dirname, '../../src/components/stages/cp04_transform_quant/TransformQuantVisualizer.jsx');
   const tqContent = readFileSync(tqPath, 'utf8');
 
   assert(tqContent.includes('TuTreeCallStack') || tqContent.includes('TuQuadtreeHierarchyGraph'), 'Imports and renders TuTreeCallStack / TuQuadtreeHierarchyGraph');
@@ -150,7 +150,7 @@ console.log('\nTest Suite 4: TransformQuantVisualizer & Step3ResidualTu Integrat
 // Test Suite 5: TuTreeCallStack Playback & Stepper Controller ("có tính năng để chạy")
 console.log('\nTest Suite 5: TuTreeCallStack Playback & Stepper Controller ("có tính năng để chạy")');
 {
-  const stackPath = resolve(__dirname, '../../src/components/common/TuTreeCallStack.jsx');
+  const stackPath = resolve(__dirname, '../../src/components/stages/cp04_transform_quant/TuTreeCallStack.jsx');
   const stackContent = readFileSync(stackPath, 'utf8');
 
   assert(stackContent.includes('Transform QuadTree Call Stack'), 'Header titled Transform QuadTree Call Stack');

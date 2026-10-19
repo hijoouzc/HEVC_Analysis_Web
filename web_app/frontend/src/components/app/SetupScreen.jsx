@@ -1,5 +1,5 @@
 import React from 'react';
-import FullFrameViewer from '../FullFrameViewer';
+import { FullFrameViewer } from '../stages/cp00_frame_gop';
 import { Card, Badge, Button } from '../apple';
 
 /**

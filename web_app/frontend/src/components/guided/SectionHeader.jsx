@@ -36,33 +36,18 @@ export function SectionHeader({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <h2
+            title={hmFunction ? `HM-18.0: ${hmFunction}` : undefined}
             style={{
               margin: 0,
               fontSize: '16px',
               fontWeight: 700,
               letterSpacing: '-0.01em',
               color: 'var(--apple-label)',
+              cursor: hmFunction ? 'help' : 'default',
             }}
           >
             {title}
           </h2>
-
-          {hmFunction && (
-            <code
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '12px',
-                fontWeight: 600,
-                color: 'var(--system-blue)',
-                background: 'var(--fill-2)',
-                padding: '2px 8px',
-                borderRadius: '5px',
-                border: '0.5px solid var(--separator)',
-              }}
-            >
-              {hmFunction}
-            </code>
-          )}
 
           {badge && (
             <Badge variant={badgeVariant} style={{ fontSize: '9.5px', padding: '1px 6px' }}>

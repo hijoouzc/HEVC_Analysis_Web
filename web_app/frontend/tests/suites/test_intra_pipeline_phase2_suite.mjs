@@ -88,9 +88,9 @@ assert(HM_CHROMA_INTRA_SNIPPET.codeSnippet.includes('34'), 'Mode 34 replacement 
 // -------------------------------------------------------------------
 console.log('\nTest Suite 3: Click-Only UI Ergonomics & Zero Hover Artifacts');
 
-const stepperCode = fs.readFileSync(path.join(__dirname, '../../src/components/flow/IntraPipelineStepper.jsx'), 'utf-8');
-const inspectorCode = fs.readFileSync(path.join(__dirname, '../../src/components/flow/IntraPipelineInspector.jsx'), 'utf-8');
-const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/IntraPredictionFlow.jsx'), 'utf-8');
+const stepperCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/IntraPipelineStepper.jsx'), 'utf-8');
+const inspectorCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/IntraPipelineInspector.jsx'), 'utf-8');
+const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx'), 'utf-8');
 
 assert(!stepperCode.includes('onMouseEnter'), 'IntraPipelineStepper has zero onMouseEnter listeners');
 assert(!stepperCode.includes('onMouseOver'), 'IntraPipelineStepper has zero onMouseOver listeners');

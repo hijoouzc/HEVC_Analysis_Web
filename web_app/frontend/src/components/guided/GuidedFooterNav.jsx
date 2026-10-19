@@ -2,10 +2,9 @@ import React from 'react';
 import { Button, Badge } from '../apple';
 import { GUIDED_STEPS } from './guidedSteps';
 
-
 /**
  * GuidedFooterNav
- * Fixed footer navigation bar with Previous, Next, Target CU context, and Expert jump
+ * Fixed footer navigation bar with Previous, Next, and Target CU context
  */
 export function GuidedFooterNav({
   activeStep = 'STEP_1',
@@ -13,10 +12,8 @@ export function GuidedFooterNav({
   selectedCu = null,
   ctuX = 0,
   ctuY = 0,
-  onJumpToExpert = null,
 }) {
   const currentIndex = GUIDED_STEPS.findIndex((s) => s.id === activeStep);
-  const currentStep = GUIDED_STEPS[currentIndex] || GUIDED_STEPS[0];
   const prevStep = currentIndex > 0 ? GUIDED_STEPS[currentIndex - 1] : null;
   const nextStep = currentIndex < GUIDED_STEPS.length - 1 ? GUIDED_STEPS[currentIndex + 1] : null;
 
@@ -49,18 +46,6 @@ export function GuidedFooterNav({
         >
           &lsaquo; Prev{prevStep ? `: ${prevStep.title}` : ''}
         </Button>
-
-        {onJumpToExpert && (
-          <Button
-            variant="plain"
-            size="mini"
-            onClick={() => onJumpToExpert(currentStep.checkpoint)}
-            title="Inspect in Expert 9-Tab Mode"
-            style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)' }}
-          >
-            Open in Expert Checkpoint &rarr;
-          </Button>
-        )}
       </div>
 
       {/* Center: Selected CU Context Badge Pill */}
@@ -83,26 +68,16 @@ export function GuidedFooterNav({
       </div>
 
       {/* Right: Next Step Button */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {nextStep ? (
-          <Button
-            variant="filled"
-            size="small"
-            onClick={() => onSelectStep(nextStep.id)}
-            style={{ fontSize: '11px', height: '26px', background: 'var(--system-blue)', color: '#FFFFFF' }}
-          >
-            Next: {nextStep.title} &rsaquo;
-          </Button>
-        ) : (
-          <Button
-            variant="tinted"
-            size="small"
-            onClick={() => onSelectStep('STEP_1')}
-            style={{ fontSize: '11px', height: '26px' }}
-          >
-            Restart Flow (Step 1) &circlearrowright;
-          </Button>
-        )}
+      <div>
+        <Button
+          variant="filled"
+          size="small"
+          onClick={() => nextStep && onSelectStep(nextStep.id)}
+          disabled={!nextStep}
+          style={{ fontSize: '11px', height: '26px' }}
+        >
+          Next{nextStep ? `: ${nextStep.title}` : ''} &rsaquo;
+        </Button>
       </div>
     </div>
   );

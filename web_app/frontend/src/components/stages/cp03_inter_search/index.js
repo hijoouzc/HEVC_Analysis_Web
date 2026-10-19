@@ -1,1 +1,1 @@
-export { default as InterSearchVisualizer } from '../../InterSearchVisualizer';
+export { default as InterSearchVisualizer } from './InterSearchVisualizer';

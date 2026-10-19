@@ -4,34 +4,48 @@ export const GUIDED_STEPS = [
     num: 1,
     title: 'Frame & CU Partition',
     subtitle: 'CTU & QuadTree Hierarchy',
-    checkpoint: 'CP_00 + CP_01',
+    badge: 'QuadTree',
+    hmFunction: 'TEncCu::xCompressCU',
   },
   {
     id: 'STEP_2',
     num: 2,
     title: 'Intra Prediction',
     subtitle: '35 Modes, RMD & MPM',
-    checkpoint: 'CP_02 + CP_03',
+    badge: 'Prediction',
+    hmFunction: 'TEncSearch::estIntraPredLumaQT',
   },
   {
     id: 'STEP_3',
     num: 3,
     title: 'Transform & Quantization',
     subtitle: 'RQT, DCT/DST & Quant Coeffs',
-    checkpoint: 'CP_04',
+    badge: 'Transform & Quant',
+    hmFunction: 'TComTrQuant::transformNxN',
   },
   {
     id: 'STEP_4',
     num: 4,
     title: 'Reconstruction',
     subtitle: 'Picture Buffer & In-Loop Filters',
-    checkpoint: 'CP_05 + CP_06',
+    badge: 'Picture Buffer',
+    hmFunction: 'TComPic::getPicYuvRec',
   },
   {
     id: 'STEP_5',
     num: 5,
     title: 'RDO Decision',
     subtitle: 'Split vs No-Split & CABAC',
-    checkpoint: 'CP_07 + RDO_SIM',
+    badge: 'RDO Engine',
+    hmFunction: 'TEncCu::xCheckBestMode',
   },
 ];
+
+export function getStepByNum(num) {
+  const n = Number(num);
+  return GUIDED_STEPS.find((s) => s.num === n) || null;
+}
+
+export function getStepById(id) {
+  return GUIDED_STEPS.find((s) => s.id === id) || null;
+}

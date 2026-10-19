@@ -25,7 +25,7 @@ function assert(condition, message) {
 // -------------------------------------------------------------------
 console.log('Test Suite 1: Step 5 Chroma Candidates & Mode 34 Substitution Conformance');
 
-const step5Code = fs.readFileSync(path.join(__dirname, '../../src/components/flow/Step5ChromaWinnerView.jsx'), 'utf-8');
+const step5Code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/pipeline/Step5ChromaWinnerView.jsx'), 'utf-8');
 
 assert(!step5Code.includes('onMouseEnter'), 'Step5ChromaWinnerView has zero onMouseEnter listeners');
 assert(!step5Code.includes('onMouseOver'), 'Step5ChromaWinnerView has zero onMouseOver listeners');
@@ -128,7 +128,7 @@ assert(combinedCost === '178.30', `Combined PU cost is exact sum of Luma and Chr
 // -------------------------------------------------------------------
 console.log('\nTest Suite 4: Complete 5-Stage Intra Prediction Flow Integration');
 
-const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/IntraPredictionFlow.jsx'), 'utf-8');
+const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx'), 'utf-8');
 
 assert(flowCode.includes('import Step1BoundaryInitView'), 'IntraPredictionFlow imports Step1BoundaryInitView');
 assert(flowCode.includes('import Step2RmdFunnelView'), 'IntraPredictionFlow imports Step2RmdFunnelView');

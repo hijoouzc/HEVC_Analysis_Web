@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import TransformQuantVisualizer from '../TransformQuantVisualizer';
+import { TransformQuantVisualizer } from '../stages/cp04_transform_quant';
 import { CompactStepRibbon } from './CompactStepRibbon';
-import { Badge, SegmentedControl, Button } from '../apple';
+import { Badge, SegmentedControl } from '../apple';
 
 /**
  * Step3ResidualTu (Guided Flow Step 3)
@@ -16,10 +16,11 @@ export function Step3ResidualTu({
   selectedCu,
   currentMode,
   data,
-  onProceedToRecon = null,
-  onProceedToRdo = null,
+  _onProceedToRecon = null,
+  _onProceedToRdo = null,
   channel: propsChannel = undefined,
   onSelectChannel = null,
+  showValues = undefined,
 }) {
   const [activeDomainView, setActiveDomainView] = useState('full'); // 'full' | 'spatial' | 'frequency'
   const [internalChannel, setInternalChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
@@ -68,29 +69,31 @@ export function Step3ResidualTu({
             </Badge>
           )}
 
-          {/* Chroma Channel Switcher [ Y | Cb | Cr ] */}
-          <div style={{ display: 'flex', gap: '3px' }}>
-            {['Y', 'Cb', 'Cr'].map((ch) => (
-              <button
-                key={ch}
-                type="button"
-                onClick={() => setChannel(ch)}
-                style={{
-                  fontSize: '10px',
-                  fontFamily: 'var(--font-mono)',
-                  padding: '2px 7px',
-                  borderRadius: '4px',
-                  background: channel === ch ? 'var(--system-blue)' : 'var(--fill-2)',
-                  color: channel === ch ? '#FFFFFF' : 'var(--apple-label)',
-                  border: '0.5px solid var(--separator)',
-                  cursor: 'pointer',
-                  fontWeight: channel === ch ? 700 : 500,
-                }}
-              >
-                {ch}
-              </button>
-            ))}
-          </div>
+          {/* Chroma Channel Switcher [ Y | Cb | Cr ] - Only render when uncontrolled */}
+          {!onSelectChannel && (
+            <div style={{ display: 'flex', gap: '3px' }}>
+              {['Y', 'Cb', 'Cr'].map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => setChannel(ch)}
+                  style={{
+                    fontSize: '10px',
+                    fontFamily: 'var(--font-mono)',
+                    padding: '2px 7px',
+                    borderRadius: '4px',
+                    background: channel === ch ? 'var(--system-blue)' : 'var(--fill-2)',
+                    color: channel === ch ? '#FFFFFF' : 'var(--apple-label)',
+                    border: '0.5px solid var(--separator)',
+                    cursor: 'pointer',
+                    fontWeight: channel === ch ? 700 : 500,
+                  }}
+                >
+                  {ch}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <SegmentedControl
@@ -129,21 +132,10 @@ export function Step3ResidualTu({
 
       {/* Parent Split CU Notice Banner */}
       {selectedCu?.split && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)' }}>
           <Badge variant="purple" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
             [PARENT CU]: Partitioned into 4 child CUs. Transform &amp; RQT recursion evaluated on child nodes.
           </Badge>
-          {onProceedToRdo && (
-            <Button
-              variant="tinted"
-              size="mini"
-              onClick={onProceedToRdo}
-              title="Jump to Step 5: Rate-Distortion Split Decision"
-              style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}
-            >
-              Jump to RDO Decision (Step 5) &rarr;
-            </Button>
-          )}
         </div>
       )}
 
@@ -163,6 +155,7 @@ export function Step3ResidualTu({
           initialViewLayout={activeDomainView === 'tree' ? 'tree' : 'dual'}
           channel={channel}
           onSelectChannel={setChannel}
+          showValues={showValues}
         />
       </div>
 
@@ -218,21 +211,6 @@ export function Step3ResidualTu({
               );
             })}
           </div>
-        </div>
-      )}
-
-      {/* Stream Advance to Step 4 */}
-      {onProceedToRecon && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-          <Button
-            variant="filled"
-            size="small"
-            onClick={onProceedToRecon}
-            title="Proceed to Step 4: Reconstruction"
-            style={{ fontSize: '11px', background: 'var(--system-blue)', color: '#FFFFFF', padding: '0 12px', height: '28px' }}
-          >
-            Next: Reconstruction &rarr;
-          </Button>
         </div>
       )}
     </div>

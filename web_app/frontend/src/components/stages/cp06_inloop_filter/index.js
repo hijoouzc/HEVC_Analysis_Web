@@ -1,1 +1,1 @@
-export { default as InLoopFilterVisualizer } from '../../InLoopFilterVisualizer';
+export { default as InLoopFilterVisualizer } from './InLoopFilterVisualizer';

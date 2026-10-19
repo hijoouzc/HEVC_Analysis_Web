@@ -4,6 +4,7 @@ import ActiveStageViewport from './components/app/ActiveStageViewport';
 import AnalysisInspector from './components/app/AnalysisInspector';
 import RdoQuadtreeSimulator from './components/RdoQuadtreeSimulator';
 import { useAnalysisSession } from './hooks/useAnalysisSession';
+import { getStepByNum } from './components/guided';
 import {
   Window,
   WindowTitleBar,
@@ -14,18 +15,6 @@ import {
 } from './components/apple';
 import './index.css';
 
-const STAGE_TABS = [
-  { id: 'CP_00', label: '0. Frame & GOP' },
-  { id: 'CP_01', label: '1. CU QuadTree' },
-  { id: 'CP_02', label: '2. Intra Search' },
-  { id: 'CP_03', label: '3. Inter Search' },
-  { id: 'CP_04', label: '4. Transform & Quant' },
-  { id: 'CP_05', label: '5. Recon Picture' },
-  { id: 'CP_06', label: '6. In-Loop Filter' },
-  { id: 'CP_07', label: '7. CABAC Entropy' },
-  { id: 'RDO_SIM', label: '8. RDO Simulator' },
-];
-
 /**
  * App (HEVC Video Analyzer Shell)
  * Top-level application container implementing applecn macOS Tahoe guidelines.
@@ -35,7 +24,6 @@ function App() {
   const [isStandaloneSim, setIsStandaloneSim] = useState(false);
   const [showInspector, setShowInspector] = useState(true);
   const [backendStatus, setBackendStatus] = useState('Checking...');
-  const [viewMode, setViewMode] = useState('guided'); // 'guided' | 'expert'
   const [guidedStep, setGuidedStep] = useState('STEP_1'); // 'STEP_1'..'STEP_5'
 
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -65,8 +53,6 @@ function App() {
     analyzedCtu,
     cuSize,
     analyzedCuSize,
-    activeStageTab,
-    setActiveStageTab,
     jobId,
     partitionData,
     setPartitionData,
@@ -134,43 +120,31 @@ function App() {
     }
   }, [isDarkMode]);
 
-  // Global Keyboard Shortcuts (1-7 for stages, I for inspector, D for theme)
+  // Global Keyboard Shortcuts (1-5 for Guided Steps, I for inspector, D for theme)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-      if (e.key === 'm' || e.key === 'M') {
-        setViewMode((v) => (v === 'guided' ? 'expert' : 'guided'));
-      } else if (e.key === 'i' || e.key === 'I') {
+      if (e.key === 'i' || e.key === 'I') {
         setShowInspector((prev) => !prev);
       } else if (e.key === 'd' || e.key === 'D') {
         setIsDarkMode((prev) => !prev);
-      } else if (viewMode === 'guided') {
+      } else {
         const scrollTo = (id) => {
           const el = document.getElementById(id);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         };
-        if (e.key === '1') { setGuidedStep('STEP_1'); scrollTo('STEP_1'); }
-        else if (e.key === '2') { setGuidedStep('STEP_2'); scrollTo('STEP_2'); }
-        else if (e.key === '3') { setGuidedStep('STEP_3'); scrollTo('STEP_3'); }
-        else if (e.key === '4') { setGuidedStep('STEP_4'); scrollTo('STEP_4'); }
-        else if (e.key === '5') { setGuidedStep('STEP_5'); scrollTo('STEP_5'); }
-      } else {
-        if (e.key === '0') setActiveStageTab('CP_00');
-        else if (e.key === '1') setActiveStageTab('CP_01');
-        else if (e.key === '2') setActiveStageTab('CP_02');
-        else if (e.key === '3') setActiveStageTab('CP_03');
-        else if (e.key === '4') setActiveStageTab('CP_04');
-        else if (e.key === '5') setActiveStageTab('CP_05');
-        else if (e.key === '6') setActiveStageTab('CP_06');
-        else if (e.key === '7') setActiveStageTab('CP_07');
-        else if (e.key === '8') setActiveStageTab('RDO_SIM');
+        const targetStep = getStepByNum(e.key);
+        if (targetStep) {
+          setGuidedStep(targetStep.id);
+          scrollTo(targetStep.id);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [data, setActiveStageTab, viewMode]);
+  }, []);
 
   return (
     <Window>
@@ -369,9 +343,6 @@ function App() {
         {data && data.length > 0 && currentMode && (
           <div className="workspace-layout">
             <ActiveStageViewport
-              activeStageTab={activeStageTab}
-              setActiveStageTab={setActiveStageTab}
-              stageTabs={STAGE_TABS}
               hasDesync={hasDesync}
               analyzedCtu={analyzedCtu}
               ctuX={ctuX}
@@ -410,8 +381,6 @@ function App() {
               handleSelectBlock={handleSelectBlock}
               setCuSize={setCuSize}
               setSelectedCu={setSelectedCu}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
               guidedStep={guidedStep}
               setGuidedStep={setGuidedStep}
             />
@@ -475,7 +444,7 @@ function App() {
         }
         right={
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--apple-label-tertiary)' }}>
-            0-8: Stages • I: Info • D: Theme • HM-18.0
+            1-5: Steps • I: Info • D: Theme • HM-18.0
           </span>
         }
       />

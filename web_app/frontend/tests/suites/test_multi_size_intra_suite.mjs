@@ -35,7 +35,7 @@ PU_SIZES.forEach(N => {
 // -------------------------------------------------------------
 console.log('\nTest Suite 2: QuadTreeVisualizer Multi-Size Navigation');
 
-const qtFile = path.join(__dirname, '../../src/components/QuadTreeVisualizer.jsx');
+const qtFile = path.join(__dirname, '../../src/components/stages/cp01_partition/QuadTreeVisualizer.jsx');
 const qtCode = fs.readFileSync(qtFile, 'utf-8');
 
 assert(!qtCode.includes('activeNode.width === 8'), 'QuadTreeVisualizer has ZERO hardcoded 8x8 restrictions');
@@ -46,22 +46,24 @@ console.log('  ✓ PASS: QuadTreeVisualizer allows navigating to intra predictio
 // -------------------------------------------------------------
 // Test Suite 3: ActiveStageViewport Multi-Size Binding
 // -------------------------------------------------------------
-console.log('\nTest Suite 3: ActiveStageViewport Multi-Size Binding');
+console.log('\nTest Suite 3: Guided Step 2 & ActiveStageViewport Multi-Size Binding');
 
 const viewportFile = path.join(__dirname, '../../src/components/app/ActiveStageViewport.jsx');
 const viewportCode = fs.readFileSync(viewportFile, 'utf-8');
+const step2File = path.join(__dirname, '../../src/components/guided/Step2Prediction.jsx');
+const step2Code = fs.readFileSync(step2File, 'utf-8');
 
 assert(!viewportCode.includes('node.width !== 8'), 'ActiveStageViewport has ZERO node.width !== 8 guards');
-assert(viewportCode.includes('handleSelectSize'), 'ActiveStageViewport accepts and calls handleSelectSize');
-assert(viewportCode.includes('onChangeBlockSize'), 'ActiveStageViewport binds onChangeBlockSize on IntraPredictionFlow');
-console.log('  ✓ PASS: ActiveStageViewport propagates multi-size intra navigation');
+assert(viewportCode.includes('handleSelectSize'), 'ActiveStageViewport accepts and passes handleSelectSize');
+assert(step2Code.includes('onChangeBlockSize'), 'Step2Prediction binds onChangeBlockSize on IntraPredictionFlow');
+console.log('  ✓ PASS: Guided Step 2 propagates multi-size intra navigation');
 
 // -------------------------------------------------------------
 // Test Suite 4: IntraPredictionFlow QuadTree Synchronization & Arbitrary Size Removal
 // -------------------------------------------------------------
 console.log('\nTest Suite 4: IntraPredictionFlow QuadTree Synchronization & Arbitrary Size Removal');
 
-const flowFile = path.join(__dirname, '../../src/components/IntraPredictionFlow.jsx');
+const flowFile = path.join(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx');
 const flowCode = fs.readFileSync(flowFile, 'utf-8');
 
 assert(!flowCode.includes("id: '64', label: '64×64'"), 'IntraPredictionFlow eliminates arbitrary 64x64 manual size button');

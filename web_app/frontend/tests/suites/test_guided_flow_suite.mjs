@@ -25,6 +25,7 @@ console.log('\nTest Suite 1: GuidedSteps Specification & JourneyBar Component');
   assert(stepsContent.includes("id: 'STEP_3'"), 'Defines STEP_3: Transform & Quantization');
   assert(stepsContent.includes("id: 'STEP_4'"), 'Defines STEP_4: Reconstruction');
   assert(stepsContent.includes("id: 'STEP_5'"), 'Defines STEP_5: RDO Decision');
+  assert(!stepsContent.includes('checkpoint:'), 'Eliminates orphaned checkpoint strings from guidedSteps.js');
 
   const barPath = resolve(__dirname, '../../src/components/guided/GuidedJourneyBar.jsx');
   const barContent = readFileSync(barPath, 'utf8');
@@ -43,7 +44,8 @@ console.log('\nTest Suite 2: GuidedFooterNav Component Conformance');
 
   assert(navContent.includes('onSelectStep(prevStep.id)'), 'Navigates to previous step');
   assert(navContent.includes('onSelectStep(nextStep.id)'), 'Navigates to next step');
-  assert(navContent.includes('onJumpToExpert'), 'Supports jumping to Expert 9-Tab Mode');
+  assert(!navContent.includes('onJumpToExpert'), 'GuidedFooterNav cleanly eliminated onJumpToExpert prop and button');
+  assert(!navContent.includes('Expert'), 'GuidedFooterNav eliminated all Expert mode strings');
   assert(navContent.includes('CONTEXT:'), 'Displays Selected CU context summary');
   assert(!/[\u{1F300}-\u{1F9FF}]/u.test(navContent), 'Contains zero emoji icons');
 }
@@ -104,48 +106,53 @@ console.log('\nTest Suite 3: Step Containers Conformance & Rigorous Data Binding
   assert(s5Content.includes('SANDBOX EXPERIMENT'), 'Step 5 tags RDO Simulator as Sandbox');
 }
 
-console.log('\nTest Suite 4: ActiveStageViewport Dual-Mode Orchestration');
+console.log('\nTest Suite 4: ActiveStageViewport Guided Stream Orchestration');
 {
   const viewportPath = resolve(__dirname, '../../src/components/app/ActiveStageViewport.jsx');
   const viewportContent = readFileSync(viewportPath, 'utf8');
 
-  assert(viewportContent.includes("id: 'guided', label: 'Guided Flow (5 Steps)'"), 'Viewport offers Guided Flow mode');
-  assert(viewportContent.includes("id: 'expert', label: 'Expert Checkpoints (9 Tabs)'"), 'Viewport offers Expert Checkpoints mode');
   assert(viewportContent.includes('<GuidedJourneyBar'), 'Viewport renders GuidedJourneyBar in guided mode');
   assert(viewportContent.includes('<GuidedFooterNav'), 'Viewport renders GuidedFooterNav in guided mode');
-  assert(viewportContent.includes('CP_00'), 'Viewport preserves CP_00 in expert mode');
-  assert(viewportContent.includes('CP_07'), 'Viewport preserves CP_07 in expert mode');
-  assert(viewportContent.includes('RDO_SIM'), 'Viewport preserves RDO_SIM in expert mode');
+  assert(viewportContent.includes('<Step1FrameTree'), 'Viewport mounts Step1FrameTree in Step 1');
+  assert(viewportContent.includes('<Step2Prediction'), 'Viewport mounts Step2Prediction in Step 2');
+  assert(viewportContent.includes('<Step3ResidualTu'), 'Viewport mounts Step3ResidualTu in Step 3');
+  assert(viewportContent.includes('<Step4ReconInLoop'), 'Viewport mounts Step4ReconInLoop in Step 4');
+  assert(viewportContent.includes('<Step5RdDecision'), 'Viewport mounts Step5RdDecision in Step 5');
+  assert(!viewportContent.includes("id: 'expert'"), 'Viewport cleanly eliminated Expert Mode clutter');
 }
 
-console.log('\nTest Suite 5: App Shell Keyboard Shortcuts & Dual-Mode State');
+console.log('\nTest Suite 5: App Shell Keyboard Shortcuts & Guided State');
 {
   const appPath = resolve(__dirname, '../../src/App.jsx');
   const appContent = readFileSync(appPath, 'utf8');
 
-  assert(appContent.includes("const [viewMode, setViewMode] = useState('guided');"), 'App initializes viewMode to guided');
   assert(appContent.includes("const [guidedStep, setGuidedStep] = useState('STEP_1');"), 'App initializes guidedStep to STEP_1');
-  assert(appContent.includes("e.key === 'm' || e.key === 'M'"), 'App supports M key to toggle view mode');
-  assert(appContent.includes("setGuidedStep('STEP_1')"), 'App switches guided steps with number keys');
-  assert(appContent.includes('viewMode={viewMode}'), 'App passes viewMode to ActiveStageViewport');
+  assert(appContent.includes("setGuidedStep(targetStep.id)"), 'App switches guided steps dynamically via getStepByNum');
+  assert(appContent.includes("getStepByNum(e.key)"), 'App resolves numeric shortcut via getStepByNum');
+  assert(!appContent.includes("e.key === 'm'"), 'App cleanly eliminated M key expert toggle');
 }
 
 console.log('\nTest Suite 6: QuickJumpMenu Floating Pop-up Conformance');
 {
   const jumpMenuPath = resolve(__dirname, '../../src/components/guided/QuickJumpMenu.jsx');
   const jumpMenuContent = readFileSync(jumpMenuPath, 'utf8');
+  const stepsPath = resolve(__dirname, '../../src/components/guided/guidedSteps.js');
+  const stepsContent = readFileSync(stepsPath, 'utf8');
 
-  assert(jumpMenuContent.includes("title: 'Frame & CU Partition'"), 'QuickJumpMenu defines Stage 1 QuadTree');
-  assert(jumpMenuContent.includes("title: 'Intra Prediction'"), 'QuickJumpMenu defines Stage 2 Prediction');
-  assert(jumpMenuContent.includes("title: 'Transform & Quantization'"), 'QuickJumpMenu defines Stage 3 Transform & Quantization');
-  assert(jumpMenuContent.includes("title: 'Reconstruction'"), 'QuickJumpMenu defines Stage 4 Reconstruction');
-  assert(jumpMenuContent.includes("title: 'RDO Decision'"), 'QuickJumpMenu defines Stage 5 RD Decision');
+  assert(jumpMenuContent.includes("import { GUIDED_STEPS } from './guidedSteps'"), 'QuickJumpMenu consumes single-source-of-truth guidedSteps');
+  assert(jumpMenuContent.includes('export const SECTIONS = GUIDED_STEPS'), 'QuickJumpMenu aliases SECTIONS to GUIDED_STEPS');
 
-  assert(jumpMenuContent.includes("hmFunction: 'TEncCu::xCompressCU'"), 'QuickJumpMenu maps HM xCompressCU');
-  assert(jumpMenuContent.includes("hmFunction: 'TEncSearch::estIntraPredLumaQT'"), 'QuickJumpMenu maps HM estIntraPredLumaQT');
-  assert(jumpMenuContent.includes("hmFunction: 'TComTrQuant::transformNxN'"), 'QuickJumpMenu maps HM transformNxN');
-  assert(jumpMenuContent.includes("hmFunction: 'TComPic::getPicYuvRec'"), 'QuickJumpMenu maps HM getPicYuvRec');
-  assert(jumpMenuContent.includes("hmFunction: 'TEncCu::xCheckBestMode'"), 'QuickJumpMenu maps HM xCheckBestMode');
+  assert(stepsContent.includes("title: 'Frame & CU Partition'"), 'guidedSteps defines Stage 1 QuadTree');
+  assert(stepsContent.includes("title: 'Intra Prediction'"), 'guidedSteps defines Stage 2 Prediction');
+  assert(stepsContent.includes("title: 'Transform & Quantization'"), 'guidedSteps defines Stage 3 Transform & Quantization');
+  assert(stepsContent.includes("title: 'Reconstruction'"), 'guidedSteps defines Stage 4 Reconstruction');
+  assert(stepsContent.includes("title: 'RDO Decision'"), 'guidedSteps defines Stage 5 RD Decision');
+
+  assert(stepsContent.includes("hmFunction: 'TEncCu::xCompressCU'"), 'guidedSteps maps HM xCompressCU');
+  assert(stepsContent.includes("hmFunction: 'TEncSearch::estIntraPredLumaQT'"), 'guidedSteps maps HM estIntraPredLumaQT');
+  assert(stepsContent.includes("hmFunction: 'TComTrQuant::transformNxN'"), 'guidedSteps maps HM transformNxN');
+  assert(stepsContent.includes("hmFunction: 'TComPic::getPicYuvRec'"), 'guidedSteps maps HM getPicYuvRec');
+  assert(stepsContent.includes("hmFunction: 'TEncCu::xCheckBestMode'"), 'guidedSteps maps HM xCheckBestMode');
 
   assert(jumpMenuContent.includes("e.key === 'Escape'"), 'QuickJumpMenu dismisses on Escape key');
   assert(jumpMenuContent.includes('handleClickOutside'), 'QuickJumpMenu dismisses on click outside');

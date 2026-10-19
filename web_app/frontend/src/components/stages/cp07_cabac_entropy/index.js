@@ -1,1 +1,1 @@
-export { default as CabacEntropyVisualizer } from '../../CabacEntropyVisualizer';
+export { default as CabacEntropyVisualizer } from './CabacEntropyVisualizer';

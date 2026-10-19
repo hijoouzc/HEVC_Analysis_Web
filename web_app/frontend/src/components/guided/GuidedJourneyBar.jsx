@@ -18,6 +18,8 @@ export function GuidedJourneyBar({
   ctuY = 0,
   channel = 'Y',
   onSelectChannel = null,
+  showValues = true,
+  onToggleValues = null,
 }) {
   const getStepStatus = (stepId) => {
     switch (stepId) {
@@ -51,6 +53,22 @@ export function GuidedJourneyBar({
 
   const normalizedChannel = (channel === 'U' ? 'Cb' : (channel === 'V' ? 'Cr' : (channel || 'Y')));
 
+  // Keyboard shortcuts for Channel (C) and Values (V); Steps 1-5 handled globally by App.jsx
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target?.tagName) || e.target?.isContentEditable) return;
+      if ((e.key === 'c' || e.key === 'C') && onSelectChannel) {
+        const nextCh = normalizedChannel === 'Y' ? 'Cb' : (normalizedChannel === 'Cb' ? 'Cr' : 'Y');
+        onSelectChannel(nextCh);
+      }
+      if ((e.key === 'v' || e.key === 'V') && onToggleValues) {
+        onToggleValues();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onSelectChannel, onToggleValues, normalizedChannel]);
+
   return (
     <div
       style={{
@@ -63,11 +81,11 @@ export function GuidedJourneyBar({
         borderRadius: '8px',
         border: '0.5px solid var(--separator)',
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        minHeight: '84px',
+        minHeight: '80px',
         boxSizing: 'border-box'
       }}
     >
-      {/* Target Breadcrumb & Global Chroma Channel Strip */}
+      {/* Target Breadcrumb & Global Channel/Values Strip */}
       <div
         style={{
           display: 'flex',
@@ -84,62 +102,93 @@ export function GuidedJourneyBar({
           flexShrink: 0
         }}
       >
-        {/* Left: Target CTU & CU Inspector Summary */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', flexShrink: 0, minWidth: '320px', fontSize: '11px', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
+        {/* Left: Target CTU & CU Inspector Summary (Responsive minWidth) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap', flexShrink: 1, minWidth: 0, overflow: 'hidden', fontSize: '11px', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
           <span style={{ color: 'var(--apple-label-tertiary)', fontWeight: 600 }}>TARGET:</span>
-          <span style={{ color: 'var(--apple-label)', fontWeight: 700 }}>
+          <span style={{ color: 'var(--apple-label)', fontWeight: 700, whiteSpace: 'nowrap' }}>
             CTU ({ctuX ?? 0}, {ctuY ?? 0})
           </span>
           <span style={{ color: 'var(--separator)' }}>&rsaquo;</span>
-          <span style={{ color: 'var(--system-blue)', fontWeight: 700 }}>
+          <span style={{ color: 'var(--system-blue)', fontWeight: 700, whiteSpace: 'nowrap' }}>
             CU {cuSizeStr}
           </span>
-          <span style={{ color: 'var(--apple-label-secondary)' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', whiteSpace: 'nowrap' }}>
             at {cuPosStr}
           </span>
           <Badge
             variant={isParentCu ? 'purple' : 'green'}
-            style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 600 }}
+            style={{ fontSize: '9px', padding: '1px 5px', fontWeight: 600, flexShrink: 0 }}
           >
             {isParentCu ? 'Split CU' : 'Leaf CU'}
           </Badge>
         </div>
 
-        {/* Right: Unified Chroma Channel Switcher [ Y | Cb | Cr ] */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
-            CHANNEL:
-          </span>
-          <div style={{ display: 'flex', gap: '3px' }}>
-            {[
-              { id: 'Y', label: 'Y', title: 'Luma channel (Y)' },
-              { id: 'Cb', label: 'Cb', title: 'Chroma blue-diff (Cb)' },
-              { id: 'Cr', label: 'Cr', title: 'Chroma red-diff (Cr)' },
-            ].map((ch) => {
-              const isActive = normalizedChannel === ch.id;
-              return (
-                <button
-                  key={ch.id}
-                  type="button"
-                  onClick={() => onSelectChannel && onSelectChannel(ch.id)}
-                  style={{
-                    fontSize: '10px',
-                    fontFamily: 'var(--font-mono)',
-                    padding: '2px 8px',
-                    borderRadius: '4px',
-                    background: isActive ? 'var(--system-blue)' : 'var(--window-bg)',
-                    color: isActive ? '#FFFFFF' : 'var(--apple-label)',
-                    border: '0.5px solid var(--separator)',
-                    cursor: 'pointer',
-                    fontWeight: isActive ? 700 : 500,
-                    transition: 'all 0.15s ease',
-                  }}
-                  title={ch.title}
-                >
-                  {ch.label}
-                </button>
-              );
-            })}
+        {/* Right: Unified Global Controls (Values + Channel) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          {/* Values Matrix Overlay Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+              VALUES:
+            </span>
+            <button
+              type="button"
+              onClick={() => onToggleValues && onToggleValues()}
+              style={{
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: showValues ? 'var(--system-blue)' : 'var(--window-bg)',
+                color: showValues ? '#FFFFFF' : 'var(--apple-label)',
+                border: '0.5px solid var(--separator)',
+                cursor: 'pointer',
+                fontWeight: showValues ? 700 : 500,
+                transition: 'all 0.15s ease',
+              }}
+              title="Toggle numerical values on sample matrices (V). QP, RDO costs, and telemetry metrics remain visible."
+            >
+              {showValues ? 'ON' : 'OFF'}
+            </button>
+          </div>
+
+          <span style={{ color: 'var(--separator)', fontSize: '11px' }}>•</span>
+
+          {/* Unified Chroma Channel Switcher [ Y | Cb | Cr ] */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+              CHANNEL:
+            </span>
+            <div style={{ display: 'flex', gap: '3px' }}>
+              {[
+                { id: 'Y', label: 'Y', title: 'Luma plane (Y)' },
+                { id: 'Cb', label: 'Cb', title: 'Chroma blue-diff plane (Cb) — Active in Steps 2, 3, 4' },
+                { id: 'Cr', label: 'Cr', title: 'Chroma red-diff plane (Cr) — Active in Steps 2, 3, 4' },
+              ].map((ch) => {
+                const isActive = normalizedChannel === ch.id;
+                return (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    onClick={() => onSelectChannel && onSelectChannel(ch.id)}
+                    style={{
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-mono)',
+                      padding: '2px 7px',
+                      borderRadius: '4px',
+                      background: isActive ? 'var(--system-blue)' : 'var(--window-bg)',
+                      color: isActive ? '#FFFFFF' : 'var(--apple-label)',
+                      border: '0.5px solid var(--separator)',
+                      cursor: 'pointer',
+                      fontWeight: isActive ? 700 : 500,
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={ch.title}
+                  >
+                    {ch.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -163,7 +212,7 @@ export function GuidedJourneyBar({
                 onClick={() => onSelectStep && onSelectStep(step.id)}
                 style={{
                   flex: 1,
-                  minWidth: '150px',
+                  minWidth: '110px',
                   padding: '6px 8px',
                   borderRadius: '6px',
                   background: isSelected ? 'var(--window-bg)' : 'transparent',

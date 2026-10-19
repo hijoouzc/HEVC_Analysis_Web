@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import CabacEntropyVisualizer from '../CabacEntropyVisualizer';
+import { CabacEntropyVisualizer } from '../stages/cp07_cabac_entropy';
 import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';
 import { CompactStepRibbon } from './CompactStepRibbon';
 import { Badge, SegmentedControl } from '../apple';
@@ -19,6 +19,7 @@ export function Step5RdDecision({
   imageDims,
   partitionData,
   onNavigateToStage,
+  showValues = undefined,
 }) {
   const [subTab, setSubTab] = useState('decision'); // 'decision' | 'cabac' | 'simulator'
 
@@ -271,6 +272,7 @@ export function Step5RdDecision({
             rdoDecisions={rdoDecisions}
             selectedCu={selectedCu}
             onNavigateToStage={onNavigateToStage}
+            showValues={showValues}
           />
         </div>
       )}

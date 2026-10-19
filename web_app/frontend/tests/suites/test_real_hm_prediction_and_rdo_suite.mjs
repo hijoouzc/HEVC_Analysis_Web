@@ -133,14 +133,14 @@ console.log('  ✓ PASS: runHevcQuadtreeSimulation faithfully respects verified 
 console.log('\nTest Suite 3: UI Component Conformance (Labels, Colors, CTU Bits)');
 
 // Verify PixelMicroscope.jsx
-const microscopeSource = fs.readFileSync(path.join(__dirname, '../../src/components/simulator/PixelMicroscope.jsx'), 'utf-8');
+const microscopeSource = fs.readFileSync(path.join(__dirname, '../../src/components/stages/rdo_simulator/subcomponents/PixelMicroscope.jsx'), 'utf-8');
 assert(microscopeSource.includes('\'Prediction (P)\''), 'PixelMicroscope renders explicit "Prediction (P)" label');
 assert(microscopeSource.includes('Not recorded in trace'), 'PixelMicroscope displays "Not recorded in trace" when HM trace data is missing');
 assert(microscopeSource.includes('imageRendering: \'pixelated\''), 'PixelMicroscope disables smoothing for discrete pixel fidelity');
 console.log('  ✓ PASS: PixelMicroscope satisfies 100% pixel-accurate label and trace fallback rules');
 
 // Verify CandidateModesTable.jsx
-const tableSource = fs.readFileSync(path.join(__dirname, '../../src/components/simulator/CandidateModesTable.jsx'), 'utf-8');
+const tableSource = fs.readFileSync(path.join(__dirname, '../../src/components/stages/rdo_simulator/subcomponents/CandidateModesTable.jsx'), 'utf-8');
 assert(tableSource.includes('Rate Est (R)'), 'CandidateModesTable renders "Rate Est (R)" header label');
 assert(tableSource.includes('ev.is_winner'), 'CandidateModesTable honors ev.is_winner flag');
 console.log('  ✓ PASS: CandidateModesTable satisfies RDO Rate Est (R) and winner badge specifications');
@@ -159,7 +159,7 @@ assert(step1Source.includes('Actual bits — CTU:'), 'Step1FrameTree renders "Ac
 console.log('  ✓ PASS: Step1FrameTree renders CTU actual bits in transport bar');
 
 // Verify RdoQuadtreeSimulator.jsx
-const simSource = fs.readFileSync(path.join(__dirname, '../../src/components/RdoQuadtreeSimulator.jsx'), 'utf-8');
+const simSource = fs.readFileSync(path.join(__dirname, '../../src/components/stages/rdo_simulator/RdoQuadtreeSimulator.jsx'), 'utf-8');
 assert(simSource.includes('HM TRACE GROUND-TRUTH'), 'RdoQuadtreeSimulator renders HM TRACE GROUND-TRUTH badge when active');
 assert(simSource.includes('SYNTHETIC SANDBOX SIMULATION'), 'RdoQuadtreeSimulator renders SYNTHETIC SANDBOX SIMULATION badge when in sandbox');
 assert(simSource.includes('Actual bits — CTU:'), 'RdoQuadtreeSimulator renders CTU actual bits badge');

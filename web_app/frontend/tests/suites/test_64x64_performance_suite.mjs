@@ -28,7 +28,7 @@ function it(desc, fn) {
 // =============================================================================
 console.log('Test Suite 1: IntraPredictionFlow Card 1 Canvas & DOM Node Optimization');
 
-const flowPath = path.resolve(__dirname, '../../src/components/IntraPredictionFlow.jsx');
+const flowPath = path.resolve(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx');
 const flowContent = fs.readFileSync(flowPath, 'utf8');
 
 it('Imports useRef and bt709YuvToRgb in IntraPredictionFlow', () => {

@@ -136,13 +136,13 @@ it('BlockMatrixGrid cells have zero title hover tooltip attributes', () => {
 });
 
 it('FourPictureComparison has zero onMouseEnter or onMouseOver listeners', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../../src/components/FourPictureComparison.jsx'), 'utf-8');
+  const code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp05_recon_picture/FourPictureComparison.jsx'), 'utf-8');
   assert(!code.includes('onMouseEnter'), 'No onMouseEnter found in FourPictureComparison');
   assert(!code.includes('onMouseOver'), 'No onMouseOver found in FourPictureComparison');
 });
 
 it('TransformQuantVisualizer has zero onMouseEnter or onMouseOver listeners', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../../src/components/TransformQuantVisualizer.jsx'), 'utf-8');
+  const code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp04_transform_quant/TransformQuantVisualizer.jsx'), 'utf-8');
   assert(!code.includes('onMouseEnter'), 'No onMouseEnter found in TransformQuantVisualizer');
   assert(!code.includes('onMouseOver'), 'No onMouseOver found in TransformQuantVisualizer');
 });
@@ -165,22 +165,22 @@ it('BlockMatrixGrid supports showValues prop and omits text when showValues=fals
 });
 
 it('FourPictureComparison provides Values toggle control', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../../src/components/FourPictureComparison.jsx'), 'utf-8');
+  const code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp05_recon_picture/FourPictureComparison.jsx'), 'utf-8');
   assert(code.includes('showValues'), 'FourPictureComparison manages showValues state');
   assert(code.includes('setShowValues'), 'FourPictureComparison allows toggling showValues');
 });
 
 it('TransformQuantVisualizer provides Values and Zoom toolbar controls', () => {
-  const code = fs.readFileSync(path.join(__dirname, '../../src/components/TransformQuantVisualizer.jsx'), 'utf-8');
+  const code = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp04_transform_quant/TransformQuantVisualizer.jsx'), 'utf-8');
   assert(code.includes('showValues'), 'TransformQuantVisualizer manages showValues state');
   assert(code.includes('zoomLevel'), 'TransformQuantVisualizer manages zoomLevel state');
   assert(code.includes('showValues={showValues}'), 'TransformQuantVisualizer passes showValues to BlockMatrixGrid');
 });
 
 it('All visualizer matrix containers enforce safe horizontal scroll and max-width bounds', () => {
-  const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/IntraPredictionFlow.jsx'), 'utf-8');
-  const fourPicCode = fs.readFileSync(path.join(__dirname, '../../src/components/FourPictureComparison.jsx'), 'utf-8');
-  const tqCode = fs.readFileSync(path.join(__dirname, '../../src/components/TransformQuantVisualizer.jsx'), 'utf-8');
+  const flowCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp02_intra_search/IntraPredictionFlow.jsx'), 'utf-8');
+  const fourPicCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp05_recon_picture/FourPictureComparison.jsx'), 'utf-8');
+  const tqCode = fs.readFileSync(path.join(__dirname, '../../src/components/stages/cp04_transform_quant/TransformQuantVisualizer.jsx'), 'utf-8');
 
   assert(flowCode.includes('overflowX: \'auto\''), 'IntraPredictionFlow wraps grids with overflowX auto');
   assert(fourPicCode.includes('overflowX: \'auto\''), 'FourPictureComparison wraps grids with overflowX auto');
