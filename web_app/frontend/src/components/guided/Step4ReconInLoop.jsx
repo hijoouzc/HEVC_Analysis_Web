@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { FourPictureComparison, ReconPictureVisualizer } from '../stages/cp05_recon_picture';
 import { InLoopFilterVisualizer } from '../stages/cp06_inloop_filter';
-import { CompactStepRibbon } from './CompactStepRibbon';
-import { Badge, SegmentedControl } from '../apple';
+import { SegmentedControl } from '../apple';
 
 /**
  * Step4ReconInLoop (Guided Flow Step 4)
@@ -23,7 +22,7 @@ export function Step4ReconInLoop({
   API_BASE_URL,
   onSelectCTU,
   onNavigateToIntra,
-  splitDecision = null,
+  splitDecision: _splitDecision = null,
   _onProceedToRdo = null,
   channel: propsChannel = undefined,
   onSelectChannel = null,
@@ -34,22 +33,8 @@ export function Step4ReconInLoop({
   const channel = propsChannel !== undefined ? propsChannel : internalChannel;
   const setChannel = onSelectChannel || setInternalChannel;
 
-  const wasSplit = splitDecision?.split_decision === true;
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Compact I/O Strip */}
-      <CompactStepRibbon
-        stepNumber={4}
-        inputItems={['Pred P', 'Quantized Q']}
-        processTitle="Inverse Transform & Recon"
-        processDesc=""
-        outputItems={["Recon S'", 'Distortion (SSE)']}
-        hmFunction="TComPic::getPicYuvRec"
-        specReference="Picture Reconstruction & In-Loop Filtering (DBF / SAO)"
-        formula="S'_trial = Clip3(0, (1 << bitDepth) - 1, P + R'); Distortion D = sum((S_orig - S'_trial)^2)"
-      />
-
       {/* Controls: Chroma Channel Switcher & Recon Mode Switcher */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '8px' }}>
         {/* Chroma Channel Switcher [ Y | Cb | Cr ] - Only render when uncontrolled */}
@@ -89,24 +74,6 @@ export function Step4ReconInLoop({
           ]}
         />
       </div>
-
-      {/* Split CU Notice Banner */}
-      {wasSplit && reconTab !== 'inloop' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)' }}>
-          <Badge variant="purple" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-            [CU PARTITION NOTICE]: CU split into 4 child CUs; picture buffer committed from child nodes
-          </Badge>
-        </div>
-      )}
-
-      {/* In-Loop Filter CTU-Level Notice */}
-      {reconTab === 'inloop' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Badge variant="gray" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-            In-Loop Filters (Deblocking Filter &amp; Sample Adaptive Offset) execute at CTU and Picture level
-          </Badge>
-        </div>
-      )}
 
       {/* Main Interactive Workspace */}
       <div className="stage-section-card">

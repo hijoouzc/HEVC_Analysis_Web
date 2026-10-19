@@ -6,14 +6,22 @@ import { GUIDED_STEPS } from './guidedSteps';
  * GuidedJourneyBar
  * macOS Tahoe 5-Step Progress, Active Target Breadcrumb & Global Chroma Channel Controller
  */
+const STEP_SHORT_TITLES = {
+  STEP_1: 'Partition',
+  STEP_2: 'Prediction',
+  STEP_3: 'Residual & TU',
+  STEP_4: 'Reconstruction',
+  STEP_5: 'RD Decision',
+};
+
 export function GuidedJourneyBar({
   activeStep = 'STEP_1',
   onSelectStep,
   selectedCu = null,
-  splitDecision = null,
-  hasTransform = false,
-  hasRecon = false,
-  hasRdo = false,
+  splitDecision: _splitDecision = null,
+  hasTransform: _hasTransform = false,
+  hasRecon: _hasRecon = false,
+  hasRdo: _hasRdo = false,
   ctuX = 0,
   ctuY = 0,
   channel = 'Y',
@@ -21,32 +29,6 @@ export function GuidedJourneyBar({
   showValues = true,
   onToggleValues = null,
 }) {
-  const getStepStatus = (stepId) => {
-    switch (stepId) {
-      case 'STEP_1':
-        return { label: 'Trace Available', variant: 'green' };
-      case 'STEP_2':
-        return { label: 'Trace Available', variant: 'green' };
-      case 'STEP_3':
-        if (hasTransform) return { label: 'TU Trace Ready', variant: 'green' };
-        return { label: 'Awaiting Focus', variant: 'blue' };
-      case 'STEP_4':
-        if (splitDecision?.split_decision) {
-          return { label: 'Child CUs (Split)', variant: 'purple' };
-        }
-        if (hasRecon) return { label: 'Recon S\' Ready', variant: 'green' };
-        return { label: 'Awaiting Focus', variant: 'blue' };
-      case 'STEP_5':
-        if (hasRdo) return { label: 'Decision Trace', variant: 'green' };
-        if (selectedCu && (selectedCu.width <= 8 || selectedCu.depth >= 3)) {
-          return { label: 'Leaf CU (No Split)', variant: 'gray' };
-        }
-        return { label: 'RDO Ready', variant: 'blue' };
-      default:
-        return { label: 'Ready', variant: 'gray' };
-    }
-  };
-
   const isParentCu = Boolean(selectedCu?.split);
   const cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64';
   const cuPosStr = selectedCu ? `(${selectedCu.x ?? selectedCu.abs_x ?? 0}, ${selectedCu.y ?? selectedCu.abs_y ?? 0})` : `(0, 0)`;
@@ -80,8 +62,7 @@ export function GuidedJourneyBar({
         padding: '6px 10px',
         borderRadius: '8px',
         border: '0.5px solid var(--separator)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        minHeight: '80px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.03)',
         boxSizing: 'border-box'
       }}
     >
@@ -193,93 +174,79 @@ export function GuidedJourneyBar({
         </div>
       </div>
 
-      {/* 5-Step Stepper Ribbon */}
+      {/* 5-Step Stepper Chips (Streamlined Single-Line) */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'stretch',
-          gap: '8px',
+          alignItems: 'center',
+          gap: '6px',
           overflowX: 'auto',
+          overflowY: 'hidden',
+          padding: '2px 0',
         }}
       >
         {GUIDED_STEPS.map((step, idx) => {
           const isSelected = activeStep === step.id;
-          const status = getStepStatus(step.id);
 
           return (
             <React.Fragment key={step.id}>
-              <div
+              <button
+                type="button"
                 onClick={() => onSelectStep && onSelectStep(step.id)}
+                title={`${step.title} (${step.subtitle || ''})`}
                 style={{
                   flex: 1,
-                  minWidth: '110px',
-                  padding: '6px 8px',
+                  minWidth: '96px',
+                  height: '28px',
+                  padding: '0 8px',
                   borderRadius: '6px',
                   background: isSelected ? 'var(--window-bg)' : 'transparent',
                   border: isSelected ? '0.5px solid var(--separator)' : '0.5px solid transparent',
                   boxShadow: isSelected ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
                   cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '3px',
-                  transition: 'background 0.15s ease, border-color 0.15s ease',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  transition: 'all 0.15s ease',
+                  userSelect: 'none',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span
-                    style={{
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '10px',
-                      fontWeight: 700,
-                      color: isSelected ? 'var(--system-blue)' : 'var(--apple-label-tertiary)',
-                    }}
-                  >
-                    STEP 0{step.num}
-                  </span>
-                  <Badge variant={isSelected ? 'blue' : status.variant} style={{ fontSize: '9px', padding: '1px 5px' }}>
-                    {status.label}
-                  </Badge>
-                </div>
-
-                <div
+                <span
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '10.5px',
+                    fontWeight: 700,
+                    color: isSelected ? 'var(--system-blue)' : 'var(--apple-label-tertiary)',
+                  }}
+                >
+                  0{step.num}
+                </span>
+                <span
                   style={{
                     fontSize: '11.5px',
                     fontWeight: isSelected ? 600 : 500,
                     color: isSelected ? 'var(--apple-label)' : 'var(--apple-label-secondary)',
                     whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
                   }}
                 >
-                  {step.title}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: '10px',
-                    color: 'var(--apple-label-tertiary)',
-                    fontFamily: 'var(--font-mono)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                  }}
-                >
-                  {step.subtitle}
-                </div>
-              </div>
+                  {STEP_SHORT_TITLES[step.id] || step.title}
+                </span>
+              </button>
 
               {idx < GUIDED_STEPS.length - 1 && (
-                <div
+                <span
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     color: 'var(--separator)',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     userSelect: 'none',
+                    flexShrink: 0,
                   }}
                 >
                   &rsaquo;
-                </div>
+                </span>
               )}
             </React.Fragment>
           );

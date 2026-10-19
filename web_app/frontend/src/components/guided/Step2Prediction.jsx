@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { IntraPredictionFlow } from '../stages/cp02_intra_search';
 import { InterSearchVisualizer } from '../stages/cp03_inter_search';
-import { CompactStepRibbon } from './CompactStepRibbon';
 import { PuPartitionGeometry } from './PuPartitionGeometry';
 import { Badge, SegmentedControl } from '../apple';
 
@@ -48,23 +47,9 @@ export function Step2Prediction({
 
   const activeBlockSize = selectedCu?.width || cuSize || 8;
   const activeModeNum = modeData?.mode ?? 0;
-  const activeModeName = modeData?.direction_name || `Mode ${activeModeNum}`;
-  const isParentCu = selectedCu?.split === true;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Compact I/O Strip */}
-      <CompactStepRibbon
-        stepNumber={2}
-        inputItems={[`S_orig (${activeBlockSize}×${activeBlockSize})`, 'Ref Samples']}
-        processTitle="Intra Search"
-        processDesc=""
-        outputItems={[`Pred P (${activeModeName})`]}
-        hmFunction="TEncSearch::estIntraPredLumaQT"
-        specReference="Intra Angular Prediction & MPM Derivation"
-        formula="Cost_RMD = SATD + ModeBits * sqrt(lambda_firstPass)"
-      />
-
       {/* PU Partition Geometry Bar */}
       <PuPartitionGeometry
         isInter={predictionType === 'inter'}
@@ -75,15 +60,6 @@ export function Step2Prediction({
         onSelectSubPu={setActiveSubPu}
         interData={interSearchData?.[0] || null}
       />
-
-      {/* Parent CU Notice */}
-      {isParentCu && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)' }}>
-          <Badge variant="purple" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-            SPLIT CU TRIAL: ({selectedCu.x ?? 0}, {selectedCu.y ?? 0}) Split into 4 child CUs in final tree
-          </Badge>
-        </div>
-      )}
 
       {/* Prediction Mode Switcher */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>

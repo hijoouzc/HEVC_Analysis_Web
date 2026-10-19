@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { TransformQuantVisualizer } from '../stages/cp04_transform_quant';
-import { CompactStepRibbon } from './CompactStepRibbon';
 import { Badge, SegmentedControl } from '../apple';
 
 /**
@@ -48,18 +47,6 @@ export function Step3ResidualTu({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Compact I/O Strip */}
-      <CompactStepRibbon
-        stepNumber={3}
-        inputItems={['S_orig', 'Pred P']}
-        processTitle="Transform & Quantization"
-        processDesc=""
-        outputItems={['Residual R', 'Quantized Q']}
-        hmFunction="TComTrQuant::transformNxN"
-        specReference="Residual Quadtree (RQT) & Quantization"
-        formula="R(x,y) = S(x,y) - P(x,y) ➔ C(u,v) = DCT(R) ➔ Q(u,v) = Round(C / Delta_QP)"
-      />
-
       {/* Controls: Chroma Channel Switcher & Domain Mode Switcher */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -129,15 +116,6 @@ export function Step3ResidualTu({
           <span style={{ color: 'var(--apple-label-secondary)' }}>DCT/DST &amp; Quantized Levels</span>
         </div>
       </div>
-
-      {/* Parent Split CU Notice Banner */}
-      {selectedCu?.split && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', background: 'var(--fill-1)', borderRadius: '6px', border: '0.5px solid var(--separator)' }}>
-          <Badge variant="purple" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-            [PARENT CU]: Partitioned into 4 child CUs. Transform &amp; RQT recursion evaluated on child nodes.
-          </Badge>
-        </div>
-      )}
 
       {/* Main Transform Visualizer */}
       <div className="stage-section-card">

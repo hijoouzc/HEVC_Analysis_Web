@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { GopReferenceVisualizer } from '../stages/cp00_frame_gop';
 import { QuadTreeVisualizer } from '../stages/cp01_partition';
-import { CompactStepRibbon } from './CompactStepRibbon';
 import { Badge, SegmentedControl, Button } from '../apple';
 import { useHmTracePlayback } from '../../hooks/useHmTracePlayback';
 
@@ -143,7 +142,7 @@ export function Step1FrameTree({
   const selectedCu = playback.inspectedCu || propsSelectedCu;
   const isSplitCu = Boolean(selectedCu?.split);
   const _cuTypeBadge = isSplitCu ? 'Split CU' : 'Leaf CU';
-  const cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64 (CTU)';
+  const _cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64 (CTU)';
   const _cuPosStr = selectedCu ? `(${selectedCu.x ?? selectedCu.abs_x ?? 0}, ${selectedCu.y ?? selectedCu.abs_y ?? 0})` : `CTU (${ctuX}, ${ctuY})`;
 
   // Maintain an offscreen canvas for source image Luma extraction
@@ -253,18 +252,6 @@ export function Step1FrameTree({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Compact I/O Strip */}
-      <CompactStepRibbon
-        stepNumber={1}
-        inputItems={['CTU 64×64']}
-        processTitle="QuadTree Split"
-        processDesc=""
-        outputItems={[`CU ${cuSizeStr}`]}
-        hmFunction="TEncCu::xCompressCU"
-        specReference="CTU Division into Coding Units"
-        formula="CU_size = MaxCUSize >> depth (depth in [0..3], sizes 64, 32, 16, 8)"
-      />
-
       {/* Apple Pro HM Trace Transport Bar */}
       <div
         className="stage-section-card"

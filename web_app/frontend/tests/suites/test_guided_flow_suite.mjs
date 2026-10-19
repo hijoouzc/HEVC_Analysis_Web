@@ -30,9 +30,10 @@ console.log('\nTest Suite 1: GuidedSteps Specification & JourneyBar Component');
   const barPath = resolve(__dirname, '../../src/components/guided/GuidedJourneyBar.jsx');
   const barContent = readFileSync(barPath, 'utf8');
 
-  assert(barContent.includes('Trace Available'), 'Displays Trace Available status badge');
-  assert(barContent.includes('Leaf CU (No Split)'), 'Handles Leaf CU without split evaluation');
-  assert(barContent.includes('Child CUs (Split)'), 'Handles parent CU split into child CUs');
+  assert(!barContent.includes('Trace Available'), 'Eliminated repetitive Trace Available status badges from GuidedJourneyBar');
+  assert(!barContent.includes('CTU & QuadTree Hierarchy'), 'Eliminated subtitle clutter from GuidedJourneyBar');
+  assert(barContent.includes('Partition'), 'Renders concise step title Partition');
+  assert(barContent.includes('Prediction'), 'Renders concise step title Prediction');
   assert(!/[\u{1F300}-\u{1F9FF}]/u.test(barContent), 'Contains zero emoji icons');
   assert(barContent.includes('0.5px solid var(--separator)'), 'Enforces Apple HIG 0.5px solid borders');
 }
@@ -55,7 +56,7 @@ console.log('\nTest Suite 3: Step Containers Conformance & Rigorous Data Binding
   // Step 1: Frame & Tree
   const s1Path = resolve(__dirname, '../../src/components/guided/Step1FrameTree.jsx');
   const s1Content = readFileSync(s1Path, 'utf8');
-  assert(s1Content.includes('CompactStepRibbon'), 'Step 1 renders CompactStepRibbon');
+  assert(!s1Content.includes('CompactStepRibbon'), 'Step 1 eliminates CompactStepRibbon clutter');
   assert(s1Content.includes('QuadTreeVisualizer'), 'Step 1 renders QuadTreeVisualizer');
   assert(s1Content.includes('GopReferenceVisualizer'), 'Step 1 renders GopReferenceVisualizer');
   assert(s1Content.includes('Trace This CU in Flow'), 'Step 1 provides Callout to trace focused CU');
@@ -63,7 +64,7 @@ console.log('\nTest Suite 3: Step Containers Conformance & Rigorous Data Binding
   // Step 2: Prediction Candidates
   const s2Path = resolve(__dirname, '../../src/components/guided/Step2Prediction.jsx');
   const s2Content = readFileSync(s2Path, 'utf8');
-  assert(s2Content.includes('CompactStepRibbon'), 'Step 2 renders CompactStepRibbon');
+  assert(!s2Content.includes('CompactStepRibbon'), 'Step 2 eliminates CompactStepRibbon clutter');
   assert(s2Content.includes('IntraPredictionFlow'), 'Step 2 renders IntraPredictionFlow');
   assert(s2Content.includes('All-Intra (AI) Configuration Active'), 'Step 2 explains I-Slice bypasses Inter Search');
   assert(s2Content.includes('InterSearchVisualizer'), 'Step 2 renders InterSearchVisualizer for P/B-slices');
@@ -71,7 +72,7 @@ console.log('\nTest Suite 3: Step Containers Conformance & Rigorous Data Binding
   // Step 3: Residual & TU
   const s3Path = resolve(__dirname, '../../src/components/guided/Step3ResidualTu.jsx');
   const s3Content = readFileSync(s3Path, 'utf8');
-  assert(s3Content.includes('CompactStepRibbon'), 'Step 3 renders CompactStepRibbon');
+  assert(!s3Content.includes('CompactStepRibbon'), 'Step 3 eliminates CompactStepRibbon clutter');
   assert(s3Content.includes('TransformQuantVisualizer'), 'Step 3 renders TransformQuantVisualizer');
   assert(s3Content.includes('SPATIAL DOMAIN (x, y)'), 'Step 3 explicitly separates Spatial Domain (x, y)');
   assert(s3Content.includes('FREQUENCY DOMAIN (u, v)'), 'Step 3 explicitly separates Frequency Domain (u, v)');
@@ -82,18 +83,15 @@ console.log('\nTest Suite 3: Step Containers Conformance & Rigorous Data Binding
   // Step 4: Reconstruction
   const s4Path = resolve(__dirname, '../../src/components/guided/Step4ReconInLoop.jsx');
   const s4Content = readFileSync(s4Path, 'utf8');
-  assert(s4Content.includes('CompactStepRibbon'), 'Step 4 renders CompactStepRibbon');
+  assert(!s4Content.includes('CompactStepRibbon'), 'Step 4 eliminates CompactStepRibbon clutter');
   assert(s4Content.includes('FourPictureComparison'), 'Step 4 renders FourPictureComparison');
   assert(s4Content.includes('ReconPictureVisualizer'), 'Step 4 renders ReconPictureVisualizer');
   assert(s4Content.includes('InLoopFilterVisualizer'), 'Step 4 renders InLoopFilterVisualizer');
-  assert(s4Content.includes('Clip3(0, (1 << bitDepth) - 1, P + R\')'), 'Step 4 adheres to bit-depth clipping formula');
-  assert(s4Content.includes('CU PARTITION NOTICE'), 'Step 4 explains committed picture buffer when split');
-  assert(s4Content.includes('Sample Adaptive Offset) execute at CTU and Picture level'), 'Step 4 clarifies DBF/SAO CTU-level execution');
 
   // Step 5: RD Decision & Simulator
   const s5Path = resolve(__dirname, '../../src/components/guided/Step5RdDecision.jsx');
   const s5Content = readFileSync(s5Path, 'utf8');
-  assert(s5Content.includes('CompactStepRibbon'), 'Step 5 renders CompactStepRibbon');
+  assert(!s5Content.includes('CompactStepRibbon'), 'Step 5 eliminates CompactStepRibbon clutter');
   assert(s5Content.includes('cost_nosplit'), 'Step 5 displays cost_nosplit');
   assert(s5Content.includes('cost_split'), 'Step 5 displays cost_split');
   assert(s5Content.includes('xCompressCU'), 'Step 5 references xCompressCU picture buffer commit');

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { CabacEntropyVisualizer } from '../stages/cp07_cabac_entropy';
 import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';
-import { CompactStepRibbon } from './CompactStepRibbon';
 import { Badge, SegmentedControl } from '../apple';
 
 /**
@@ -39,18 +38,6 @@ export function Step5RdDecision({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Compact I/O Strip */}
-      <CompactStepRibbon
-        stepNumber={5}
-        inputItems={['Distortion D', 'Bits R']}
-        processTitle="RDO Selection"
-        processDesc=""
-        outputItems={['Best Mode', 'Split Decision']}
-        hmFunction="TEncCu::xCheckBestMode"
-        specReference="HM-18.0 TEncCu.cpp (Decision commit at L1207, Bitstream syntax in xEncodeCU L271)"
-        formula="J = D + lambda * R; cost_split vs cost_nosplit (Winner committed to PicYuvRec)"
-      />
-
       {/* Sub-Tab Switcher */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
         <SegmentedControl
