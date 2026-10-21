@@ -136,4 +136,35 @@ console.log('\nTest Suite 8: Zero Crash Verification on HM Analysis Start');
   assert(simContent.includes('useCallback'), 'RdoQuadtreeSimulator imports useCallback from react');
 }
 
+console.log('\nTest Suite 9: Residual Gain (ResiGain) Unified Global Sync');
+{
+  const barPath = resolve(__dirname, '../../src/components/guided/GuidedJourneyBar.jsx');
+  const barContent = readFileSync(barPath, 'utf8');
+  assert(barContent.includes('resiGain = 4'), 'GuidedJourneyBar declares resiGain = 4 default prop');
+  assert(barContent.includes("e.key === 'g' || e.key === 'G'"), 'GuidedJourneyBar binds G key for quick residual gain cycling');
+  assert(barContent.includes('GAIN:'), 'GuidedJourneyBar displays GAIN: label');
+  assert(barContent.includes('gains[(gains.indexOf(resiGain ?? 4) + 1) % gains.length]'), 'Cycles circularly through gains [1, 2, 4, 8]');
+
+  const vpPath = resolve(__dirname, '../../src/components/app/ActiveStageViewport.jsx');
+  const vpContent = readFileSync(vpPath, 'utf8');
+  assert(vpContent.includes('const [guidedResiGain, setGuidedResiGain] = useState(4);'), 'ActiveStageViewport initializes guidedResiGain state');
+  assert(vpContent.includes('resiGain={guidedResiGain}'), 'ActiveStageViewport forwards guidedResiGain to GuidedJourneyBar and steps');
+  assert(vpContent.includes('onSelectResiGain={setGuidedResiGain}'), 'ActiveStageViewport passes onSelectResiGain callback');
+
+  const s4Path = resolve(__dirname, '../../src/components/guided/Step4ReconInLoop.jsx');
+  const s4Content = readFileSync(s4Path, 'utf8');
+  assert(s4Content.includes('resiGain = 4'), 'Step4ReconInLoop accepts resiGain prop');
+  assert(s4Content.includes('resiGain={resiGain}'), 'Step4ReconInLoop forwards resiGain to FourPictureComparison');
+
+  const fpcPath = resolve(__dirname, '../../src/components/stages/cp05_recon_picture/FourPictureComparison.jsx');
+  const fpcContent = readFileSync(fpcPath, 'utf8');
+  assert(fpcContent.includes('resiGain: propsResiGain = undefined'), 'FourPictureComparison supports controlled propsResiGain');
+  assert(fpcContent.includes('propsResiGain !== undefined ? propsResiGain : internalResiGain'), 'FourPictureComparison resolves controlled resiGain');
+
+  const tqPath = resolve(__dirname, '../../src/components/stages/cp04_transform_quant/TransformQuantVisualizer.jsx');
+  const tqContent = readFileSync(tqPath, 'utf8');
+  assert(tqContent.includes('resiGain = 4'), 'TransformQuantVisualizer accepts resiGain prop');
+  assert(tqContent.includes('Math.abs(val) * (resiGain || 1)'), 'TransformQuantVisualizer scales residual visualization with resiGain');
+}
+
 console.log('\n=== ALL CHANNEL & VALUES UNIFIED SYNC TESTS PASSED (100% CONFORMANCE) ===\n');

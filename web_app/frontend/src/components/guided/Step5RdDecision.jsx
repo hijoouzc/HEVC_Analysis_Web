@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CabacEntropyVisualizer } from '../stages/cp07_cabac_entropy';
-import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';
+import RdoQuadtreeSimulator from '../stages/rdo_simulator/RdoQuadtreeSimulator';
 import { Badge, SegmentedControl } from '../apple';
 
 /**

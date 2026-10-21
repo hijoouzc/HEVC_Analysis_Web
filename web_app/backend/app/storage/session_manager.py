@@ -50,9 +50,6 @@ class SessionManager:
         
     def get_trace_path(self, job_id: str) -> Path:
         return self.get_session_dir(job_id) / "trace.jsonl"
-        
-    def get_meta_path(self, job_id: str) -> Path:
-        return self.get_session_dir(job_id) / "meta.json"
 
     def get_recon_yuv_path(self, job_id: str) -> Path:
         return self.get_session_dir(job_id) / "recon.yuv"

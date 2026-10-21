@@ -14,6 +14,3 @@ class EncoderExecutionError(HEVCAnalysisError):
 
 class InvalidInputError(HEVCAnalysisError):
     pass
-
-class TraceParseError(HEVCAnalysisError):
-    pass

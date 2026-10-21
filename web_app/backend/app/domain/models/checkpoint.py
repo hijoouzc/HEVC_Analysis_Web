@@ -324,13 +324,6 @@ class CuRdoDecisionCheckpoint(BaseModel):
     nosplit: BranchRdoDetail | None = None
     split: BranchRdoDetail | None = None
 
-class CheckpointSummaryResponse(BaseModel):
-    stage_id: str
-    name: str
-    description: str
-    count: int
-    summary_data: dict[str, Any] = Field(default_factory=dict)
-
 # ==========================================
 # CP_00_FRAME_GOP Models
 # ==========================================

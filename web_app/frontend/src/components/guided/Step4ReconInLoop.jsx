@@ -27,6 +27,8 @@ export function Step4ReconInLoop({
   channel: propsChannel = undefined,
   onSelectChannel = null,
   showValues = undefined,
+  resiGain = 4,
+  onSelectResiGain = null,
 }) {
   const [reconTab, setReconTab] = useState('buffer'); // 'buffer' | 'cu_planar' | 'inloop'
   const [internalChannel, setInternalChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
@@ -92,6 +94,8 @@ export function Step4ReconInLoop({
             onNavigateToIntra={onNavigateToIntra}
             channel={channel}
             showValues={showValues}
+            resiGain={resiGain}
+            onSelectResiGain={onSelectResiGain}
           />
         )}
 

@@ -20,6 +20,7 @@ export function Step3ResidualTu({
   channel: propsChannel = undefined,
   onSelectChannel = null,
   showValues = undefined,
+  resiGain = 4,
 }) {
   const [activeDomainView, setActiveDomainView] = useState('full'); // 'full' | 'spatial' | 'frequency'
   const [internalChannel, setInternalChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
@@ -134,6 +135,7 @@ export function Step3ResidualTu({
           channel={channel}
           onSelectChannel={setChannel}
           showValues={showValues}
+          resiGain={resiGain}
         />
       </div>
 

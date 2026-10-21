@@ -19,14 +19,6 @@ class Settings(BaseModel):
         return self.WORKSPACE_DIR / "sessions"
         
     @property
-    def LEGACY_TEMP_DIR(self) -> Path:
-        return self.WORKSPACE_DIR / "temp"
-        
-    @property
-    def LEGACY_DUMP_DIR(self) -> Path:
-        return self.PROJECT_ROOT / "dump_data"
-        
-    @property
     def ENCODER_BIN(self) -> Path:
         # 1. Release compiled path (Optimized with -O3 for high performance)
         for gcc_ver in ["gcc-15.2", "gcc-13.3"]:

@@ -30,8 +30,3 @@ class JobStatus(str, Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
-
-class ComponentEnum(str, Enum):
-    Y = "Y"
-    Cb = "Cb"
-    Cr = "Cr"

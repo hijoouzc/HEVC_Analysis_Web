@@ -64,6 +64,7 @@ const ActiveStageViewport = ({
   const [internalGuidedStep, setInternalGuidedStep] = useState('STEP_1');
   const [activeChannel, setActiveChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
   const [guidedShowValues, setGuidedShowValues] = useState(true);
+  const [guidedResiGain, setGuidedResiGain] = useState(4); // 1 | 2 | 4 | 8
 
   const activeGuidedStep = guidedStep ?? internalGuidedStep;
   const setStepFn = setGuidedStep ?? setInternalGuidedStep;
@@ -173,6 +174,8 @@ const ActiveStageViewport = ({
             onSelectChannel={setActiveChannel}
             showValues={guidedShowValues}
             onToggleValues={() => setGuidedShowValues((v) => !v)}
+            resiGain={guidedResiGain}
+            onSelectResiGain={setGuidedResiGain}
             splitDecision={rdoDecisions?.find(
               (d) =>
                 d.cu_x === (selectedCu?.x ?? selectedCu?.abs_x) &&
@@ -303,6 +306,7 @@ const ActiveStageViewport = ({
             channel={activeChannel}
             onSelectChannel={setActiveChannel}
             showValues={guidedShowValues}
+            resiGain={guidedResiGain}
           />
         </section>
 
@@ -350,6 +354,8 @@ const ActiveStageViewport = ({
             channel={activeChannel}
             onSelectChannel={setActiveChannel}
             showValues={guidedShowValues}
+            resiGain={guidedResiGain}
+            onSelectResiGain={setGuidedResiGain}
           />
         </section>
 

@@ -244,6 +244,8 @@ const FourPictureComparison = ({
   showValues: propsShowValues = undefined,
   onToggleValues = null,
   channel = 'Y',
+  resiGain: propsResiGain = undefined,
+  onSelectResiGain = null,
 }) => {
   const [scope, setScope] = useState('frame'); // 'frame' (Default: Full Frame) | 'cu'
   const [layoutMode, setLayoutMode] = useState('split'); // 'split' (Default: Interactive Slider) | 'grid' | 'single'
@@ -251,7 +253,9 @@ const FourPictureComparison = ({
   const [splitLeft, setSplitLeft] = useState('orig');
   const [splitRight, setSplitRight] = useState('recon');
   const [splitPos, setSplitPos] = useState(50);
-  const [resiGain, setResiGain] = useState(4);
+  const [internalResiGain, setInternalResiGain] = useState(4);
+  const resiGain = propsResiGain !== undefined ? propsResiGain : internalResiGain;
+  const setResiGain = onSelectResiGain || setInternalResiGain;
   const [internalShowValues, setInternalShowValues] = useState(true);
   const showValues = propsShowValues !== undefined ? propsShowValues : internalShowValues;
   const setShowValues = onToggleValues || setInternalShowValues;

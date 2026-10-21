@@ -376,9 +376,17 @@ const appSource = fs.readFileSync(path.join(__dirname, '../../src/App.jsx'), 'ut
 const viewportSource = fs.readFileSync(path.join(__dirname, '../../src/components/app/ActiveStageViewport.jsx'), 'utf-8');
 const step5Source = fs.readFileSync(path.join(__dirname, '../../src/components/guided/Step5RdDecision.jsx'), 'utf-8');
 
-assert(appSource.includes("import RdoQuadtreeSimulator from './components/RdoQuadtreeSimulator';"), "App.jsx imports RdoQuadtreeSimulator");
+assert(
+  appSource.includes("import RdoQuadtreeSimulator from './components/stages/rdo_simulator/RdoQuadtreeSimulator';") ||
+  appSource.includes("import RdoQuadtreeSimulator from './components/RdoQuadtreeSimulator';"),
+  "App.jsx imports RdoQuadtreeSimulator"
+);
 assert(appSource.includes("<RdoQuadtreeSimulator"), "App.jsx mounts standalone RdoQuadtreeSimulator");
-assert(step5Source.includes("import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';"), "Step5RdDecision imports RdoQuadtreeSimulator");
+assert(
+  step5Source.includes("import RdoQuadtreeSimulator from '../stages/rdo_simulator/RdoQuadtreeSimulator';") ||
+  step5Source.includes("import RdoQuadtreeSimulator from '../RdoQuadtreeSimulator';"),
+  "Step5RdDecision imports RdoQuadtreeSimulator"
+);
 assert(step5Source.includes("<RdoQuadtreeSimulator"), "Step5RdDecision mounts RdoQuadtreeSimulator in Step 5");
 assert(viewportSource.includes("partitionData={ctuPartitionsMap?.[`${ctuX}_${ctuY}`] || partitionData}"), "ActiveStageViewport passes 100% synchronized CTU partition ground truth to Step5");
 assert(viewportSource.includes("onNavigateToStage={() => handleGuidedStepChange('STEP_1')}"), "ActiveStageViewport connects Step 5 RDO simulator back to Step 1 QuadTree");

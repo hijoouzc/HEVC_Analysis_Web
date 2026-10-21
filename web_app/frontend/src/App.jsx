@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SetupScreen from './components/app/SetupScreen';
 import ActiveStageViewport from './components/app/ActiveStageViewport';
 import AnalysisInspector from './components/app/AnalysisInspector';
-import RdoQuadtreeSimulator from './components/RdoQuadtreeSimulator';
+import RdoQuadtreeSimulator from './components/stages/rdo_simulator/RdoQuadtreeSimulator';
 import { useAnalysisSession } from './hooks/useAnalysisSession';
 import { getStepByNum } from './components/guided';
 import {

@@ -29,6 +29,7 @@ function TransformQuantVisualizer({
   showValues: propsShowValues = undefined,
   onToggleValues = null,
   initialViewLayout = 'dual',
+  resiGain = 4,
 }) {
   const [internalComp, setInternalComp] = useState('Y'); // 'Y', 'Cb', 'Cr'
   const activeComp = propsChannel !== undefined ? propsChannel : internalComp;
@@ -159,7 +160,7 @@ function TransformQuantVisualizer({
   // Helper color functions
   const getResiColor = (val) => {
     if (val === 0) return { bg: 'var(--apple-canvas, #FAFAFA)', color: 'var(--apple-label-tertiary, #8E8E93)' };
-    const norm = Math.min(1, Math.abs(val) / (maxResiMag || 1));
+    const norm = Math.min(1, (Math.abs(val) * (resiGain || 1)) / (maxResiMag || 1));
     if (val > 0) {
       // Positive: Soft Red/Orange
       const alpha = 0.15 + norm * 0.75;
@@ -380,7 +381,7 @@ function TransformQuantVisualizer({
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
             <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
-              1. Spatial Residual R(x, y)
+              1. Spatial Residual R(x, y) [{resiGain}×]
             </h4>
           </div>
 

@@ -28,6 +28,8 @@ export function GuidedJourneyBar({
   onSelectChannel = null,
   showValues = true,
   onToggleValues = null,
+  resiGain = 4,
+  onSelectResiGain = null,
 }) {
   const isParentCu = Boolean(selectedCu?.split);
   const cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64';
@@ -35,7 +37,7 @@ export function GuidedJourneyBar({
 
   const normalizedChannel = (channel === 'U' ? 'Cb' : (channel === 'V' ? 'Cr' : (channel || 'Y')));
 
-  // Keyboard shortcuts for Channel (C) and Values (V); Steps 1-5 handled globally by App.jsx
+  // Keyboard shortcuts for Channel (C), Values (V), and Residual Gain (G); Steps 1-5 handled globally by App.jsx
   React.useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target?.tagName) || e.target?.isContentEditable) return;
@@ -46,10 +48,15 @@ export function GuidedJourneyBar({
       if ((e.key === 'v' || e.key === 'V') && onToggleValues) {
         onToggleValues();
       }
+      if ((e.key === 'g' || e.key === 'G') && onSelectResiGain) {
+        const gains = [1, 2, 4, 8];
+        const nextGain = gains[(gains.indexOf(resiGain ?? 4) + 1) % gains.length];
+        onSelectResiGain(nextGain);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSelectChannel, onToggleValues, normalizedChannel]);
+  }, [onSelectChannel, onToggleValues, onSelectResiGain, normalizedChannel, resiGain]);
 
   return (
     <div
@@ -166,6 +173,42 @@ export function GuidedJourneyBar({
                     title={ch.title}
                   >
                     {ch.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <span style={{ color: 'var(--separator)', fontSize: '11px' }}>•</span>
+
+          {/* Unified Residual Gain Switcher [ 1× | 2× | 4× | 8× ] */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+              GAIN:
+            </span>
+            <div style={{ display: 'flex', gap: '2px' }}>
+              {[1, 2, 4, 8].map((g) => {
+                const isActive = (resiGain ?? 4) === g;
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => onSelectResiGain && onSelectResiGain(g)}
+                    style={{
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-mono)',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      background: isActive ? 'var(--system-blue)' : 'var(--window-bg)',
+                      color: isActive ? '#FFFFFF' : 'var(--apple-label)',
+                      border: '0.5px solid var(--separator)',
+                      cursor: 'pointer',
+                      fontWeight: isActive ? 700 : 500,
+                      transition: 'all 0.15s ease',
+                    }}
+                    title={`Residual Boost Gain ${g}× (G key to cycle)`}
+                  >
+                    {g}×
                   </button>
                 );
               })}
