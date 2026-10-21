@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from app.domain.models.checkpoint import (
     IntraModeData,
@@ -53,7 +54,7 @@ async def get_partition_tree(
 ):
     """CP_01_PARTITION: Retrieves the complete CTU QuadTree partition tree (depths 0-3)"""
     try:
-        return analysis_service.get_partition_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
+        return await asyncio.to_thread(analysis_service.get_partition_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -63,7 +64,7 @@ async def get_partition_tree(
 async def get_all_partitions(job_id: str):
     """Retrieves all CTU QuadTree partition trees available in the trace"""
     try:
-        return analysis_service.get_all_partitions(job_id)
+        return await asyncio.to_thread(analysis_service.get_all_partitions, job_id)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -85,7 +86,8 @@ async def get_cu_inspection(
     and transform/quantization telemetry for any arbitrary CU coordinate.
     """
     try:
-        return analysis_service.get_cu_inspection_data(
+        return await asyncio.to_thread(
+            analysis_service.get_cu_inspection_data,
             job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc, include_matrices=include_matrices
         )
     except InvalidInputError as e:
@@ -109,7 +111,8 @@ async def get_intra_ref_checkpoint(
 ):
     """CP_02_INTRA_REF: Retrieves raw and filtered reference samples (4N+1)"""
     try:
-        return analysis_service.get_intra_ref_data(
+        return await asyncio.to_thread(
+            analysis_service.get_intra_ref_data,
             job_id,
             cu_size=cu_size,
             ctu_x=ctu_x,
@@ -137,7 +140,8 @@ async def get_rdo_decisions(
 ):
     """Retrieves real HM CU RDO decisions: cost_nosplit, cost_split, best_mode, and split_decision"""
     try:
-        return analysis_service.get_rdo_decisions(
+        return await asyncio.to_thread(
+            analysis_service.get_rdo_decisions,
             job_id,
             ctu_x=ctu_x,
             ctu_y=ctu_y,
@@ -158,7 +162,7 @@ async def get_rdo_decisions(
 async def get_intra_search_summary(job_id: str):
     """Lightweight endpoint returning high-level intra prediction summary (<1 KB)"""
     try:
-        return analysis_service.get_intra_search_summary(job_id)
+        return await asyncio.to_thread(analysis_service.get_intra_search_summary, job_id)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -174,7 +178,7 @@ async def compare_intra_candidates(
 ):
     """Computes pixel-by-pixel differential prediction and cost comparison between two Intra modes"""
     try:
-        return analysis_service.compare_intra_modes(job_id, mode_a=mode_a, mode_b=mode_b, cu_size=cu_size)
+        return await asyncio.to_thread(analysis_service.compare_intra_modes, job_id, mode_a=mode_a, mode_b=mode_b, cu_size=cu_size)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except InvalidInputError as e:
@@ -195,7 +199,8 @@ async def get_intra_search_modes(
 ):
     """Lazy-load full matrix and reference sample data for tested Intra modes"""
     try:
-        return analysis_service.get_intra_search_data(
+        return await asyncio.to_thread(
+            analysis_service.get_intra_search_data,
             job_id,
             mode=mode,
             cu_size=cu_size,
@@ -229,7 +234,8 @@ async def get_intra_pipeline_full(
     Step 5: Chroma Mode Search & Best Mode Decision
     """
     try:
-        return analysis_service.get_intra_pipeline_data(
+        return await asyncio.to_thread(
+            analysis_service.get_intra_pipeline_data,
             job_id,
             cu_size=cu_size,
             ctu_x=ctu_x,
@@ -260,7 +266,8 @@ async def get_transform_checkpoints(
     """CP_06_TRANSFORM: Retrieves 2D DCT/DST transform coefficients and residual matrix"""
     try:
         active_comp = component or comp
-        return analysis_service.get_transform_quant_data(
+        return await asyncio.to_thread(
+            analysis_service.get_transform_quant_data,
             job_id,
             comp=active_comp,
             ctu_x=ctu_x,
@@ -290,7 +297,8 @@ async def get_quant_checkpoints(
     """CP_07_QUANT: Retrieves quantized transform coefficients and sparsity statistics"""
     try:
         active_comp = component or comp
-        return analysis_service.get_transform_quant_data(
+        return await asyncio.to_thread(
+            analysis_service.get_transform_quant_data,
             job_id,
             comp=active_comp,
             ctu_x=ctu_x,
@@ -312,7 +320,7 @@ async def get_quant_checkpoints(
 async def get_sequence_metadata(job_id: str):
     """Retrieves Sequence (SPS) and Picture (PPS) Parameter Sets metadata directly from HM-18.0"""
     try:
-        data = analysis_service.get_sequence_metadata(job_id)
+        data = await asyncio.to_thread(analysis_service.get_sequence_metadata, job_id)
         if data is None:
             raise HTTPException(status_code=404, detail=f"Sequence metadata not found for job '{job_id}'.")
         return data
@@ -327,7 +335,7 @@ async def get_sequence_metadata(job_id: str):
 async def get_frame_gop(job_id: str):
     """CP_00_FRAME_GOP: Retrieves Frame and GOP structure, temporal layer, and DPB reference lists"""
     try:
-        return analysis_service.get_frame_gop_data(job_id)
+        return await asyncio.to_thread(analysis_service.get_frame_gop_data, job_id)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -341,7 +349,7 @@ async def get_inter_search(
 ):
     """CP_03_INTER_SEARCH: Retrieves Inter Prediction, Motion Estimation (MV, MVD), and candidate data"""
     try:
-        return analysis_service.get_inter_search_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return await asyncio.to_thread(analysis_service.get_inter_search_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -360,7 +368,8 @@ async def get_transform_rqt(
 ):
     """CP_04_TRANSFORM_RQT: Retrieves 6-domain Transform, RQT hierarchy, DST-VII, and TSM data"""
     try:
-        return analysis_service.get_transform_quant_data(
+        return await asyncio.to_thread(
+            analysis_service.get_transform_quant_data,
             job_id,
             comp=comp,
             ctu_x=ctu_x,
@@ -383,7 +392,7 @@ async def get_recon_picture(
 ):
     """CP_05_RECON_PICTURE: Retrieves reconstructed picture buffer (Y, U, V) before in-loop filtering"""
     try:
-        return analysis_service.get_recon_picture_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return await asyncio.to_thread(analysis_service.get_recon_picture_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -397,7 +406,7 @@ async def get_inloop_filter(
 ):
     """CP_06_INLOOP_FILTER: Retrieves Deblocking Filter (DBF) edge profiles and SAO decision offsets"""
     try:
-        return analysis_service.get_inloop_filter_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return await asyncio.to_thread(analysis_service.get_inloop_filter_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:
@@ -410,7 +419,7 @@ async def get_cabac_entropy(
 ):
     """CP_07_CABAC_ENTROPY: Retrieves bitstream syntax element bins, context index, and FSM probability state"""
     try:
-        return analysis_service.get_cabac_entropy_data(job_id, limit=limit)
+        return await asyncio.to_thread(analysis_service.get_cabac_entropy_data, job_id, limit=limit)
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     except Exception as e:

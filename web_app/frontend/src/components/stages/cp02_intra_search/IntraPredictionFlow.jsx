@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { INTRA_PRED_ANGLES, INV_ANGLES, getPixelTrace, generateIntraPredictionBlock } from '../../../utils/intraTraceUtils';
+import { INTRA_PRED_ANGLES, INV_ANGLES, generateIntraPredictionBlock } from '../../../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../../../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../../../utils/metricsUtils';
 import {
@@ -21,85 +21,9 @@ import Step3CandidatesView from './pipeline/Step3CandidatesView';
 import Step4FullRdoView from './pipeline/Step4FullRdoView';
 import Step5ChromaWinnerView from './pipeline/Step5ChromaWinnerView';
 import CtuSpatialMiniMap from './CtuSpatialMiniMap';
-import { Button, SegmentedControl, Badge, Card, Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '../../apple';
-
-/**
- * Computes ray start and end coordinates connected strictly to cell borders,
- * ensuring the ray line never crosses the center and never obscures cell numbers.
- */
-const getRayBorderEndpoints = (ref, activeCoord, stageGridCellSize) => {
-  if (!ref || !activeCoord || !stageGridCellSize || stageGridCellSize <= 0) {
-    return { x1: 0, y1: 0, x2: 0, y2: 0 };
-  }
-  const refIndex = Number.isFinite(ref.index) ? ref.index : 0;
-  const Xmin = stageGridCellSize * (activeCoord.x + 1);
-  const Xmax = stageGridCellSize * (activeCoord.x + 2);
-  const Ymin = stageGridCellSize * (activeCoord.y + 1);
-  const Ymax = stageGridCellSize * (activeCoord.y + 2);
-  const Xmid = (Xmin + Xmax) / 2;
-  const Ymid = (Ymin + Ymax) / 2;
-
-  let x1, y1;
-  if (ref.type === 'top') {
-    // Start at bottom border of top reference cell (row 0)
-    x1 = stageGridCellSize * refIndex + stageGridCellSize / 2;
-    y1 = stageGridCellSize;
-  } else {
-    // Start at right border of left reference cell (column 0)
-    x1 = stageGridCellSize;
-    y1 = stageGridCellSize * refIndex + stageGridCellSize / 2;
-  }
-
-  const dx = Xmid - x1;
-  const dy = Ymid - y1;
-
-  let x2 = Xmid;
-  let y2 = Ymid;
-
-  const candidates = [];
-
-  if (Math.abs(dy) > 1e-4) {
-    const tTop = (Ymin - y1) / dy;
-    if (tTop >= -1e-4 && tTop <= 1.01) {
-      const xAtTop = x1 + tTop * dx;
-      if (xAtTop >= Xmin - 0.5 && xAtTop <= Xmax + 0.5) {
-        candidates.push({ t: Math.max(0, tTop), x: Math.max(Xmin, Math.min(Xmax, xAtTop)), y: Ymin });
-      }
-    }
-    const tBottom = (Ymax - y1) / dy;
-    if (tBottom >= -1e-4 && tBottom <= 1.01) {
-      const xAtBottom = x1 + tBottom * dx;
-      if (xAtBottom >= Xmin - 0.5 && xAtBottom <= Xmax + 0.5) {
-        candidates.push({ t: Math.max(0, tBottom), x: Math.max(Xmin, Math.min(Xmax, xAtBottom)), y: Ymax });
-      }
-    }
-  }
-
-  if (Math.abs(dx) > 1e-4) {
-    const tLeft = (Xmin - x1) / dx;
-    if (tLeft >= -1e-4 && tLeft <= 1.01) {
-      const yAtLeft = y1 + tLeft * dy;
-      if (yAtLeft >= Ymin - 0.5 && yAtLeft <= Ymax + 0.5) {
-        candidates.push({ t: Math.max(0, tLeft), x: Xmin, y: Math.max(Ymin, Math.min(Ymax, yAtLeft)) });
-      }
-    }
-    const tRight = (Xmax - x1) / dx;
-    if (tRight >= -1e-4 && tRight <= 1.01) {
-      const yAtRight = y1 + tRight * dy;
-      if (yAtRight >= Ymin - 0.5 && yAtRight <= Ymax + 0.5) {
-        candidates.push({ t: Math.max(0, tRight), x: Xmax, y: Math.max(Ymin, Math.min(Ymax, yAtRight)) });
-      }
-    }
-  }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => a.t - b.t);
-    x2 = candidates[0].x;
-    y2 = candidates[0].y;
-  }
-
-  return { x1, y1, x2, y2 };
-};
+import RayTraceOverlay from './components/RayTraceOverlay';
+import RdoDecisionDeck from './components/RdoDecisionDeck';
+import { Button, SegmentedControl, Badge, Card } from '../../apple';
 
 /**
  * IntraPredictionFlow (CP_02_INTRA_SEARCH)
@@ -133,67 +57,63 @@ const IntraPredictionFlow = ({
   transformData = null,
   quantData = null,
   _onChangeBlockSize = null,
-  onSelectBlock = null,
-  partitionData = null,
-  selectedCu = null,
-  showCuSizeBadge = false,
-  showSpatialMiniMap = false,
-  showChannelBadge = false,
   channel: propsChannel = undefined,
-  onSelectChannel = null,
+  showChannelBadge = false,
+  showSpatialMiniMap = false,
+  showCuSizeBadge = false,
+  selectedCu = null,
+  partitionData = null,
+  onSelectBlock = null,
   showValues: propsShowValues = undefined,
-  onToggleValues = null,
 }) => {
   const [internalChannel, setInternalChannel] = useState('Y');
   const channel = propsChannel !== undefined ? propsChannel : internalChannel;
-  const setChannel = onSelectChannel || setInternalChannel;
+  const setChannel = setInternalChannel;
+
+  const [activeTab, setActiveTab] = useState('studio');
+  const [activePipelineStep, setActivePipelineStep] = useState(1);
+  const [pipelineData, setPipelineData] = useState(null);
+  const [matrixLayout, setMatrixLayout] = useState('ray_trace');
+  const [deckTab, setDeckTab] = useState('candidates');
   const [internalShowValues, setInternalShowValues] = useState(true);
   const showValues = propsShowValues !== undefined ? propsShowValues : internalShowValues;
-  const setShowValues = onToggleValues || setInternalShowValues;
-  const [activeTab, setActiveTab] = useState('studio'); // 'studio' (Default) | 'pipeline' (Deep Stepper)
-  const [deckTab, setDeckTab] = useState('candidates'); // 'candidates' | 'boundary' | 'chroma'
-  const [matrixLayout, setMatrixLayout] = useState('ray_trace'); // 'ray_trace' (Default) | '4way' | 'comparison'
-  const [activePipelineStep, setActivePipelineStep] = useState(1);
+  const setShowValues = setInternalShowValues;
+
   const [selectedPixel, setSelectedPixel] = useState(null);
   const [showHmModal, setShowHmModal] = useState(false);
-  const [pipelineData, setPipelineData] = useState(null);
   const [activeSnippet, setActiveSnippet] = useState(HM_INTRA_PREDICTION_SNIPPET);
+  const [frameCanvas, setFrameCanvas] = useState(null);
 
-  // Clear pixel selection on Escape key
+  const handleSelectPixel = useCallback((coord) => {
+    setSelectedPixel(prev => {
+      if (prev && prev.x === coord.x && prev.y === coord.y) {
+        return null;
+      }
+      return coord;
+    });
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && selectedPixel) {
         setSelectedPixel(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [selectedPixel]);
 
-  // Auto-reset pixel selection on channel or dimension/position changes to prevent reticle overflow
-  const cuX = selectedCu?.abs_x ?? selectedCu?.x ?? 0;
-  const cuY = selectedCu?.abs_y ?? selectedCu?.y ?? 0;
-  const cuW = selectedCu?.width ?? blockSize;
-  const cuH = selectedCu?.height ?? cuW;
-  const currentPixelContextKey = `${jobId || ''}_${channel}_${cuX}_${cuY}_${cuW}x${cuH}`;
-
-  const prevPixelContextKeyRef = useRef(currentPixelContextKey);
   useEffect(() => {
-    if (prevPixelContextKeyRef.current !== currentPixelContextKey) {
-      prevPixelContextKeyRef.current = currentPixelContextKey;
-      setSelectedPixel(null);
+    // oxlint-disable-next-line react/set-state-in-effect
+    setSelectedPixel(null);
+  }, [currentModeIdx, blockSize, channel]);
+
+  useEffect(() => {
+    if (!imagePreview) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setFrameCanvas(null);
+      return;
     }
-  }, [currentPixelContextKey]);
-
-  const handleSelectPixel = useCallback((coord) => {
-    setSelectedPixel(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
-  }, []);
-
-  // Maintain an offscreen canvas for source image Luma extraction
-  const [frameCanvas, setFrameCanvas] = useState(null);
-
-  useEffect(() => {
-    if (!imagePreview) return;
     let isCurrent = true;
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -219,7 +139,6 @@ const IntraPredictionFlow = ({
 
   const activeFrameCanvas = imagePreview ? frameCanvas : null;
 
-  // Fetch full 5-stage pipeline telemetry from backend if available
   useEffect(() => {
     if (!jobId || !API_BASE_URL) return;
     const controller = new AbortController();
@@ -297,7 +216,6 @@ const IntraPredictionFlow = ({
   const invAngle = INV_ANGLES[angle] ?? 0;
   const hasEdgeFilter = (channel === 'Y') && (selectedMode === 1 || selectedMode === 10 || selectedMode === 26) && N <= 16;
 
-  // Extract raw reference perimeter samples (2N+1) from trace or source frame
   const { refTopRaw, refLeftRaw } = useMemo(() => {
     if (rawRefTop && rawRefTop.length >= refSpan && rawRefLeft && rawRefLeft.length >= refSpan) {
       return {
@@ -388,7 +306,6 @@ const IntraPredictionFlow = ({
   const refTopActive = useMemo(() => isMDISSmoothed ? refTopFilt : refTopRaw, [isMDISSmoothed, refTopFilt, refTopRaw]);
   const refLeftActive = useMemo(() => isMDISSmoothed ? refLeftFilt : refLeftRaw, [isMDISSmoothed, refLeftFilt, refLeftRaw]);
 
-  // Extract original source samples (NxN) from trace or frame canvas
   const orgData = useMemo(() => {
     if (rawOrg && rawOrg.length >= totalPixels) {
       return rawOrg.slice(0, totalPixels);
@@ -442,7 +359,6 @@ const IntraPredictionFlow = ({
     return Array(totalPixels).fill(128);
   }, [rawOrg, totalPixels, activeFrameCanvas, selectedCu, ctuX, ctuY, N]);
 
-  // Generate or extract prediction samples (NxN)
   const predData = useMemo(() => {
     if (rawPred && rawPred.length >= totalPixels) {
       return rawPred.slice(0, totalPixels);
@@ -465,7 +381,6 @@ const IntraPredictionFlow = ({
     return Array(totalPixels).fill(128);
   }, [rawPred, totalPixels, refTopActive, refLeftActive, refSpan, selectedMode, N]);
 
-  // Residual block: R = S - P
   const resiData = useMemo(() => {
     if (rawResi && rawResi.length >= totalPixels) {
       return rawResi.slice(0, totalPixels);
@@ -473,7 +388,6 @@ const IntraPredictionFlow = ({
     return orgData.map((s, idx) => s - (predData[idx] ?? 128));
   }, [rawResi, totalPixels, orgData, predData]);
 
-  // Reconstructed block S' = Clip3(0, 255, P + R)
   const recoData = useMemo(() => {
     return predData.map((p, i) => Math.max(0, Math.min(255, Math.round(p + (resiData[i] ?? 0)))));
   }, [predData, resiData]);
@@ -485,12 +399,10 @@ const IntraPredictionFlow = ({
     return compEvent || events.find(e => e.component === channel) || events[0] || null;
   }, [transformData, quantData, channel, N]);
 
-  // Static height locks prevent layout jittering across block sizes N in 4..64
   const cellSize = N <= 4 ? 40 : N <= 8 ? 32 : 36;
   const largeCellSize = N <= 4 ? 44 : N <= 8 ? 36 : 36;
   const quadrantHeight = '415px';
 
-  // Selected pixel readout values (null when unselected to allow clean deselect)
   const activeCoord = useMemo(() => {
     if (!selectedPixel) return null;
     return {
@@ -505,7 +417,6 @@ const IntraPredictionFlow = ({
   const rVal = activeIdx !== null ? (resiData[activeIdx] ?? null) : null;
   const recoVal = activeIdx !== null ? (recoData[activeIdx] ?? null) : null;
 
-  // Exact mathematical ray trace & formula calculation from ITU-T H.265 Section 8.4.4
   const trace = useMemo(() => {
     if (!activeCoord) return null;
     return getPixelTrace(selectedMode, activeCoord.x, activeCoord.y, N, refTopActive, refLeftActive);
@@ -558,8 +469,6 @@ const IntraPredictionFlow = ({
     };
   }, [getSampleColor, stageGridCellSize]);
 
-  // Discrete HTML5 Canvas for Original Source (S) when N >= 16
-  // Replaces 4,096 DOM nodes with 1 GPU-accelerated canvas (<0.1ms render time, 60fps interaction)
   const orgCanvasRef = useRef(null);
 
   useEffect(() => {
@@ -613,13 +522,11 @@ const IntraPredictionFlow = ({
     handleSelectPixel({ x, y });
   }, [N, handleSelectPixel]);
 
-  // Top candidate modes sorted by HM RD cost
   const sortedCandidates = useMemo(() => {
     if (!modesData || modesData.length <= 1) return [];
     return [...modesData].sort((a, b) => (a.cost ?? Infinity) - (b.cost ?? Infinity)).slice(0, 8);
   }, [modesData]);
 
-  // Fallback telemetry conforming bit-exactly to HM-18.0 pipeline
   const effectivePipelineData = useMemo(() => {
     const rawData = pipelineData || initialPipelineData;
     if (rawData) return rawData;
@@ -684,7 +591,7 @@ const IntraPredictionFlow = ({
   }, [activePipelineStep]);
 
   return (
-    <div className="flow-container" style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <div className="flow-container" style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px', overflowX: 'auto' }}>
       {/* 1. INTEGRATED COMMAND BAR */}
       <div
         style={{
@@ -1275,35 +1182,13 @@ const IntraPredictionFlow = ({
                         flexShrink: 0
                       }}>
                         {/* SVG Ray Tracing Layer (Active on Original PU only) */}
-                        {selectedPixel && activeCoord && trace && (
-                          <svg
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              width: stageGridSize,
-                              height: stageGridSize,
-                              pointerEvents: 'none',
-                              zIndex: 14
-                            }}
-                          >
-                            {trace.refs.map((ref, idx) => {
-                              const { x1, y1, x2, y2 } = getRayBorderEndpoints(ref, activeCoord, stageGridCellSize);
-                              if (Math.hypot(x2 - x1, y2 - y1) < 1.0) return null;
-                              return (
-                                <line
-                                  key={idx}
-                                  x1={x1}
-                                  y1={y1}
-                                  x2={x2}
-                                  y2={y2}
-                                  stroke={SELECTION_HIGHLIGHT_COLOR}
-                                  strokeWidth="2"
-                                />
-                              );
-                            })}
-                          </svg>
-                        )}
+                        <RayTraceOverlay
+                          selectedPixel={selectedPixel}
+                          activeCoord={activeCoord}
+                          trace={trace}
+                          stageGridSize={stageGridSize}
+                          stageGridCellSize={stageGridCellSize}
+                        />
 
                         {/* Frame Outline around Original Block */}
                         <div
@@ -1478,48 +1363,25 @@ const IntraPredictionFlow = ({
                 border: '1px solid var(--apple-hairline)',
                 borderRadius: '6px',
                 padding: '10px 14px',
-                minHeight: '68px',
-                boxSizing: 'border-box',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '8px',
-                fontFamily: 'JetBrains Mono',
-                fontVariantNumeric: 'tabular-nums',
-                fontSize: '11px',
+                minHeight: '74px',
+                boxSizing: 'border-box'
               }}>
-                {selectedPixel && activeCoord ? (
+                {selectedPixel ? (
                   <>
-                    {/* Row 1: Pixel Identification, Status Badges & Deselect Action */}
                     <div style={{
                       display: 'flex',
-                      justifyContent: 'space-between',
                       alignItems: 'center',
+                      justifyContent: 'space-between',
                       flexWrap: 'wrap',
-                      gap: '8px',
+                      gap: '8px'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span style={{ fontWeight: 700, color: 'var(--apple-blue)', fontSize: '11.5px', flexShrink: 0 }}>
-                          PIXEL [{activeCoord.x}, {activeCoord.y}]:
+                        <span style={{ color: 'var(--apple-blue)', fontWeight: 700, fontSize: '12px', fontFamily: 'JetBrains Mono' }}>
+                          Pixel [{selectedPixel.x}, {selectedPixel.y}]
                         </span>
-
-                        {trace?.predictedVal !== undefined && trace.predictedVal === pVal && (
-                          <span
-                            style={{
-                              fontSize: '9.5px',
-                              fontWeight: 700,
-                              color: '#10B981',
-                              background: 'rgba(16, 185, 129, 0.12)',
-                              border: '1px solid rgba(16, 185, 129, 0.3)',
-                              borderRadius: '4px',
-                              padding: '1px 6px',
-                              whiteSpace: 'nowrap'
-                            }}
-                            title="The mathematical prediction formula matches the HM-18.0 reference software trace with 100% bit-exact precision"
-                          >
-                            ✓ Bit-Exact
-                          </span>
-                        )}
-
                         {sVal - pVal === rVal && (
                           <span
                             style={{
@@ -1597,26 +1459,8 @@ const IntraPredictionFlow = ({
                       paddingTop: '6px',
                       lineHeight: '1.45',
                     }}>
-                      <span style={{
-                        color: 'var(--apple-blue)',
-                        fontWeight: 700,
-                        fontSize: '10px',
-                        flexShrink: 0,
-                        paddingTop: '1px',
-                        letterSpacing: '0.02em',
-                      }}>
-                        RAY TRACE FORMULA:
-                      </span>
-                      <span
-                        style={{
-                          color: 'var(--apple-label)',
-                          fontSize: '10.5px',
-                          wordBreak: 'break-word',
-                          lineHeight: '1.45',
-                        }}
-                        title={trace?.text}
-                      >
-                        {trace?.text || 'Standard HEVC boundary sample projection'}
+                      <span style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono', wordBreak: 'break-word' }}>
+                        {trace?.formula || `Mode ${selectedMode}: ${modeInfo.name} prediction`}
                       </span>
                     </div>
                   </>
@@ -1660,132 +1504,26 @@ const IntraPredictionFlow = ({
 
           {/* RIGHT COLUMN: RDO DECISION & ANALYSIS DECK */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0 }}>
-            <Card style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: 0, minHeight: '420px', boxSizing: 'border-box' }}>
-              {/* Deck Header & Sub-Tabs */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <span style={{ fontSize: '12.5px', fontWeight: 700, fontFamily: 'JetBrains Mono' }}>
-                  RDO Decision Deck
-                </span>
-                <SegmentedControl
-                  value={deckTab}
-                  onChange={setDeckTab}
-                  size="small"
-                  items={[
-                    { id: 'candidates', label: 'RDO Candidates' },
-                    { id: 'boundary', label: 'Boundary MDIS' },
-                    { id: 'chroma', label: 'Chroma Modes' },
-                  ]}
-                />
-              </div>
-
-              {/* TAB 1: RDO Candidates Table */}
-              {deckTab === 'candidates' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
-                  <div style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono' }}>
-                    Click any candidate row to preview its prediction live:
-                  </div>
-                  <div style={{ overflowX: 'auto', width: '100%', minHeight: '330px' }}>
-                    <Table size="small" style={{ tableLayout: 'fixed', width: '100%' }}>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead style={{ width: '85px', minWidth: '85px' }}>Rank</TableHead>
-                          <TableHead style={{ width: '50px', minWidth: '50px' }}>Mode</TableHead>
-                          <TableHead style={{ width: '135px', minWidth: '135px' }}>Name</TableHead>
-                          <TableHead style={{ width: '80px', minWidth: '80px', textAlign: 'right' }}>Cost (J)</TableHead>
-                          <TableHead style={{ width: '75px', minWidth: '75px', textAlign: 'right' }}>Δ Cost</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {(sortedCandidates.length > 0 ? sortedCandidates : (modesData && modesData.length > 0 ? modesData : [
-                          { mode: selectedMode, cost: modeData?.cost ?? 0 }
-                        ])).slice(0, 8).map((cand, idx) => {
-                          const info = getIntraModeInfo(cand.mode);
-                          const isWinner = idx === 0;
-                          const isCurrent = cand.mode === selectedMode;
-                          const bestCost = sortedCandidates.length > 0 ? sortedCandidates[0]?.cost : (modesData[0]?.cost ?? 0);
-                          const delta = isWinner ? 'Best' : (cand.cost !== undefined && bestCost !== undefined ? `+${(cand.cost - bestCost).toFixed(1)}` : '—');
-                          return (
-                            <TableRow
-                              key={`cand-row-${cand.mode}`}
-                              onClick={() => {
-                                if (modesData && onSelectModeIndex) {
-                                  const targetIdx = modesData.findIndex(d => d.mode === cand.mode);
-                                  if (targetIdx !== -1) onSelectModeIndex(targetIdx);
-                                }
-                              }}
-                              style={{
-                                cursor: 'pointer',
-                                height: '36px',
-                                background: isCurrent ? 'rgba(0, 122, 255, 0.08)' : (isWinner ? 'rgba(52, 199, 89, 0.06)' : 'transparent'),
-                                borderLeft: isCurrent ? '3px solid var(--apple-blue)' : (isWinner ? '3px solid var(--system-green)' : '3px solid transparent'),
-                                fontFamily: 'JetBrains Mono',
-                                fontVariantNumeric: 'tabular-nums',
-                                fontSize: '11px'
-                              }}
-                            >
-                              <TableCell style={{ fontWeight: 700, width: '85px', whiteSpace: 'nowrap' }}>
-                                {isWinner ? <Badge variant="green" style={{ minWidth: '65px', justifyContent: 'center' }}>#1 Winner</Badge> : `#${idx + 1}`}
-                              </TableCell>
-                              <TableCell style={{ fontWeight: 700, color: 'var(--apple-blue)', width: '50px', whiteSpace: 'nowrap' }}>
-                                M{cand.mode}
-                              </TableCell>
-                              <TableCell style={{ width: '135px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {info.name}
-                              </TableCell>
-                              <TableCell style={{ fontWeight: 600, width: '80px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {typeof cand.cost === 'number' ? cand.cost.toFixed(1) : cand.cost}
-                              </TableCell>
-                              <TableCell style={{ color: isWinner ? 'var(--system-green)' : 'var(--apple-label-secondary)', width: '75px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                {delta}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: Boundary & MDIS Filter */}
-              {deckTab === 'boundary' && (
-                <div style={{ minWidth: 0, overflowX: 'auto', width: '100%' }}>
-                  <Step1BoundaryInitView
-                    refTopRaw={refTopRaw}
-                    refLeftRaw={refLeftRaw}
-                    refTopFilt={refTopFilt}
-                    refLeftFilt={refLeftFilt}
-                    N={N}
-                    channel={channel}
-                    isMDISSmoothed={isMDISSmoothed}
-                    showValues={showValues}
-                    getSampleColor={getSampleColor}
-                  />
-                </div>
-              )}
-
-              {/* TAB 3: Chroma Intra Modes */}
-              {deckTab === 'chroma' && (
-                <div style={{ minWidth: 0, overflowX: 'auto', width: '100%' }}>
-                  <Step5ChromaWinnerView
-                    pipelineData={effectivePipelineData}
-                    modesData={modesData}
-                    modeData={modeData}
-                    bestLumaMode={effectivePipelineData?.best_luma_mode ?? selectedMode}
-                    bestLumaCost={effectivePipelineData?.winner_cost ?? (modeData?.cost ?? 0)}
-                    N={N}
-                    showValues={showValues}
-                    onSelectMode={(targetMode) => {
-                      if (modesData && onSelectModeIndex) {
-                        const targetIdx = modesData.findIndex(d => d.mode === targetMode);
-                        if (targetIdx !== -1) onSelectModeIndex(targetIdx);
-                      }
-                    }}
-                    qp={modeData?.qp ?? transformEvent?.qp ?? 32}
-                  />
-                </div>
-              )}
-            </Card>
+            <RdoDecisionDeck
+              deckTab={deckTab}
+              setDeckTab={setDeckTab}
+              sortedCandidates={sortedCandidates}
+              modesData={modesData}
+              modeData={modeData}
+              selectedMode={selectedMode}
+              onSelectModeIndex={onSelectModeIndex}
+              refTopRaw={refTopRaw}
+              refLeftRaw={refLeftRaw}
+              refTopFilt={refTopFilt}
+              refLeftFilt={refLeftFilt}
+              N={N}
+              channel={channel}
+              isMDISSmoothed={isMDISSmoothed}
+              showValues={showValues}
+              getSampleColor={getSampleColor}
+              effectivePipelineData={effectivePipelineData}
+              transformEvent={transformEvent}
+            />
           </div>
         </div>
       ) : (

@@ -80,6 +80,8 @@ export function useAnalysisSession() {
   const ctuAbortRef = useRef(null);
   const cuAbortRef = useRef(null);
   const selectBlockAbortRef = useRef(null);
+  const pollingAbortRef = useRef(null);
+  const uploadAbortRef = useRef(null);
   const jobScopePromiseRef = useRef(null);
   const loadedJobIdRef = useRef(null);
 
@@ -90,6 +92,8 @@ export function useAnalysisSession() {
       ctuAbortRef.current?.abort();
       cuAbortRef.current?.abort();
       selectBlockAbortRef.current?.abort();
+      pollingAbortRef.current?.abort();
+      uploadAbortRef.current?.abort();
     };
   }, []);
 
@@ -382,22 +386,32 @@ export function useAnalysisSession() {
     };
   }, [fetchJobCheckpoints, fetchCtuCheckpoints, fetchCuCheckpoints]);
 
-  // Poll job status until COMPLETED or FAILED
-  const pollJobCompletion = useCallback(async (currentJobId, maxAttempts = 150) => {
+  // Poll job status until COMPLETED or FAILED with AbortSignal cancellation support
+  const pollJobCompletion = useCallback(async (currentJobId, signal = null, maxAttempts = 150) => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentJobId}`);
+      if (signal?.aborted) return null;
+      const res = await fetch(`${API_BASE_URL}/api/v1/jobs/${currentJobId}`, { signal });
       if (!res.ok) {
         throw new Error(`Failed to check job status (${res.status})`);
       }
       const jobInfo = await res.json();
+      if (signal?.aborted) return null;
       if (jobInfo.status === 'COMPLETED') {
         return jobInfo;
       }
       if (jobInfo.status === 'FAILED') {
         throw new Error(jobInfo.error_message || 'Encoder execution failed');
       }
-      // Wait 400ms before next poll
-      await new Promise(resolve => setTimeout(resolve, 400));
+      // Wait 400ms before next poll with abort event handling
+      await new Promise(resolve => {
+        if (signal?.aborted) return resolve();
+        const timeout = setTimeout(resolve, 400);
+        signal?.addEventListener('abort', () => {
+          clearTimeout(timeout);
+          resolve();
+        }, { once: true });
+      });
+      if (signal?.aborted) return null;
     }
     throw new Error('Analysis timed out after 60 seconds.');
   }, []);
@@ -412,6 +426,16 @@ export function useAnalysisSession() {
   ) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!file) return;
+
+    // Abort any prior in-flight upload or polling to prevent race conditions
+    uploadAbortRef.current?.abort();
+    pollingAbortRef.current?.abort();
+    const uploadController = new AbortController();
+    uploadAbortRef.current = uploadController;
+    const pollingController = new AbortController();
+    pollingAbortRef.current = pollingController;
+    const uploadSignal = uploadController.signal;
+    const pollingSignal = pollingController.signal;
 
     const targetX = customX !== null ? customX : (ctuX !== null ? ctuX : 0);
     const targetY = customY !== null ? customY : (ctuY !== null ? ctuY : 0);
@@ -447,25 +471,37 @@ export function useAnalysisSession() {
         const submitRes = await fetch(`${API_BASE_URL}/api/v1/jobs/submit`, {
           method: 'POST',
           body: formData,
+          signal: uploadSignal,
         });
+
+        if (uploadSignal.aborted) return;
 
         if (submitRes.status === 202) {
           const initJob = await submitRes.json();
           currentJobId = initJob.job_id;
           setJobId(currentJobId);
           setLoadingStatus('Running HM-18.0 Encoder & Tracing Checkpoints...');
-          jobInfo = await pollJobCompletion(currentJobId);
+          jobInfo = await pollJobCompletion(currentJobId, pollingSignal);
+          if (pollingSignal.aborted || !jobInfo) {
+            return;
+          }
         }
       } catch (asyncErr) {
+        if (asyncErr.name === 'AbortError' || uploadSignal.aborted || pollingSignal.aborted) {
+          return;
+        }
         console.warn('Async job submission failed, falling back to synchronous /upload:', asyncErr);
       }
 
       // If async job succeeded:
       if (jobInfo && currentJobId) {
+        if (uploadSignal.aborted || pollingSignal.aborted) return;
         setLoadingStatus('Parsing Checkpoints...');
         const modesQuery = buildQuery({ cu_size: targetCuSize, ctu_x: targetX, ctu_y: targetY });
-        const modesRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTRA_SEARCH${modesQuery}`);
+        const modesRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${currentJobId}/CP_03_INTRA_SEARCH${modesQuery}`, { signal: uploadSignal });
         const modesData = modesRes.ok ? await modesRes.json() : [];
+
+        if (uploadSignal.aborted) return;
 
         if (modesData.length > 0) {
           setData(modesData);
@@ -501,19 +537,27 @@ export function useAnalysisSession() {
         }
       }
 
+      if (uploadSignal.aborted) return;
+
       // 2. Fallback to Synchronous /upload endpoint if async flow did not return data
       setLoadingStatus('Executing encoder (Synchronous fallback)...');
       const res = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
         body: formData,
+        signal: uploadSignal,
       });
+
+      if (uploadSignal.aborted) return;
 
       let result;
       try {
         result = await res.json();
       } catch {
+        if (uploadSignal.aborted) return;
         throw new Error(`Server returned HTTP ${res.status}: ${res.statusText || 'Invalid response'}`);
       }
+
+      if (uploadSignal.aborted) return;
 
       if (res.ok && result.status === 'success' && result.data && result.data.length > 0) {
         setData(result.data);
@@ -552,11 +596,14 @@ export function useAnalysisSession() {
         setErrorMsg(errorDetail);
       }
     } catch (err) {
+      if (err.name === 'AbortError' || uploadSignal.aborted) return;
       console.error('Upload failed', err);
       setErrorMsg(err.message?.includes('Server returned') ? err.message : `Cannot connect to backend server (${API_BASE_URL || 'localhost:8000'}).`);
     } finally {
-      setLoading(false);
-      setLoadingStatus('');
+      if (!uploadSignal.aborted) {
+        setLoading(false);
+        setLoadingStatus('');
+      }
     }
   }, [file, ctuX, ctuY, cuSize, data, currentModeIdx, pollJobCompletion, fetchCheckpoints, allCtus, profile, frames]);
 
@@ -567,6 +614,12 @@ export function useAnalysisSession() {
   }, [currentMode]);
 
   const handleResetImage = useCallback(() => {
+    pollingAbortRef.current?.abort();
+    uploadAbortRef.current?.abort();
+    checkpointAbortRef.current?.abort();
+    ctuAbortRef.current?.abort();
+    cuAbortRef.current?.abort();
+    selectBlockAbortRef.current?.abort();
     setData(null);
     setIsPlaying(false);
     setPartitionData(null);

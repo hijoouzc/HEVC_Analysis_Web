@@ -1,10 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import { Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableCell, Progress } from '../../apple';
+import { Card, Badge, SegmentedControl } from '../../apple';
+import SyntaxBreakdownTable from './subcomponents/SyntaxBreakdownTable';
+import BacIntervalStudio from './subcomponents/BacIntervalStudio';
+import BinarizationTreeViewer from './subcomponents/BinarizationTreeViewer';
 
 /**
  * CabacEntropyVisualizer (CP_07_CABAC_ENTROPY)
- * Specializes in Bitstream Syntax Elements, Context Modeling (ctxIdx),
- * Finite State Machine probability transition (pStateIdx, valMPS), and Bitrate Allocation Breakdown.
+ * Comprehensive CABAC Entropy Studio for HEVC ITU-T H.265.
+ * Features:
+ *  - 1) BAC Interval Studio: Dynamic range [L, L+R), 64-state FSM tracker, and Renorm bit emission
+ *  - 2) Intra Binarization Trees: Decision path explorer for FL, TR, and TB syntax elements
+ *  - 3) Syntax Stream & Bitrate: Filterable bin log table and syntax element bitrate allocation
+ * 
  * Design standard: Apple Pro-Grade, 100% English, no emoji icons, zero overflow.
  */
 function CabacEntropyVisualizer({
@@ -12,7 +19,8 @@ function CabacEntropyVisualizer({
   _ctuX,
   _ctuY,
 }) {
-  const [filterSyntax, setFilterSyntax] = useState('ALL');
+  const [activeTab, setActiveTab] = useState('studio'); // 'studio' | 'binarization' | 'breakdown'
+  const [externalBinFeed, setExternalBinFeed] = useState(null);
 
   const bins = useMemo(() => cabacEntropyData?.bins || [], [cabacEntropyData?.bins]);
   const totalBins = cabacEntropyData?.total_bins || bins.length;
@@ -20,37 +28,51 @@ function CabacEntropyVisualizer({
     return cabacEntropyData?.total_bits || bins.reduce((sum, b) => sum + (b.bits || 1), 0);
   }, [cabacEntropyData?.total_bits, bins]);
   const breakdown = useMemo(() => cabacEntropyData?.syntax_breakdown || {}, [cabacEntropyData?.syntax_breakdown]);
-
-  const filteredBins = useMemo(() => {
-    return filterSyntax === 'ALL'
-      ? bins
-      : bins.filter((b) => b.syntax_element === filterSyntax);
-  }, [bins, filterSyntax]);
-
   const syntaxElements = useMemo(() => Object.keys(breakdown), [breakdown]);
+
+  const handleSendToBacStudio = (feedData) => {
+    setExternalBinFeed(feedData);
+    setActiveTab('studio');
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
-      {/* Scope Clarification Banner */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '5px 12px',
-        background: 'var(--fill-2)',
-        borderRadius: '6px',
-        border: '0.5px solid var(--separator)',
-        fontSize: '11px',
-        fontFamily: 'var(--font-mono)',
-        boxSizing: 'border-box'
-      }}>
+      {/* Scope Clarification & Navigation Bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '8px',
+          padding: '6px 12px',
+          background: 'var(--fill-2)',
+          borderRadius: '8px',
+          border: '0.5px solid var(--separator)',
+          fontSize: '11px',
+          fontFamily: 'var(--font-mono)',
+          boxSizing: 'border-box',
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>SCOPE:</span>
           <Badge variant="blue">CTU-Level Final Syntax Stream</Badge>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>
-            HM TEncSbac writes decided CU syntax &bull; Candidate rates during search are estimated inside CP_01/CP_02
+            HM TEncSbac writes decided CU syntax &bull; ITU-T H.265 §9.3 Arithmetic Engine
           </span>
         </div>
+
+        {/* Tab Switcher */}
+        <SegmentedControl
+          value={activeTab}
+          onChange={setActiveTab}
+          size="small"
+          items={[
+            { id: 'studio', label: 'BAC Interval Studio' },
+            { id: 'binarization', label: 'Intra Binarization Trees' },
+            { id: 'breakdown', label: 'Syntax Stream & Bitrate' },
+          ]}
+        />
       </div>
 
       {/* Top Telemetry Header */}
@@ -114,118 +136,27 @@ function CabacEntropyVisualizer({
         </Card>
       </div>
 
-      {/* Main Content Area */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '12px', width: '100%' }}>
-        {/* Left Column: Bins Stream Table */}
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <div
-            style={{
-              padding: '10px 14px',
-              borderBottom: '0.5px solid var(--separator)',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span style={{ fontSize: '13px', fontWeight: 600 }}>Syntax Element Bin Transitions</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                Filter:
-              </span>
-              <select
-                value={filterSyntax}
-                onChange={(e) => setFilterSyntax(e.target.value)}
-                style={{
-                  fontSize: '11px',
-                  fontFamily: 'var(--font-mono)',
-                  background: 'var(--fill-3)',
-                  border: '0.5px solid var(--separator)',
-                  borderRadius: '4px',
-                  padding: '2px 6px',
-                  color: 'var(--apple-label-primary)',
-                }}
-              >
-                <option value="ALL">All ({bins.length})</option>
-                {syntaxElements.map((s) => (
-                  <option key={`opt-${s}`} value={s}>
-                    {s} ({breakdown[s]} bits)
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+      {/* Main Active Tab Content */}
+      {activeTab === 'studio' && (
+        <BacIntervalStudio
+          traceBins={bins}
+          externalBinFeed={externalBinFeed}
+        />
+      )}
 
-          <div style={{ overflowX: 'auto', maxHeight: '420px' }}>
-            <Table striped>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Syntax Element</TableHead>
-                  <TableHead>Bin</TableHead>
-                  <TableHead>ctxIdx</TableHead>
-                  <TableHead>pStateIdx (0..62)</TableHead>
-                  <TableHead>valMPS</TableHead>
-                  <TableHead align="right">Bits</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredBins.map((b, idx) => (
-                  <TableRow key={`bin-row-${idx}`}>
-                    <TableCell style={{ fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
-                      {idx + 1}
-                    </TableCell>
-                    <TableCell style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--apple-blue)' }}>
-                      {b.syntax_element}
-                    </TableCell>
-                    <TableCell style={{ fontFamily: 'var(--font-mono)' }}>
-                      <Badge variant={b.bin === 1 ? 'blue' : 'gray'}>
-                        {b.bin}
-                      </Badge>
-                    </TableCell>
-                    <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{b.ctx_idx}</TableCell>
-                    <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{b.p_state_idx}</TableCell>
-                    <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{b.val_mps}</TableCell>
-                    <TableCell align="right" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                      {b.bits}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+      {activeTab === 'binarization' && (
+        <BinarizationTreeViewer
+          onSendToBacStudio={handleSendToBacStudio}
+        />
+      )}
 
-        {/* Right Column: Bitrate Allocation Breakdown */}
-        <Card style={{ padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, borderBottom: '0.5px solid var(--separator)', paddingBottom: '8px' }}>
-            Bitrate Allocation Breakdown
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', overflowY: 'auto', maxHeight: '400px' }}>
-            {syntaxElements.map((elem) => {
-              const bits = breakdown[elem];
-              const pct = totalBits > 0 ? (bits / totalBits) * 100 : 0;
-              return (
-                <div key={`breakdown-${elem}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ fontWeight: 600, color: 'var(--apple-label-primary)' }}>{elem}</span>
-                    <span style={{ color: 'var(--apple-label-secondary)' }}>
-                      {bits} bits ({pct.toFixed(1)}%)
-                    </span>
-                  </div>
-                  <Progress value={pct} max={100} style={{ height: '4px' }} />
-                </div>
-              );
-            })}
-
-            {syntaxElements.length === 0 && (
-              <div style={{ fontSize: '12px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)', textAlign: 'center', padding: '16px' }}>
-                No syntax element breakdown available.
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
+      {activeTab === 'breakdown' && (
+        <SyntaxBreakdownTable
+          bins={bins}
+          breakdown={breakdown}
+          totalBits={totalBits}
+        />
+      )}
     </div>
   );
 }
