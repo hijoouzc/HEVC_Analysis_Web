@@ -665,14 +665,14 @@ export function useAnalysisSession() {
     const cachedAnalysis = ctuAnalysisCache[cacheKey];
 
     if (cachedAnalysis) {
-      if (cachedAnalysis.data) setData(cachedAnalysis.data);
+      if (Array.isArray(cachedAnalysis.data) && cachedAnalysis.data.length > 0) setData(cachedAnalysis.data);
       if (cachedAnalysis.refSamples) setRefSamples(cachedAnalysis.refSamples);
-      if (cachedAnalysis.transform) setTransformData(cachedAnalysis.transform);
-      if (cachedAnalysis.quant) setQuantData(cachedAnalysis.quant);
-      if (cachedAnalysis.rdoDecs) setRdoDecisions(cachedAnalysis.rdoDecs);
+      if (Array.isArray(cachedAnalysis.transform)) setTransformData(cachedAnalysis.transform);
+      if (Array.isArray(cachedAnalysis.quant)) setQuantData(cachedAnalysis.quant);
+      if (Array.isArray(cachedAnalysis.rdoDecs)) setRdoDecisions(cachedAnalysis.rdoDecs);
 
       const targetMode = cu.intra_dir;
-      if (targetMode !== null && targetMode !== undefined && Array.isArray(cachedAnalysis.data)) {
+      if (targetMode !== null && targetMode !== undefined && Array.isArray(cachedAnalysis.data) && cachedAnalysis.data.length > 0) {
         const mIdx = cachedAnalysis.data.findIndex(m => m.mode === targetMode);
         if (mIdx !== -1) setCurrentModeIdx(mIdx);
       }
@@ -745,21 +745,22 @@ export function useAnalysisSession() {
         }
         if (refData) setRefSamples(refData);
 
-        setCtuAnalysisCache(prev => updateLruCache(prev, cacheKey, {
-          data: modesData,
+        const cachePayload = {
+          data: (Array.isArray(modesData) && modesData.length > 0) ? modesData : (data || []),
           refSamples: refData,
           transform,
           quant,
           rdoDecs,
           jobId
-        }));
+        };
+        setCtuAnalysisCache(prev => updateLruCache(prev, cacheKey, cachePayload));
       } catch (err) {
         if (err.name !== 'AbortError') {
           console.warn('Failed to switch block position checkpoints:', err);
         }
       }
     }
-  }, [ctuX, ctuY, cuSize, ctuAnalysisCache, jobId]);
+  }, [ctuX, ctuY, cuSize, ctuAnalysisCache, jobId, data]);
 
   const handleSelectCTU = useCallback((x, y) => {
     setCtuX(x);
@@ -797,7 +798,9 @@ export function useAnalysisSession() {
     // Instant restoration from analysis cache if this CTU was previously analyzed
     const cachedAnalysis = ctuAnalysisCache[`${x}_${y}_${cuSize}`];
     if (cachedAnalysis) {
-      setData(cachedAnalysis.data);
+      if (Array.isArray(cachedAnalysis.data) && cachedAnalysis.data.length > 0) {
+        setData(cachedAnalysis.data);
+      }
       if (cachedAnalysis.refSamples) setRefSamples(cachedAnalysis.refSamples);
       if (cachedAnalysis.jobId) setJobId(cachedAnalysis.jobId);
       setAnalyzedCtu({ x, y });

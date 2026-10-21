@@ -126,7 +126,10 @@ console.log('\nTest Suite 4: Cross-Step Synchronization & Source Code Integrity'
 
   // 7. QuadTreeVisualizer.jsx
   const quadSrc = readFileSync(resolve(__dirname, '../../src/components/stages/cp01_partition/QuadTreeVisualizer.jsx'), 'utf8');
-  assert(quadSrc.includes('setSelectedNode(undefined)'), 'QuadTreeVisualizer resets selectedNode when selectedCU prop changes');
+  assert(
+    quadSrc.includes('selectedCU !== undefined ? selectedCU') || quadSrc.includes('activeSelectedNode'),
+    'QuadTreeVisualizer syncs selectedCU prop cleanly without render loop'
+  );
 }
 
 console.log(`\n=== CROSS-STEP COORDINATE SYNC TEST SUMMARY: ${totalPassed} PASSED, ${totalFailed} FAILED ===\n`);

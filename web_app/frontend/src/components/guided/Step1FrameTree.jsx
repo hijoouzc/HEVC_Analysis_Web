@@ -11,20 +11,23 @@ import { resolveCuCoordinates } from '../../utils/cuCoordinates.js';
 function CuSampleCanvas({ samples, width, height }) {
   const canvasRef = useRef(null);
 
+  const safeW = Math.max(1, Number(width) || 8);
+  const safeH = Math.max(1, Number(height) || 8);
+
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = safeW;
+    canvas.height = safeH;
     ctx.imageSmoothingEnabled = false;
 
-    const imgData = ctx.createImageData(width, height);
+    const imgData = ctx.createImageData(safeW, safeH);
     const data = imgData.data;
-    const total = width * height;
-    const hasSamples = samples && samples.length > 0;
+    const total = safeW * safeH;
+    const hasSamples = Array.isArray(samples) && samples.length > 0;
     const srcLen = hasSamples ? samples.length : 0;
 
     for (let i = 0; i < total; i++) {
@@ -44,9 +47,9 @@ function CuSampleCanvas({ samples, width, height }) {
       data[offset + 3] = 255;
     }
     ctx.putImageData(imgData, 0, 0);
-  }, [samples, width, height]);
+  }, [samples, safeW, safeH]);
 
-  const displaySize = Math.min(180, Math.max(100, Math.round(width * 2.5)));
+  const displaySize = Math.min(180, Math.max(100, Math.round(safeW * 2.5)));
 
   return (
     <div
@@ -103,12 +106,15 @@ export function Step1FrameTree({
   const [subView, setSubView] = useState('frame'); // 'frame' | 'quadtree'
 
   const handleCuNavigation = useCallback((node) => {
-    if (!node) return;
+    if (!node) {
+      if (onSelectCU) onSelectCU(null);
+      return;
+    }
     if (onSelectCU) onSelectCU(node);
     const targetSize = node.width || 8;
     if (setCuSize) setCuSize(targetSize);
     const targetMode = node.intra_dir !== null && node.intra_dir !== undefined ? node.intra_dir : null;
-    if (targetMode !== null && data) {
+    if (targetMode !== null && Array.isArray(data)) {
       const targetIdx = data.findIndex((d) => d.mode === targetMode);
       if (targetIdx !== -1 && setCurrentModeIdx) setCurrentModeIdx(targetIdx);
     }
@@ -519,7 +525,7 @@ export function Step1FrameTree({
                 </div>
               </div>
 
-              {rawOrgSamples && rawOrgSamples.length > 0 ? (
+              {Array.isArray(rawOrgSamples) && rawOrgSamples.length > 0 ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
                   {(selectedCu.width || 8) <= 8 ? (
                     <div

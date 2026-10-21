@@ -3,6 +3,7 @@ import SetupScreen from './components/app/SetupScreen';
 import ActiveStageViewport from './components/app/ActiveStageViewport';
 import AnalysisInspector from './components/app/AnalysisInspector';
 import RdoQuadtreeSimulator from './components/stages/rdo_simulator/RdoQuadtreeSimulator';
+import ErrorBoundary from './components/common/ErrorBoundary';
 import { useAnalysisSession } from './hooks/useAnalysisSession';
 import { getStepByNum } from './components/guided';
 import {
@@ -274,139 +275,141 @@ function App() {
       />
 
       <WindowContent style={{ padding: '16px 20px', width: '100%', boxSizing: 'border-box' }}>
-        {errorMsg && (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '8px 14px',
-              backgroundColor: 'var(--fill-4)',
-              border: '0.5px solid var(--separator)',
-              borderRadius: '6px',
-              color: 'var(--apple-label)',
-              fontSize: '12px',
-              fontFamily: 'var(--font-mono)',
-              marginBottom: '14px',
-            }}
-          >
-            <span>{errorMsg}</span>
-            <Button variant="plain" size="mini" onClick={() => setErrorMsg(null)} title="Close">
-              Close
-            </Button>
-          </div>
-        )}
+        <ErrorBoundary title="Analysis Workspace Error" onReset={handleResetImage}>
+          {errorMsg && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '8px 14px',
+                backgroundColor: 'var(--fill-4)',
+                border: '0.5px solid var(--separator)',
+                borderRadius: '6px',
+                color: 'var(--apple-label)',
+                fontSize: '12px',
+                fontFamily: 'var(--font-mono)',
+                marginBottom: '14px',
+              }}
+            >
+              <span>{errorMsg}</span>
+              <Button variant="plain" size="mini" onClick={() => setErrorMsg(null)} title="Close">
+                Close
+              </Button>
+            </div>
+          )}
 
-        {/* SCREEN 1: UPLOAD & SETUP */}
-        {!data && !isStandaloneSim && (
-          <SetupScreen
-            file={file}
-            rawImageDims={rawImageDims}
-            imageDims={imageDims}
-            ctuX={ctuX}
-            ctuY={ctuY}
-            loading={loading}
-            imagePreview={imagePreview}
-            partitionData={partitionData}
-            ctuPartitionsMap={ctuPartitionsMap}
-            allCtus={allCtus}
-            setAllCtus={setAllCtus}
-            profile={profile}
-            setProfile={setProfile}
-            frames={frames}
-            setFrames={setFrames}
-            onFileChange={handleFileChange}
-            onSelectCTU={handleSelectCTU}
-            onReAnalyze={(targetX, targetY) => {
-              handleUpload(null, targetX, targetY);
-            }}
-            onUpload={handleUpload}
-            onOpenSimulator={() => setIsStandaloneSim(true)}
-          />
-        )}
-
-        {/* SCREEN 1B: STANDALONE RDO SIMULATOR */}
-        {!data && isStandaloneSim && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <RdoQuadtreeSimulator
-              imageSrc={imagePreview}
+          {/* SCREEN 1: UPLOAD & SETUP */}
+          {(!data || data.length === 0) && !isStandaloneSim && (
+            <SetupScreen
+              file={file}
+              rawImageDims={rawImageDims}
               imageDims={imageDims}
               ctuX={ctuX}
               ctuY={ctuY}
-              partitionData={partitionData}
-              onNavigateToStage={() => setIsStandaloneSim(false)}
-            />
-          </div>
-        )}
-
-        {/* SCREEN 2: ACTIVE WORKSPACE (Stage Viewport Canvas + Right Inspector) */}
-        {data && data.length > 0 && currentMode && (
-          <div className="workspace-layout">
-            <ActiveStageViewport
-              hasDesync={hasDesync}
-              analyzedCtu={analyzedCtu}
-              ctuX={ctuX}
-              ctuY={ctuY}
-              cuSize={cuSize}
-              currentMode={currentMode}
-              currentModeIdx={currentModeIdx}
-              setCurrentModeIdx={setCurrentModeIdx}
-              isPlaying={isPlaying}
-              setIsPlaying={setIsPlaying}
-              imagePreview={imagePreview}
-              imageDims={imageDims}
-              partitionData={partitionData}
-              setPartitionData={setPartitionData}
-              ctuPartitionsMap={ctuPartitionsMap}
-              selectedCu={selectedCu}
-              handleSelectCTU={handleSelectCTU}
-              handleSelectCU={handleSelectCU}
-              handleUpload={handleUpload}
               loading={loading}
-              data={data}
-              refSamples={refSamples}
-              transformData={transformData}
-              quantData={quantData}
-              frameGopData={frameGopData}
-              interSearchData={interSearchData}
-              reconPictureData={reconPictureData}
-              inloopFilterData={inloopFilterData}
-              cabacEntropyData={cabacEntropyData}
-              rdoDecisions={rdoDecisions}
-              jobId={jobId}
-              API_BASE_URL={API_BASE_URL}
-              showInspector={showInspector}
-              setShowInspector={setShowInspector}
-              handleSelectSize={handleSelectSize}
-              handleSelectBlock={handleSelectBlock}
-              setCuSize={setCuSize}
-              setSelectedCu={setSelectedCu}
-              guidedStep={guidedStep}
-              setGuidedStep={setGuidedStep}
+              imagePreview={imagePreview}
+              partitionData={partitionData}
+              ctuPartitionsMap={ctuPartitionsMap}
+              allCtus={allCtus}
+              setAllCtus={setAllCtus}
+              profile={profile}
+              setProfile={setProfile}
+              frames={frames}
+              setFrames={setFrames}
+              onFileChange={handleFileChange}
+              onSelectCTU={handleSelectCTU}
+              onReAnalyze={(targetX, targetY) => {
+                handleUpload(null, targetX, targetY);
+              }}
+              onUpload={handleUpload}
+              onOpenSimulator={() => setIsStandaloneSim(true)}
             />
+          )}
 
-            {/* Right Column: Unified Apple Info Inspector */}
-            {showInspector && (
-              <AnalysisInspector
-                file={file}
+          {/* SCREEN 1B: STANDALONE RDO SIMULATOR */}
+          {(!data || data.length === 0) && isStandaloneSim && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <RdoQuadtreeSimulator
+                imageSrc={imagePreview}
                 imageDims={imageDims}
                 ctuX={ctuX}
                 ctuY={ctuY}
-                analyzedCtu={analyzedCtu}
-                selectedCu={selectedCu}
-                analyzedCuSize={analyzedCuSize}
-                currentMode={currentMode}
                 partitionData={partitionData}
-                ctuPartitionsMap={ctuPartitionsMap}
-                onClose={() => setShowInspector(false)}
-                onReAnalyze={(targetX, targetY) => {
-                  handleUpload(null, targetX, targetY);
-                }}
-                loading={loading}
+                onNavigateToStage={() => setIsStandaloneSim(false)}
               />
-            )}
-          </div>
-        )}
+            </div>
+          )}
+
+          {/* SCREEN 2: ACTIVE WORKSPACE (Stage Viewport Canvas + Right Inspector) */}
+          {data && data.length > 0 && currentMode && (
+            <div className="workspace-layout">
+              <ActiveStageViewport
+                hasDesync={hasDesync}
+                analyzedCtu={analyzedCtu}
+                ctuX={ctuX}
+                ctuY={ctuY}
+                cuSize={cuSize}
+                currentMode={currentMode}
+                currentModeIdx={currentModeIdx}
+                setCurrentModeIdx={setCurrentModeIdx}
+                isPlaying={isPlaying}
+                setIsPlaying={setIsPlaying}
+                imagePreview={imagePreview}
+                imageDims={imageDims}
+                partitionData={partitionData}
+                setPartitionData={setPartitionData}
+                ctuPartitionsMap={ctuPartitionsMap}
+                selectedCu={selectedCu}
+                handleSelectCTU={handleSelectCTU}
+                handleSelectCU={handleSelectCU}
+                handleUpload={handleUpload}
+                loading={loading}
+                data={data}
+                refSamples={refSamples}
+                transformData={transformData}
+                quantData={quantData}
+                frameGopData={frameGopData}
+                interSearchData={interSearchData}
+                reconPictureData={reconPictureData}
+                inloopFilterData={inloopFilterData}
+                cabacEntropyData={cabacEntropyData}
+                rdoDecisions={rdoDecisions}
+                jobId={jobId}
+                API_BASE_URL={API_BASE_URL}
+                showInspector={showInspector}
+                setShowInspector={setShowInspector}
+                handleSelectSize={handleSelectSize}
+                handleSelectBlock={handleSelectBlock}
+                setCuSize={setCuSize}
+                setSelectedCu={setSelectedCu}
+                guidedStep={guidedStep}
+                setGuidedStep={setGuidedStep}
+              />
+
+              {/* Right Column: Unified Apple Info Inspector */}
+              {showInspector && (
+                <AnalysisInspector
+                  file={file}
+                  imageDims={imageDims}
+                  ctuX={ctuX}
+                  ctuY={ctuY}
+                  analyzedCtu={analyzedCtu}
+                  selectedCu={selectedCu}
+                  analyzedCuSize={analyzedCuSize}
+                  currentMode={currentMode}
+                  partitionData={partitionData}
+                  ctuPartitionsMap={ctuPartitionsMap}
+                  onClose={() => setShowInspector(false)}
+                  onReAnalyze={(targetX, targetY) => {
+                    handleUpload(null, targetX, targetY);
+                  }}
+                  loading={loading}
+                />
+              )}
+            </div>
+          )}
+        </ErrorBoundary>
       </WindowContent>
 
       {/* Pro Apple Window Status Bar */}

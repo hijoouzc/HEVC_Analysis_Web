@@ -90,7 +90,7 @@ const AngularCompass = ({ currentMode = 0, onSelectMode }) => {
                 if (onSelectMode) onSelectMode(m);
               }}
             >
-              <title>Mode {m}</title>
+              <title>{`Mode ${m}`}</title>
             </line>
           );
         })}

@@ -259,29 +259,49 @@ export function useHmTracePlayback({
   // Safeguard against out-of-bounds indices when activeLeafNodes shrinks
   const safeCuIdx = Math.min(activeCuIdx, Math.max(0, activeLeafNodes.length - 1));
 
-  // Synchronize inspected node and notify external callback once per discrete committed selection using composite key
-  const lastNotifiedKeyRef = useRef(null);
+  const onSelectCuRef = useRef(onSelectCU);
+  useEffect(() => {
+    onSelectCuRef.current = onSelectCU;
+  }, [onSelectCU]);
+
+  // Synchronize inspected node when PLAYHEAD or micro-step activeCuIdx changes
+  const lastPlaybackKeyRef = useRef(null);
+  const currentCtuKey = currentCtu?.key || `${currentCtu?.ctuX ?? 0}_${currentCtu?.ctuY ?? 0}`;
   useEffect(() => {
     if (activeLeafNodes.length === 0) return;
     const targetNode = activeLeafNodes[safeCuIdx];
     if (!targetNode) return;
 
-    const nodeKey = `${currentCtu?.ctuX ?? 0}_${currentCtu?.ctuY ?? 0}_${targetNode.x}_${targetNode.y}_${targetNode.width}x${targetNode.height}`;
-    if (nodeKey !== lastNotifiedKeyRef.current) {
-      lastNotifiedKeyRef.current = nodeKey;
+    const stepKey = `${currentCtuKey}_${safeCuIdx}`;
+    if (stepKey !== lastPlaybackKeyRef.current) {
+      lastPlaybackKeyRef.current = stepKey;
       setInspectedCu(targetNode);
-      if (onSelectCU) onSelectCU(targetNode);
+      if (onSelectCuRef.current) {
+        onSelectCuRef.current(targetNode);
+      }
     }
-  }, [safeCuIdx, activeLeafNodes, currentCtu, onSelectCU]);
+  }, [safeCuIdx, currentCtuKey, activeLeafNodes]);
 
   // Dedicated inspection handler: strictly NEVER alters playhead
   const handleSelectInspectedCu = useCallback((cu) => {
-    if (!cu) return;
-    const nodeKey = `${currentCtu?.ctuX ?? 0}_${currentCtu?.ctuY ?? 0}_${cu.x}_${cu.y}_${cu.width}x${cu.height}`;
-    lastNotifiedKeyRef.current = nodeKey;
+    if (!cu) {
+      setInspectedCu(null);
+      if (onSelectCuRef.current) onSelectCuRef.current(null);
+      return;
+    }
     setInspectedCu(cu);
-    if (onSelectCU) onSelectCU(cu);
-  }, [currentCtu, onSelectCU]);
+    // If clicked CU is in activeLeafNodes, keep safeCuIdx in sync without triggering a duplicate effect
+    const leafIdx = activeLeafNodes.findIndex(
+      (n) => n.x === cu.x && n.y === cu.y && (n.width === cu.width || n.size === cu.width)
+    );
+    if (leafIdx !== -1) {
+      lastPlaybackKeyRef.current = `${currentCtu?.key || `${currentCtu?.ctuX}_${currentCtu?.ctuY}`}_${leafIdx}`;
+      setActiveCuIdx(leafIdx);
+    }
+    if (onSelectCuRef.current) {
+      onSelectCuRef.current(cu);
+    }
+  }, [currentCtu, activeLeafNodes]);
 
   const isCompleted = playheadCtuIdx >= totalCtus;
   const isTargetCtuActive = Boolean(

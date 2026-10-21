@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { getIntraModeInfo, HEVC_DEPTH_COLORS, HEVC_MODE_COLORS } from '../../../utils/colorUtils';
 import HmSourceCodeModal from '../../common/HmSourceCodeModal';
 import DrawioExportModal from '../../common/DrawioExportModal';
@@ -21,20 +21,87 @@ function QuadTreeVisualizer({
   onBackToFrame = null,
   onNavigateToSim = null
 }) {
-  const [selectedNode, setSelectedNode] = useState(undefined); // undefined: initial load, null: explicitly deselected
-  const [prevSelectedCu, setPrevSelectedCu] = useState(selectedCU);
-  const [prevCtuKey, setPrevCtuKey] = useState(`${ctuX}_${ctuY}`);
-
-  if (selectedCU !== prevSelectedCu || `${ctuX}_${ctuY}` !== prevCtuKey) {
-    setPrevSelectedCu(selectedCU);
-    setPrevCtuKey(`${ctuX}_${ctuY}`);
-    setSelectedNode(undefined);
-  }
+  const [internalNode, setInternalNode] = useState(undefined);
+  const targetNode = selectedCU !== undefined ? selectedCU : internalNode;
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (default: clean transparent, no mode overlay), 'mode', 'depth'
   const [textureMode, setTextureMode] = useState('color'); // 'color', 'grayscale', 'off'
   const [viewLayout, setViewLayout] = useState('dual'); // 'dual' (side-by-side), '2d' (spatial grid only), 'tree' (quadtree graph only)
   const [showHmModal, setShowHmModal] = useState(false);
   const [showDrawioModal, setShowDrawioModal] = useState(false);
+
+  const nodes = useMemo(() => partitionData?.nodes || [], [partitionData?.nodes]);
+  const targetCtuX = partitionData?.ctu_x !== undefined ? partitionData.ctu_x : ctuX;
+  const targetCtuY = partitionData?.ctu_y !== undefined ? partitionData.ctu_y : ctuY;
+  const ctuPixelX = (targetCtuX || 0) * 64;
+  const ctuPixelY = (targetCtuY || 0) * 64;
+
+  const leafNodes = useMemo(() => nodes.filter(n => !n.split), [nodes]);
+  const splitNodes = useMemo(() => nodes.filter(n => n.split), [nodes]);
+
+  // Depth color palettes matching H.265 quadtree hierarchy
+  const depthColors = HEVC_DEPTH_COLORS;
+
+  // Prediction Mode color palettes (H.265 standard)
+  const modeColors = HEVC_MODE_COLORS;
+
+  // Safe relative coordinate helper eliminating NaN and coordinate misalignment
+  const getSafeRelCoord = useCallback((val, basePixel) => {
+    if (typeof val !== 'number' || isNaN(val)) return 0;
+    if (val >= basePixel && val < basePixel + 64) {
+      return val - basePixel;
+    }
+    if (val < 64) {
+      return val;
+    }
+    return val % 64;
+  }, []);
+
+  const activeNode = useMemo(() => {
+    if (nodes.length === 0) return null;
+    if (targetNode === null) return null; // Explicitly deselected
+    if (targetNode) {
+      const found = nodes.find(n =>
+        n.x === targetNode.x &&
+        n.y === targetNode.y &&
+        (n.width === targetNode.width || n.width === targetNode.size) &&
+        (targetNode.depth === undefined || n.depth === targetNode.depth)
+      );
+      if (found) return found;
+
+      const foundRel = nodes.find(n => {
+        const nrX = getSafeRelCoord(n.x, ctuPixelX);
+        const nrY = getSafeRelCoord(n.y, ctuPixelY);
+        const srX = getSafeRelCoord(targetNode.x ?? targetNode.abs_x ?? targetNode.rel_x, ctuPixelX);
+        const srY = getSafeRelCoord(targetNode.y ?? targetNode.abs_y ?? targetNode.rel_y, ctuPixelY);
+        const targetW = targetNode.width || targetNode.size;
+        return nrX === srX && nrY === srY && (n.width === targetW || n.size === targetW) &&
+          (targetNode.depth === undefined || n.depth === targetNode.depth);
+      });
+      if (foundRel) return foundRel;
+    }
+    return leafNodes.find(n => n.width === 8) || leafNodes[0] || nodes[0] || null;
+  }, [targetNode, nodes, leafNodes, ctuPixelX, ctuPixelY, getSafeRelCoord]);
+
+  // Click handler: click once to select, click again to deselect
+  const handleCuClick = useCallback((node) => {
+    if (!node) {
+      setInternalNode(null);
+      if (onSelectCU) onSelectCU(null);
+      return;
+    }
+    const isCurrentlyActive = activeNode &&
+      ((activeNode.x === node.x && activeNode.y === node.y) ||
+       (getSafeRelCoord(activeNode.x, ctuPixelX) === getSafeRelCoord(node.x, ctuPixelX) &&
+        getSafeRelCoord(activeNode.y, ctuPixelY) === getSafeRelCoord(node.y, ctuPixelY))) &&
+      (activeNode.width === node.width || activeNode.width === node.size) &&
+      (node.depth === undefined || activeNode.depth === node.depth);
+
+    const nextSelection = isCurrentlyActive ? null : node;
+    setInternalNode(nextSelection);
+    if (onSelectCU) {
+      onSelectCU(nextSelection);
+    }
+  }, [activeNode, ctuPixelX, ctuPixelY, onSelectCU, getSafeRelCoord]);
 
   if (!partitionData || !partitionData.nodes || partitionData.nodes.length === 0) {
     return (
@@ -67,91 +134,7 @@ function QuadTreeVisualizer({
     );
   }
 
-  const { nodes, leaf_nodes, max_depth } = partitionData;
-
-  // Base CTU offset in pixels safely determined from partitionData or props
-  const targetCtuX = partitionData.ctu_x !== undefined ? partitionData.ctu_x : ctuX;
-  const targetCtuY = partitionData.ctu_y !== undefined ? partitionData.ctu_y : ctuY;
-  const ctuPixelX = targetCtuX * 64;
-  const ctuPixelY = targetCtuY * 64;
-
-  const leafNodes = nodes.filter(n => !n.split);
-  const splitNodes = nodes.filter(n => n.split);
-
-  // Depth color palettes matching H.265 quadtree hierarchy
-  const depthColors = HEVC_DEPTH_COLORS;
-
-  // Prediction Mode color palettes (H.265 standard)
-  const modeColors = HEVC_MODE_COLORS;
-
-  // Safe relative coordinate helper eliminating NaN and coordinate misalignment
-  const getSafeRelCoord = (val, basePixel) => {
-    if (typeof val !== 'number' || isNaN(val)) return 0;
-    if (val >= basePixel && val < basePixel + 64) {
-      return val - basePixel;
-    }
-    if (val < 64) {
-      return val;
-    }
-    return val % 64;
-  };
-
-  const activeNode = (() => {
-    if (selectedNode !== undefined) {
-      if (selectedNode === null) return null; // Explicitly deselected
-      const found = nodes.find(n =>
-        n.x === selectedNode.x &&
-        n.y === selectedNode.y &&
-        (n.width === selectedNode.width || n.width === selectedNode.size) &&
-        (selectedNode.depth === undefined || n.depth === selectedNode.depth)
-      );
-      if (found) return found;
-      const foundRel = nodes.find(n => {
-        const nrX = getSafeRelCoord(n.x, ctuPixelX);
-        const nrY = getSafeRelCoord(n.y, ctuPixelY);
-        const srX = getSafeRelCoord(selectedNode.x, ctuPixelX);
-        const srY = getSafeRelCoord(selectedNode.y, ctuPixelY);
-        return nrX === srX && nrY === srY && (n.width === selectedNode.width || n.width === selectedNode.size) &&
-          (selectedNode.depth === undefined || n.depth === selectedNode.depth);
-      });
-      return foundRel || null;
-    }
-    if (selectedCU) {
-      const found = nodes.find(n =>
-        n.x === selectedCU.x &&
-        n.y === selectedCU.y &&
-        (n.width === selectedCU.width || n.width === selectedCU.size) &&
-        (selectedCU.depth === undefined || n.depth === selectedCU.depth)
-      );
-      if (found) return found;
-      const foundRel = nodes.find(n => {
-        const nrX = getSafeRelCoord(n.x, ctuPixelX);
-        const nrY = getSafeRelCoord(n.y, ctuPixelY);
-        const srX = getSafeRelCoord(selectedCU.x, ctuPixelX);
-        const srY = getSafeRelCoord(selectedCU.y, ctuPixelY);
-        return nrX === srX && nrY === srY && (n.width === selectedCU.width || n.width === selectedCU.size) &&
-          (selectedCU.depth === undefined || n.depth === selectedCU.depth);
-      });
-      if (foundRel) return foundRel;
-    }
-    return leafNodes.find(n => n.width === 8) || leafNodes[0] || nodes[0] || null;
-  })();
-
-  // Click handler: click once to select, click again to deselect
-  const handleCuClick = (node) => {
-    const isCurrentlyActive = activeNode &&
-      activeNode.x === node.x &&
-      activeNode.y === node.y &&
-      (activeNode.width === node.width || activeNode.width === node.size) &&
-      (node.depth === undefined || activeNode.depth === node.depth);
-    if (isCurrentlyActive) {
-      setSelectedNode(null);
-      if (onSelectCU) onSelectCU(null);
-    } else {
-      setSelectedNode(node);
-      if (onSelectCU) onSelectCU(node);
-    }
-  };
+  const { max_depth } = partitionData;
 
   const activeSafeRelX = activeNode ? getSafeRelCoord(activeNode.x, ctuPixelX) : 0;
   const activeSafeRelY = activeNode ? getSafeRelCoord(activeNode.y, ctuPixelY) : 0;
