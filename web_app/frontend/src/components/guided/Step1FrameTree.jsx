@@ -3,6 +3,7 @@ import { GopReferenceVisualizer } from '../stages/cp00_frame_gop';
 import { QuadTreeVisualizer } from '../stages/cp01_partition';
 import { Badge, SegmentedControl, Button } from '../apple';
 import { useHmTracePlayback } from '../../hooks/useHmTracePlayback';
+import { resolveCuCoordinates } from '../../utils/cuCoordinates.js';
 
 /**
  * Pixelated HTML5 Canvas preview for large CU blocks (> 8x8) to eliminate DOM overhead.
@@ -92,7 +93,7 @@ export function Step1FrameTree({
   onReAnalyze,
   loading,
   frameGopData,
-  handleSelectSize,
+  handleSelectSize: _handleSelectSize,
   setCuSize,
   setCurrentModeIdx,
   data,
@@ -106,13 +107,12 @@ export function Step1FrameTree({
     if (onSelectCU) onSelectCU(node);
     const targetSize = node.width || 8;
     if (setCuSize) setCuSize(targetSize);
-    if (handleSelectSize) handleSelectSize(targetSize);
     const targetMode = node.intra_dir !== null && node.intra_dir !== undefined ? node.intra_dir : null;
     if (targetMode !== null && data) {
       const targetIdx = data.findIndex((d) => d.mode === targetMode);
       if (targetIdx !== -1 && setCurrentModeIdx) setCurrentModeIdx(targetIdx);
     }
-  }, [onSelectCU, setCuSize, handleSelectSize, data, setCurrentModeIdx]);
+  }, [onSelectCU, setCuSize, data, setCurrentModeIdx]);
 
   // HM Trace Playback State Machine
   const playback = useHmTracePlayback({
@@ -178,13 +178,20 @@ export function Step1FrameTree({
   // Extract raw samples from trace or source frame with mathematical BT.709 Luma
   const { samples: rawOrgSamples, sourceProvenance } = useMemo(() => {
     if (!selectedCu) return { samples: null, sourceProvenance: 'none' };
-    const w = selectedCu.width || 8;
-    const h = selectedCu.height || 8;
-    const targetCount = w * h;
+    const { relX, relY, absX, absY, size: targetSize } = resolveCuCoordinates(selectedCu, ctuX, ctuY, selectedCu.width || 8);
+    const targetCount = targetSize * targetSize;
 
-    // 1. If HM trace candidate has org_data matching the EXACT block dimensions, prefer trace
+    // 1. If HM trace candidate has org_data matching the EXACT block coordinates and dimensions, prefer trace
     if (data && data.length > 0) {
-      const modeObj = data.find((m) => m.mode === (selectedCu?.intra_dir ?? 0)) || data[0];
+      const modeObj = data.find((m) => {
+        const matchesCoord = (m.pu_x === absX || m.pu_x === relX || m.cu_x === absX || m.cu_x === relX) &&
+                             (m.pu_y === absY || m.pu_y === relY || m.cu_y === absY || m.cu_y === relY);
+        return matchesCoord && (m.mode === (selectedCu?.intra_dir ?? 0));
+      }) || data.find((m) => {
+        return (m.pu_x === absX || m.pu_x === relX || m.cu_x === absX || m.cu_x === relX) &&
+               (m.pu_y === absY || m.pu_y === relY || m.cu_y === absY || m.cu_y === relY);
+      });
+
       if (modeObj?.org_data && modeObj.org_data.length === targetCount) {
         return { samples: modeObj.org_data, sourceProvenance: 'trace' };
       }
@@ -195,21 +202,15 @@ export function Step1FrameTree({
       try {
         const ctx = activeFrameCanvas.getContext('2d');
         if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
-          const ctuOriginX = (ctuX ?? 0) * 64;
-          const ctuOriginY = (ctuY ?? 0) * 64;
-          const rawX = Number(selectedCu.abs_x ?? selectedCu.x ?? 0);
-          const rawY = Number(selectedCu.abs_y ?? selectedCu.y ?? 0);
-          const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
-          const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
-          const safeX = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.width - w), absX));
-          const safeY = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.height - h), absY));
-          const safeW = Math.max(1, Math.min(w, activeFrameCanvas.width - safeX));
-          const safeH = Math.max(1, Math.min(h, activeFrameCanvas.height - safeY));
+          const safeX = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.width - targetSize), absX));
+          const safeY = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.height - targetSize), absY));
+          const safeW = Math.max(1, Math.min(targetSize, activeFrameCanvas.width - safeX));
+          const safeH = Math.max(1, Math.min(targetSize, activeFrameCanvas.height - safeY));
 
           const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
           const luma = new Array(targetCount);
-          for (let y = 0; y < h; y++) {
-            for (let x = 0; x < w; x++) {
+          for (let y = 0; y < targetSize; y++) {
+            for (let x = 0; x < targetSize; x++) {
               const srcX = Math.min(safeW - 1, x);
               const srcY = Math.min(safeH - 1, y);
               const offset = (srcY * safeW + srcX) * 4;
@@ -217,7 +218,7 @@ export function Step1FrameTree({
               const g = imgData.data[offset + 1] ?? 128;
               const b = imgData.data[offset + 2] ?? 128;
               // ITU-R BT.709 Full-Range Luma Y = 0.2126*R + 0.7152*G + 0.0722*B
-              luma[y * w + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
+              luma[y * targetSize + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
             }
           }
           return { samples: luma, sourceProvenance: 'frame' };
@@ -232,22 +233,17 @@ export function Step1FrameTree({
       const src = data[0].org_data;
       const srcDim = Math.round(Math.sqrt(src.length)) || 8;
       const resampled = new Array(targetCount);
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          const sx = Math.min(srcDim - 1, Math.floor((x / w) * srcDim));
-          const sy = Math.min(srcDim - 1, Math.floor((y / h) * srcDim));
-          resampled[y * w + x] = src[sy * srcDim + sx] ?? 128;
+      for (let y = 0; y < targetSize; y++) {
+        for (let x = 0; x < targetSize; x++) {
+          const sx = Math.min(srcDim - 1, Math.floor((x / targetSize) * srcDim));
+          const sy = Math.min(srcDim - 1, Math.floor((y / targetSize) * srcDim));
+          resampled[y * targetSize + x] = src[sy * srcDim + sx] ?? 128;
         }
       }
       return { samples: resampled, sourceProvenance: 'resampled' };
     }
 
-    // 4. Default neutral gray pattern
-    const neutral = new Array(targetCount);
-    for (let i = 0; i < targetCount; i++) {
-      neutral[i] = 128;
-    }
-    return { samples: neutral, sourceProvenance: 'fallback' };
+    return { samples: new Array(targetCount).fill(128), sourceProvenance: 'neutral' };
   }, [selectedCu, data, activeFrameCanvas, ctuX, ctuY]);
 
   return (

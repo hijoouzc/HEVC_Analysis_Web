@@ -4,6 +4,7 @@ import BlockMatrixGrid from '../../common/BlockMatrixGrid';
 import TuTreeCallStack from './TuTreeCallStack';
 import { HM_TRANSFORM_QUANT_SNIPPET } from '../../../constants/hmSourceSnippets';
 import { Button, SegmentedControl } from '../../apple';
+import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
 
 /**
  * TransformQuantVisualizer (CP_04_TRANSFORM_QUANT)
@@ -48,17 +49,27 @@ function TransformQuantVisualizer({
     setSelectedCell(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
   }, []);
 
+  const cuCoords = useMemo(() => {
+    return resolveCuCoordinates(_selectedCu, _ctuX, _ctuY, targetCuSize || 8);
+  }, [_selectedCu, _ctuX, _ctuY, targetCuSize]);
+
   // Filter events by selected component (supporting either transformData or quantData)
   const filteredEvents = useMemo(() => {
     const allEvents = (transformData && transformData.length > 0) ? transformData : (quantData || []);
     let events = allEvents.filter(e => e.component === activeComp);
 
     // If a specific CU is targeted, prioritize matching events
-    if (targetCuX != null && targetCuY != null) {
-      const cuMatched = events.filter(e => e.cu_x === targetCuX && e.cu_y === targetCuY);
-      if (cuMatched.length > 0) {
-        events = cuMatched;
-      }
+    const searchX = targetCuX != null ? targetCuX : cuCoords.absX;
+    const searchY = targetCuY != null ? targetCuY : cuCoords.absY;
+    const relSearchX = targetTuX != null ? targetTuX : cuCoords.relX;
+    const relSearchY = targetTuY != null ? targetTuY : cuCoords.relY;
+
+    const cuMatched = events.filter(e =>
+      (e.cu_x === searchX || e.cu_x === relSearchX || e.tu_x === searchX || e.tu_x === relSearchX) &&
+      (e.cu_y === searchY || e.cu_y === relSearchY || e.tu_y === searchY || e.tu_y === relSearchY)
+    );
+    if (cuMatched.length > 0) {
+      events = cuMatched;
     }
 
     // If targetCuSize is specified, filter matching events
@@ -69,12 +80,21 @@ function TransformQuantVisualizer({
       }
     }
     return events;
-  }, [transformData, quantData, activeComp, targetCuX, targetCuY, targetCuSize]);
+  }, [transformData, quantData, activeComp, targetCuX, targetCuY, targetTuX, targetTuY, cuCoords, targetCuSize]);
 
   // Sync with targetTuX and targetTuY if provided, or use user override
-  const targetIdx = (targetTuX != null && targetTuY != null && filteredEvents.length > 0)
-    ? filteredEvents.findIndex(e => e.tu_x === targetTuX && e.tu_y === targetTuY)
-    : -1;
+  const targetIdx = useMemo(() => {
+    if (filteredEvents.length === 0) return -1;
+    const searchX = targetTuX != null ? targetTuX : cuCoords.relX;
+    const searchY = targetTuY != null ? targetTuY : cuCoords.relY;
+    const absSearchX = cuCoords.absX;
+    const absSearchY = cuCoords.absY;
+
+    return filteredEvents.findIndex(e =>
+      (e.tu_x === searchX || e.tu_x === absSearchX) &&
+      (e.tu_y === searchY || e.tu_y === absSearchY)
+    );
+  }, [filteredEvents, targetTuX, targetTuY, cuCoords]);
 
   const selectedTuIdx = (userSelectedTuIdx !== null && userSelectedTuIdx < filteredEvents.length)
     ? userSelectedTuIdx

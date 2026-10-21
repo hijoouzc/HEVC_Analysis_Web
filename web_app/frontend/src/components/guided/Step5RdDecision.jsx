@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CabacEntropyVisualizer } from '../stages/cp07_cabac_entropy';
 import RdoQuadtreeSimulator from '../stages/rdo_simulator/RdoQuadtreeSimulator';
 import { Badge, SegmentedControl } from '../apple';
+import { resolveCuCoordinates } from '../../utils/cuCoordinates.js';
 
 /**
  * Step5RdDecision (Guided Flow Step 5)
@@ -22,12 +23,15 @@ export function Step5RdDecision({
 }) {
   const [subTab, setSubTab] = useState('decision'); // 'decision' | 'cabac' | 'simulator'
 
+  const { relX, relY, absX, absY, size } = resolveCuCoordinates(selectedCu, ctuX, ctuY, selectedCu?.width || 8);
+
   // Find RDO decision for selected CU
   const matchingDecisions = (rdoDecisions || []).filter((d) => {
     if (!selectedCu) return false;
-    const cuX = selectedCu.x ?? selectedCu.abs_x;
-    const cuY = selectedCu.y ?? selectedCu.abs_y;
-    return d.cu_x === cuX && d.cu_y === cuY;
+    const matchX = (d.cu_x === absX || d.cu_x === relX);
+    const matchY = (d.cu_y === absY || d.cu_y === relY);
+    const matchSize = d.cu_size === size || !d.cu_size;
+    return matchX && matchY && matchSize;
   });
 
   const activeDecision = matchingDecisions.length === 1 ? matchingDecisions[0] : (matchingDecisions[0] || null);

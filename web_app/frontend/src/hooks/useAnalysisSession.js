@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { getIntraModeInfo } from '../utils/colorUtils';
+import { resolveCuCoordinates, normalizeCuNode } from '../utils/cuCoordinates.js';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const MAX_CTU_CACHE = 16;
@@ -642,20 +643,123 @@ export function useAnalysisSession() {
     jobScopePromiseRef.current = null;
   }, []);
 
-  const handleSelectCU = useCallback((cu) => {
-    setSelectedCu(prev => {
-      if (!cu) return null;
-      if (prev && prev.x === cu.x && prev.y === cu.y && prev.width === cu.width) {
-        return null;
-      }
-      return cu;
-    });
-    if (cu && jobId) {
-      const cuPosX = cu.abs_x ?? cu.x;
-      const cuPosY = cu.abs_y ?? cu.y;
-      fetchCuCheckpoints(jobId, ctuX, ctuY, cu.width || cuSize, cuPosX, cuPosY).catch(() => {});
+  const handleSelectCU = useCallback(async (cu) => {
+    if (!cu) {
+      setSelectedCu(null);
+      return;
     }
-  }, [jobId, ctuX, ctuY, cuSize, fetchCuCheckpoints]);
+    const targetSize = cu.width || cu.size || cuSize || 8;
+    const normalizedCu = normalizeCuNode(cu, ctuX, ctuY, targetSize);
+    if (!normalizedCu) {
+      setSelectedCu(null);
+      return;
+    }
+
+    setSelectedCu(normalizedCu);
+    setCuSize(targetSize);
+    setAnalyzedCuSize(targetSize);
+
+    const targetAbsX = normalizedCu.abs_x;
+    const targetAbsY = normalizedCu.abs_y;
+    const cacheKey = `${ctuX}_${ctuY}_${targetSize}_${targetAbsX}_${targetAbsY}`;
+    const cachedAnalysis = ctuAnalysisCache[cacheKey];
+
+    if (cachedAnalysis) {
+      if (cachedAnalysis.data) setData(cachedAnalysis.data);
+      if (cachedAnalysis.refSamples) setRefSamples(cachedAnalysis.refSamples);
+      if (cachedAnalysis.transform) setTransformData(cachedAnalysis.transform);
+      if (cachedAnalysis.quant) setQuantData(cachedAnalysis.quant);
+      if (cachedAnalysis.rdoDecs) setRdoDecisions(cachedAnalysis.rdoDecs);
+
+      const targetMode = cu.intra_dir;
+      if (targetMode !== null && targetMode !== undefined && Array.isArray(cachedAnalysis.data)) {
+        const mIdx = cachedAnalysis.data.findIndex(m => m.mode === targetMode);
+        if (mIdx !== -1) setCurrentModeIdx(mIdx);
+      }
+      return;
+    }
+
+    if (jobId) {
+      if (selectBlockAbortRef.current) {
+        selectBlockAbortRef.current.abort();
+      }
+      const controller = new AbortController();
+      selectBlockAbortRef.current = controller;
+      const signal = controller.signal;
+
+      try {
+        // Queries backend with specific cu_x=${targetAbsX} and cu_y=${targetAbsY} coordinates
+        const cuQuery = buildQuery({ cu_size: targetSize, ctu_x: ctuX, ctu_y: ctuY, cu_x: targetAbsX, cu_y: targetAbsY });
+        const ctuOnlyQuery = buildQuery({ cu_size: targetSize, ctu_x: ctuX, ctu_y: ctuY });
+
+        const [modesRes, refRes, transformRes, quantRes, rdoRes] = await Promise.allSettled([
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH${cuQuery}`, { signal }),
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF${cuQuery}`, { signal }),
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_04_TRANSFORM_RQT${cuQuery}`, { signal }),
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_07_QUANT${cuQuery}`, { signal }),
+          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/rdo-decisions${cuQuery}`, { signal }),
+        ]);
+
+        if (signal.aborted) return;
+
+        let modesData = (modesRes.status === 'fulfilled' && modesRes.value.ok) ? await modesRes.value.json() : [];
+        let refData = (refRes.status === 'fulfilled' && refRes.value.ok) ? await refRes.value.json() : null;
+
+        // Fallback to CTU-level query if block-specific query returned empty
+        if ((!modesData || modesData.length === 0) && !signal.aborted) {
+          const fallbackRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH${ctuOnlyQuery}`, { signal });
+          if (fallbackRes.ok) modesData = await fallbackRes.json();
+        }
+        if (!refData && !signal.aborted) {
+          const fallbackRef = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF${ctuOnlyQuery}`, { signal });
+          if (fallbackRef.ok) refData = await fallbackRef.json();
+        }
+
+        if (signal.aborted) return;
+
+        let transform = [];
+        if (transformRes.status === 'fulfilled' && transformRes.value.ok) {
+          transform = await transformRes.value.json();
+          if (Array.isArray(transform)) setTransformData(transform);
+        }
+
+        let quant = [];
+        if (quantRes.status === 'fulfilled' && quantRes.value.ok) {
+          quant = await quantRes.value.json();
+          if (Array.isArray(quant)) setQuantData(quant);
+        }
+
+        let rdoDecs = [];
+        if (rdoRes.status === 'fulfilled' && rdoRes.value.ok) {
+          rdoDecs = await rdoRes.value.json();
+          if (Array.isArray(rdoDecs)) setRdoDecisions(rdoDecs);
+        }
+
+        if (Array.isArray(modesData) && modesData.length > 0) {
+          setData(modesData);
+          const targetMode = cu.intra_dir;
+          if (targetMode !== null && targetMode !== undefined) {
+            const mIdx = modesData.findIndex(m => m.mode === targetMode);
+            if (mIdx !== -1) setCurrentModeIdx(mIdx);
+          }
+        }
+        if (refData) setRefSamples(refData);
+
+        setCtuAnalysisCache(prev => updateLruCache(prev, cacheKey, {
+          data: modesData,
+          refSamples: refData,
+          transform,
+          quant,
+          rdoDecs,
+          jobId
+        }));
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.warn('Failed to switch block position checkpoints:', err);
+        }
+      }
+    }
+  }, [ctuX, ctuY, cuSize, ctuAnalysisCache, jobId]);
 
   const handleSelectCTU = useCallback((x, y) => {
     setCtuX(x);
@@ -667,10 +771,12 @@ export function useAnalysisSession() {
     // Guard against desynchronized selectedCu belonging to a different CTU
     setSelectedCu(prev => {
       if (!prev) return null;
+      if (prev.ctu_x !== undefined && prev.ctu_x !== x) return null;
+      if (prev.ctu_y !== undefined && prev.ctu_y !== y) return null;
       const ctuOriginX = x * 64;
       const ctuOriginY = y * 64;
-      const px = prev.abs_x ?? prev.x;
-      const py = prev.abs_y ?? prev.y;
+      const px = prev.abs_x;
+      const py = prev.abs_y;
       if (typeof px === 'number' && typeof py === 'number') {
         if (px < ctuOriginX || px >= ctuOriginX + 64 || py < ctuOriginY || py >= ctuOriginY + 64) {
           return null;
@@ -698,101 +804,33 @@ export function useAnalysisSession() {
     }
   }, [ctuPartitionsMap, ctuAnalysisCache, cuSize, jobId, fetchCtuCheckpoints]);
 
-  const handleSelectBlock = useCallback(async ({ size, relX = 0, relY = 0, absX = null, absY = null, cu = null }) => {
+  const handleSelectBlock = useCallback(async ({ size, relX = null, relY = null, absX = null, absY = null, cu = null }) => {
     const targetSize = size || cu?.width || cuSize || 8;
-    const resolvedRelX = (typeof relX === 'number') ? relX : (cu?.x ?? 0);
-    const resolvedRelY = (typeof relY === 'number') ? relY : (cu?.y ?? 0);
-    const resolvedAbsX = (absX !== null && absX !== undefined)
-      ? absX
-      : (typeof cu?.abs_x === 'number' ? cu.abs_x : (ctuX ?? 0) * 64 + resolvedRelX);
-    const resolvedAbsY = (absY !== null && absY !== undefined)
-      ? absY
-      : (typeof cu?.abs_y === 'number' ? cu.abs_y : (ctuY ?? 0) * 64 + resolvedRelY);
+    const baseCu = cu ? { ...cu } : {};
+    if (typeof relX === 'number') baseCu.x = relX;
+    if (typeof relY === 'number') baseCu.y = relY;
+    if (typeof absX === 'number') baseCu.abs_x = absX;
+    if (typeof absY === 'number') baseCu.abs_y = absY;
+    baseCu.width = targetSize;
+    baseCu.height = targetSize;
+    baseCu.size = targetSize;
 
-    const normalizedCu = {
-      ...(cu || {}),
-      x: resolvedRelX,
-      y: resolvedRelY,
-      abs_x: resolvedAbsX,
-      abs_y: resolvedAbsY,
-      width: targetSize,
-      height: targetSize,
-      size: targetSize,
-      ctu_x: ctuX,
-      ctu_y: ctuY
-    };
-
-    setSelectedCu(normalizedCu);
-    setCuSize(targetSize);
-    setAnalyzedCuSize(targetSize);
-
-    const cacheKey = `${ctuX}_${ctuY}_${targetSize}_${resolvedAbsX}_${resolvedAbsY}`;
-    const cachedAnalysis = ctuAnalysisCache[cacheKey] || ctuAnalysisCache[`${ctuX}_${ctuY}_${targetSize}`];
-    if (cachedAnalysis) {
-      setData(cachedAnalysis.data);
-      if (cachedAnalysis.refSamples) setRefSamples(cachedAnalysis.refSamples);
-      return;
-    }
-
-    if (jobId) {
-      if (selectBlockAbortRef.current) {
-        selectBlockAbortRef.current.abort();
-      }
-      const controller = new AbortController();
-      selectBlockAbortRef.current = controller;
-      const signal = controller.signal;
-
-      try {
-        // Queries backend with specific cu_x=${resolvedAbsX} and cu_y=${resolvedAbsY} coordinates
-        const queryWithCu = buildQuery({ cu_size: targetSize, ctu_x: ctuX, ctu_y: ctuY, cu_x: resolvedAbsX, cu_y: resolvedAbsY });
-        const queryCtuOnly = buildQuery({ cu_size: targetSize, ctu_x: ctuX, ctu_y: ctuY });
-        const [modesRes, refRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH${queryWithCu}`, { signal }),
-          fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF${queryWithCu}`, { signal })
-        ]);
-        let modesData = modesRes.ok ? await modesRes.json() : [];
-        let refData = refRes.ok ? await refRes.json() : null;
-
-        if (!modesData || modesData.length === 0) {
-          const fallbackRes = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_03_INTRA_SEARCH${queryCtuOnly}`, { signal });
-          if (fallbackRes.ok) modesData = await fallbackRes.json();
-        }
-        if (!refData) {
-          const fallbackRef = await fetch(`${API_BASE_URL}/api/v1/checkpoints/${jobId}/CP_02_INTRA_REF${queryCtuOnly}`, { signal });
-          if (fallbackRef.ok) refData = await fallbackRef.json();
-        }
-
-        if (signal.aborted) return;
-
-        if (modesData && modesData.length > 0) {
-          setData(modesData);
-          if (refData) setRefSamples(refData);
-          setCtuAnalysisCache(prev => updateLruCache(prev, cacheKey, {
-            data: modesData,
-            refSamples: refData,
-            jobId
-          }));
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        console.warn('Failed to switch block position checkpoints:', err);
-      }
-    }
-  }, [ctuX, ctuY, cuSize, ctuAnalysisCache, jobId]);
+    return handleSelectCU(baseCu);
+  }, [cuSize, handleSelectCU]);
 
   const handleSelectSize = useCallback(async (newSize) => {
     if (!newSize || newSize <= 0) return;
-    const currentRelX = selectedCu ? (selectedCu.abs_x !== undefined ? selectedCu.abs_x % 64 : (selectedCu.x ?? 0)) : 0;
-    const currentRelY = selectedCu ? (selectedCu.abs_y !== undefined ? selectedCu.abs_y % 64 : (selectedCu.y ?? 0)) : 0;
-    const snappedRelX = Math.min(64 - newSize, Math.floor(currentRelX / newSize) * newSize);
-    const snappedRelY = Math.min(64 - newSize, Math.floor(currentRelY / newSize) * newSize);
+    const { relX, relY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, newSize);
+    const snappedRelX = Math.min(64 - newSize, Math.floor(relX / newSize) * newSize);
+    const snappedRelY = Math.min(64 - newSize, Math.floor(relY / newSize) * newSize);
 
     return handleSelectBlock({
       size: newSize,
       relX: snappedRelX,
-      relY: snappedRelY
+      relY: snappedRelY,
+      cu: selectedCu ? { ...selectedCu, width: newSize, height: newSize } : null
     });
-  }, [selectedCu, handleSelectBlock]);
+  }, [selectedCu, ctuX, ctuY, handleSelectBlock]);
 
   const hasDesync = Boolean(data && ctuX !== null && ctuY !== null && (ctuX !== analyzedCtu.x || ctuY !== analyzedCtu.y));
 

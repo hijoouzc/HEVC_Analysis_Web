@@ -1,3 +1,5 @@
+import { resolveCuCoordinates } from './cuCoordinates.js';
+
 /**
  * zScanUtils.js
  * Mathematical Morton Z-Scan Order & Spatial Coordinate Utilities for HEVC CTU / CU QuadTree.
@@ -72,44 +74,12 @@ export function getBlockCoordsForZIndex(zIndex, blockSize) {
  * Safely resolves relative CTU coordinates (0..63) and absolute picture coordinates.
  */
 export function getRelativeCuCoords(cu, ctuX = 0, ctuY = 0) {
-  const ctuOriginX = (ctuX ?? 0) * 64;
-  const ctuOriginY = (ctuY ?? 0) * 64;
-
-  if (!cu) {
-    return {
-      relX: 0,
-      relY: 0,
-      absX: ctuOriginX,
-      absY: ctuOriginY,
-    };
-  }
-
-  const px = typeof cu.abs_x === 'number' ? cu.abs_x : (typeof cu.x === 'number' ? cu.x : 0);
-  const py = typeof cu.abs_y === 'number' ? cu.abs_y : (typeof cu.y === 'number' ? cu.y : 0);
-
-  let relX = 0;
-  if (px >= ctuOriginX && px < ctuOriginX + 64) {
-    relX = px - ctuOriginX;
-  } else if (px < 64) {
-    relX = px;
-  } else {
-    relX = px % 64;
-  }
-
-  let relY = 0;
-  if (py >= ctuOriginY && py < ctuOriginY + 64) {
-    relY = py - ctuOriginY;
-  } else if (py < 64) {
-    relY = py;
-  } else {
-    relY = py % 64;
-  }
-
+  const { relX, relY, absX, absY } = resolveCuCoordinates(cu, ctuX, ctuY, cu?.width || 8);
   return {
     relX,
     relY,
-    absX: ctuOriginX + relX,
-    absY: ctuOriginY + relY,
+    absX,
+    absY,
   };
 }
 

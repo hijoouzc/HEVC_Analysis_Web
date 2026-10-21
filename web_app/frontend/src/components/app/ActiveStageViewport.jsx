@@ -12,6 +12,7 @@ import {
   QuickJumpMenu,
   GUIDED_STEPS,
 } from '../guided';
+import { resolveCuCoordinates } from '../../utils/cuCoordinates.js';
 
 /**
  * ActiveStageViewport
@@ -76,6 +77,8 @@ const ActiveStageViewport = ({
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   }, [setStepFn]);
+
+  const activeCuCoords = resolveCuCoordinates(selectedCu, ctuX, ctuY, cuSize || 8);
 
   // Sync active step with scroll position in guided continuous stream mode
   useEffect(() => {
@@ -178,8 +181,8 @@ const ActiveStageViewport = ({
             onSelectResiGain={setGuidedResiGain}
             splitDecision={rdoDecisions?.find(
               (d) =>
-                d.cu_x === (selectedCu?.x ?? selectedCu?.abs_x) &&
-                d.cu_y === (selectedCu?.y ?? selectedCu?.abs_y)
+                (d.cu_x === activeCuCoords.absX || d.cu_x === activeCuCoords.relX) &&
+                (d.cu_y === activeCuCoords.absY || d.cu_y === activeCuCoords.relY)
             )}
             hasTransform={transformData && transformData.length > 0}
             hasRecon={
@@ -347,8 +350,8 @@ const ActiveStageViewport = ({
             onNavigateToIntra={() => handleGuidedStepChange('STEP_2')}
             splitDecision={rdoDecisions?.find(
               (d) =>
-                d.cu_x === (selectedCu?.x ?? selectedCu?.abs_x) &&
-                d.cu_y === (selectedCu?.y ?? selectedCu?.abs_y)
+                (d.cu_x === activeCuCoords.absX || d.cu_x === activeCuCoords.relX) &&
+                (d.cu_y === activeCuCoords.absY || d.cu_y === activeCuCoords.relY)
             )}
             onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
             channel={activeChannel}

@@ -21,7 +21,7 @@ export function Step2Prediction({
   selectedCu,
   cuSize,
   setCuSize,
-  setSelectedCu,
+  _setSelectedCu,
   handleSelectSize,
   imagePreview,
   imageDims,
@@ -87,11 +87,11 @@ export function Step2Prediction({
           currentMode={activeModeNum}
           blockSize={activeBlockSize}
           onChangeBlockSize={(newSize) => {
-            if (setCuSize) setCuSize(newSize);
-            if (setSelectedCu && selectedCu) {
-              setSelectedCu({ ...selectedCu, width: newSize, height: newSize });
+            if (handleSelectSize) {
+              handleSelectSize(newSize);
+            } else if (setCuSize) {
+              setCuSize(newSize);
             }
-            if (handleSelectSize) handleSelectSize(newSize);
           }}
           imagePreview={imagePreview}
           imageDims={imageDims}

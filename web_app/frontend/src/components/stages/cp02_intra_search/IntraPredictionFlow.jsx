@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { INTRA_PRED_ANGLES, INV_ANGLES, generateIntraPredictionBlock } from '../../../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../../../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../../../utils/metricsUtils';
+import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
 import {
   HM_INTRA_PREDICTION_SNIPPET,
   HM_EST_INTRAPRED_LUMA_SNIPPET,
@@ -217,7 +218,13 @@ const IntraPredictionFlow = ({
   const hasEdgeFilter = (channel === 'Y') && (selectedMode === 1 || selectedMode === 10 || selectedMode === 26) && N <= 16;
 
   const { refTopRaw, refLeftRaw } = useMemo(() => {
-    if (rawRefTop && rawRefTop.length >= refSpan && rawRefLeft && rawRefLeft.length >= refSpan) {
+    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, N);
+    const isRefMatched = modeData && (
+      (modeData.pu_x === absX || modeData.pu_x === relX || modeData.cu_x === absX || modeData.cu_x === relX) &&
+      (modeData.pu_y === absY || modeData.pu_y === relY || modeData.cu_y === absY || modeData.cu_y === relY)
+    );
+
+    if (isRefMatched && rawRefTop && rawRefTop.length >= refSpan && rawRefLeft && rawRefLeft.length >= refSpan) {
       return {
         refTopRaw: rawRefTop.slice(0, refSpan),
         refLeftRaw: rawRefLeft.slice(0, refSpan)
@@ -228,13 +235,6 @@ const IntraPredictionFlow = ({
       try {
         const ctx = activeFrameCanvas.getContext('2d');
         if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
-          const ctuOriginX = (ctuX ?? 0) * 64;
-          const ctuOriginY = (ctuY ?? 0) * 64;
-          const rawX = Number(selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX);
-          const rawY = Number(selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY);
-          const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
-          const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
-
           const frameW = activeFrameCanvas.width;
           const frameH = activeFrameCanvas.height;
 
@@ -285,7 +285,7 @@ const IntraPredictionFlow = ({
     }
 
     return { refTopRaw: topFallback, refLeftRaw: leftFallback };
-  }, [rawRefTop, rawRefLeft, refSpan, activeFrameCanvas, selectedCu, ctuX, ctuY, N]);
+  }, [rawRefTop, rawRefLeft, refSpan, activeFrameCanvas, selectedCu, ctuX, ctuY, N, modeData]);
 
   const isMDISSmoothed = (channel === 'Y') && (
     (modeData && modeData.b_use_filter !== undefined)
@@ -307,19 +307,19 @@ const IntraPredictionFlow = ({
   const refLeftActive = useMemo(() => isMDISSmoothed ? refLeftFilt : refLeftRaw, [isMDISSmoothed, refLeftFilt, refLeftRaw]);
 
   const orgData = useMemo(() => {
-    if (rawOrg && rawOrg.length >= totalPixels) {
+    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, N);
+    const isOrgMatched = modeData && (
+      (modeData.pu_x === absX || modeData.pu_x === relX || modeData.cu_x === absX || modeData.cu_x === relX) &&
+      (modeData.pu_y === absY || modeData.pu_y === relY || modeData.cu_y === absY || modeData.cu_y === relY)
+    );
+
+    if (isOrgMatched && rawOrg && rawOrg.length >= totalPixels) {
       return rawOrg.slice(0, totalPixels);
     }
     if (activeFrameCanvas) {
       try {
         const ctx = activeFrameCanvas.getContext('2d');
         if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
-          const ctuOriginX = (ctuX ?? 0) * 64;
-          const ctuOriginY = (ctuY ?? 0) * 64;
-          const rawX = Number(selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX);
-          const rawY = Number(selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY);
-          const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
-          const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
           const safeX = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.width - N), absX));
           const safeY = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.height - N), absY));
           const safeW = Math.max(1, Math.min(N, activeFrameCanvas.width - safeX));
@@ -357,7 +357,7 @@ const IntraPredictionFlow = ({
       return res;
     }
     return Array(totalPixels).fill(128);
-  }, [rawOrg, totalPixels, activeFrameCanvas, selectedCu, ctuX, ctuY, N]);
+  }, [rawOrg, totalPixels, activeFrameCanvas, selectedCu, ctuX, ctuY, N, modeData]);
 
   const predData = useMemo(() => {
     if (rawPred && rawPred.length >= totalPixels) {

@@ -22,6 +22,14 @@ function QuadTreeVisualizer({
   onNavigateToSim = null
 }) {
   const [selectedNode, setSelectedNode] = useState(undefined); // undefined: initial load, null: explicitly deselected
+  const [prevSelectedCu, setPrevSelectedCu] = useState(selectedCU);
+  const [prevCtuKey, setPrevCtuKey] = useState(`${ctuX}_${ctuY}`);
+
+  if (selectedCU !== prevSelectedCu || `${ctuX}_${ctuY}` !== prevCtuKey) {
+    setPrevSelectedCu(selectedCU);
+    setPrevCtuKey(`${ctuX}_${ctuY}`);
+    setSelectedNode(undefined);
+  }
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (default: clean transparent, no mode overlay), 'mode', 'depth'
   const [textureMode, setTextureMode] = useState('color'); // 'color', 'grayscale', 'off'
   const [viewLayout, setViewLayout] = useState('dual'); // 'dual' (side-by-side), '2d' (spatial grid only), 'tree' (quadtree graph only)

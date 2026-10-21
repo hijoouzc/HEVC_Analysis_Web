@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getIntraModeInfo, getResidualColorAndTextColor, getSampleColorAndTextColor, bt709RgbToYuv } from '../../../utils/colorUtils';
 import { calculatePsnr } from '../../../utils/metricsUtils';
 import { generateIntraPredictionBlock } from '../../../utils/intraTraceUtils';
+import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
 import PixelMatrixCanvas from './components/PixelMatrixCanvas';
 import CuCellInspector from './components/CuCellInspector';
 import InteractiveSplitSlider from './components/InteractiveSplitSlider';
@@ -136,23 +137,16 @@ const FourPictureComparison = ({
     const numPixels = cuSize * cuSize;
     const refSpan = 2 * cuSize + 1;
 
-    const ctuOriginX = (ctuX ?? 0) * 64;
-    const ctuOriginY = (ctuY ?? 0) * 64;
-    const rawX = Number(selectedCu?.abs_x ?? selectedCu?.x ?? ctuOriginX);
-    const rawY = Number(selectedCu?.abs_y ?? selectedCu?.y ?? ctuOriginY);
-    const absX = Number.isFinite(rawX) ? (rawX >= ctuOriginX ? rawX : ctuOriginX + rawX) : ctuOriginX;
-    const absY = Number.isFinite(rawY) ? (rawY >= ctuOriginY ? rawY : ctuOriginY + rawY) : ctuOriginY;
+    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, cuSize);
 
     // Check if CP_05 RECON_PICTURE telemetry has matching reconstructed block
     let recoFromTelemetry = null;
     if (Array.isArray(reconPictureData) && reconPictureData.length > 0) {
-      const cuX = selectedCu?.x ?? 0;
-      const cuY = selectedCu?.y ?? 0;
       const match = reconPictureData.find(e =>
-        (e.cu_x === cuX || e.cu_x === (ctuOriginX + cuX)) &&
-        (e.cu_y === cuY || e.cu_y === (ctuOriginY + cuY)) &&
+        (e.cu_x === absX || e.cu_x === relX) &&
+        (e.cu_y === absY || e.cu_y === relY) &&
         (e.cu_w === cuSize || e.cu_size === cuSize || e.cu_w === baseCuSize)
-      ) || reconPictureData.find(e => e.cu_w === cuSize || e.cu_size === cuSize || e.cu_w === baseCuSize);
+      );
       const teleReco = isU ? match?.reco_u : isV ? match?.reco_v : match?.reco_y;
       if (teleReco && teleReco.length >= numPixels) {
         recoFromTelemetry = teleReco.slice(0, numPixels);
@@ -161,7 +155,11 @@ const FourPictureComparison = ({
 
     // 1. Extract or derive Original Source Samples (S)
     let orig = null;
-    const modeOrg = isU ? currentMode?.org_u : isV ? currentMode?.org_v : currentMode?.orig_data;
+    const isModeMatched = currentMode && (
+      (currentMode.pu_x === absX || currentMode.pu_x === relX || currentMode.cu_x === absX || currentMode.cu_x === relX) &&
+      (currentMode.pu_y === absY || currentMode.pu_y === relY || currentMode.cu_y === absY || currentMode.cu_y === relY)
+    );
+    const modeOrg = isModeMatched ? (isU ? currentMode?.org_u : isV ? currentMode?.org_v : currentMode?.orig_data) : null;
     if (Array.isArray(modeOrg) && modeOrg.length >= numPixels) {
       orig = modeOrg.slice(0, numPixels);
     } else if (origFrameCanvas) {

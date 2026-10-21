@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Card, Badge, SegmentedControl } from '../../apple';
 import { bt709YuvToRgb } from '../../../utils/colorUtils';
+import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
 
 /**
  * ReconPictureVisualizer (CP_05_RECON_PICTURE)
@@ -90,10 +91,9 @@ function ReconPictureVisualizer({
         if (!offCtx) return;
         offCtx.drawImage(img, 0, 0);
 
-        const cuX = selectedCu?.x ?? 0;
-        const cuY = selectedCu?.y ?? 0;
-        const frameX = (ctuX ?? 0) * 64 + cuX;
-        const frameY = (ctuY ?? 0) * 64 + cuY;
+        const { absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, blockSize);
+        const frameX = absX;
+        const frameY = absY;
         const N = blockSize;
 
         const safeX = Math.min(Math.max(0, frameX), Math.max(0, imgW - N));
