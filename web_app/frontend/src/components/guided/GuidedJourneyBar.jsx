@@ -37,27 +37,6 @@ export function GuidedJourneyBar({
 
   const normalizedChannel = (channel === 'U' ? 'Cb' : (channel === 'V' ? 'Cr' : (channel || 'Y')));
 
-  // Keyboard shortcuts for Channel (C), Values (V), and Residual Gain (G); Steps 1-5 handled globally by App.jsx
-  React.useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target?.tagName) || e.target?.isContentEditable) return;
-      if ((e.key === 'c' || e.key === 'C') && onSelectChannel) {
-        const nextCh = normalizedChannel === 'Y' ? 'Cb' : (normalizedChannel === 'Cb' ? 'Cr' : 'Y');
-        onSelectChannel(nextCh);
-      }
-      if ((e.key === 'v' || e.key === 'V') && onToggleValues) {
-        onToggleValues();
-      }
-      if ((e.key === 'g' || e.key === 'G') && onSelectResiGain) {
-        const gains = [1, 2, 4, 8];
-        const nextGain = gains[(gains.indexOf(resiGain ?? 4) + 1) % gains.length];
-        onSelectResiGain(nextGain);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onSelectChannel, onToggleValues, onSelectResiGain, normalizedChannel, resiGain]);
-
   return (
     <div
       style={{
@@ -133,7 +112,7 @@ export function GuidedJourneyBar({
                 fontWeight: showValues ? 700 : 500,
                 transition: 'all 0.15s ease',
               }}
-              title="Toggle numerical values on sample matrices (V). QP, RDO costs, and telemetry metrics remain visible."
+              title="Toggle numerical values on sample matrices. QP, RDO costs, and telemetry metrics remain visible."
             >
               {showValues ? 'ON' : 'OFF'}
             </button>
@@ -206,7 +185,7 @@ export function GuidedJourneyBar({
                       fontWeight: isActive ? 700 : 500,
                       transition: 'all 0.15s ease',
                     }}
-                    title={`Residual Boost Gain ${g}× (G key to cycle)`}
+                    title={`Residual Boost Gain ${g}×`}
                   >
                     {g}×
                   </button>

@@ -160,6 +160,10 @@ def test_modern_job_and_checkpoint_api(client, dummy_png_bytes, sample_trace_fil
     assert res_img_res.status_code == 200
     assert res_img_res.headers["content-type"] == "image/png"
 
+    pred_img_res = client.get(f"/api/v1/jobs/{job_id}/images/prediction")
+    assert pred_img_res.status_code == 200
+    assert pred_img_res.headers["content-type"] == "image/png"
+
     # 11. Check CP_03_INTRA_SEARCH Pipeline Endpoint
     pipe_res = client.get(f"/api/v1/checkpoints/{job_id}/intra-pipeline")
     assert pipe_res.status_code == 200

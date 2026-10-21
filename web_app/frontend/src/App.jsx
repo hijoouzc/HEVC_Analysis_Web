@@ -5,7 +5,6 @@ import AnalysisInspector from './components/app/AnalysisInspector';
 import RdoQuadtreeSimulator from './components/stages/rdo_simulator/RdoQuadtreeSimulator';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { useAnalysisSession } from './hooks/useAnalysisSession';
-import { getStepByNum } from './components/guided';
 import {
   Window,
   WindowTitleBar,
@@ -120,32 +119,6 @@ function App() {
       localStorage.setItem('apple_theme', 'light');
     }
   }, [isDarkMode]);
-
-  // Global Keyboard Shortcuts (1-5 for Guided Steps, I for inspector, D for theme)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-
-      if (e.key === 'i' || e.key === 'I') {
-        setShowInspector((prev) => !prev);
-      } else if (e.key === 'd' || e.key === 'D') {
-        setIsDarkMode((prev) => !prev);
-      } else {
-        const scrollTo = (id) => {
-          const el = document.getElementById(id);
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        };
-        const targetStep = getStepByNum(e.key);
-        if (targetStep) {
-          setGuidedStep(targetStep.id);
-          scrollTo(targetStep.id);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   return (
     <Window>
@@ -447,7 +420,7 @@ function App() {
         }
         right={
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--apple-label-tertiary)' }}>
-            1-5: Steps • I: Info • D: Theme • HM-18.0
+            HEVC Reference Software • HM-18.0
           </span>
         }
       />

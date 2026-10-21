@@ -115,14 +115,12 @@ console.log('\nTest Suite 7: Bug 7 - Keyboard Shortcuts Cleanliness in GuidedJou
   const barPath = resolve(__dirname, '../../src/components/guided/GuidedJourneyBar.jsx');
   const barContent = readFileSync(barPath, 'utf8');
 
-  assert(!barContent.includes("e.key === '1' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 1 (handled by App.jsx)');
-  assert(!barContent.includes("e.key === '2' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 2 (handled by App.jsx)');
-  assert(!barContent.includes("e.key === '3' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 3 (handled by App.jsx)');
-  assert(!barContent.includes("e.key === '4' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 4 (handled by App.jsx)');
-  assert(!barContent.includes("e.key === '5' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 5 (handled by App.jsx)');
-  assert(barContent.includes("e.key === 'c' || e.key === 'C'"), 'GuidedJourneyBar binds C key for channel cycling');
-  assert(barContent.includes("e.key === 'v' || e.key === 'V'"), 'GuidedJourneyBar binds V key for Values toggle');
-  assert(barContent.includes("['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target?.tagName) || e.target?.isContentEditable"), 'GuidedJourneyBar guards against active inputs and contentEditable');
+  assert(!barContent.includes("e.key === '1' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 1');
+  assert(!barContent.includes("e.key === '2' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 2');
+  assert(!barContent.includes("e.key === '3' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 3');
+  assert(!barContent.includes("e.key === '4' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 4');
+  assert(!barContent.includes("e.key === '5' && onSelectStep"), 'GuidedJourneyBar does NOT intercept key 5');
+  assert(!barContent.includes("e.key === 'c' || e.key === 'C'"), 'GuidedJourneyBar removed shortcut switching keys as requested');
 }
 
 console.log('\nTest Suite 8: Zero Crash Verification on HM Analysis Start');
@@ -141,9 +139,8 @@ console.log('\nTest Suite 9: Residual Gain (ResiGain) Unified Global Sync');
   const barPath = resolve(__dirname, '../../src/components/guided/GuidedJourneyBar.jsx');
   const barContent = readFileSync(barPath, 'utf8');
   assert(barContent.includes('resiGain = 4'), 'GuidedJourneyBar declares resiGain = 4 default prop');
-  assert(barContent.includes("e.key === 'g' || e.key === 'G'"), 'GuidedJourneyBar binds G key for quick residual gain cycling');
+  assert(!barContent.includes("e.key === 'g' || e.key === 'G'"), 'GuidedJourneyBar removed shortcut G key cycling as requested');
   assert(barContent.includes('GAIN:'), 'GuidedJourneyBar displays GAIN: label');
-  assert(barContent.includes('gains[(gains.indexOf(resiGain ?? 4) + 1) % gains.length]'), 'Cycles circularly through gains [1, 2, 4, 8]');
 
   const vpPath = resolve(__dirname, '../../src/components/app/ActiveStageViewport.jsx');
   const vpContent = readFileSync(vpPath, 'utf8');

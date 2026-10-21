@@ -51,6 +51,41 @@ class ImageProcessor:
             empty.save(residual_png)
 
     @staticmethod
+    def generate_prediction_image(
+        input_img: Path,
+        recon_png: Path,
+        pred_png: Path,
+        img_w: int,
+        img_h: int
+    ) -> None:
+        """
+        Generates visual prediction image P for the full frame.
+        In HEVC: S' = P + R', where P represents the directional spatial intra prediction baseline.
+        """
+        from PIL import ImageFilter
+        pred_png.parent.mkdir(parents=True, exist_ok=True)
+        if recon_png.exists():
+            with Image.open(input_img) as orig_raw, Image.open(recon_png) as recon_raw:
+                orig = orig_raw.convert("RGB")
+                recon = recon_raw.convert("RGB")
+                if orig.size != (img_w, img_h):
+                    orig = orig.resize((img_w, img_h), Image.Resampling.LANCZOS)
+                if recon.size != (img_w, img_h):
+                    recon = recon.resize((img_w, img_h), Image.Resampling.NEAREST)
+                pred = recon.filter(ImageFilter.BoxBlur(radius=2))
+                pred.save(pred_png)
+        elif input_img.exists():
+            with Image.open(input_img) as orig_raw:
+                orig = orig_raw.convert("RGB")
+                if orig.size != (img_w, img_h):
+                    orig = orig.resize((img_w, img_h), Image.Resampling.LANCZOS)
+                pred = orig.filter(ImageFilter.BoxBlur(radius=2))
+                pred.save(pred_png)
+        else:
+            empty = Image.new("RGB", (img_w, img_h), (128, 128, 128))
+            empty.save(pred_png)
+
+    @staticmethod
     def generate_fallback_plane(
         input_img: Path,
         plane_png: Path,

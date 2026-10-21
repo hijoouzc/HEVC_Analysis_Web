@@ -119,14 +119,13 @@ console.log('\nTest Suite 4: ActiveStageViewport Guided Stream Orchestration');
   assert(!viewportContent.includes("id: 'expert'"), 'Viewport cleanly eliminated Expert Mode clutter');
 }
 
-console.log('\nTest Suite 5: App Shell Keyboard Shortcuts & Guided State');
+console.log('\nTest Suite 5: App Shell Guided State & Clean Zero-Jitter UI');
 {
   const appPath = resolve(__dirname, '../../src/App.jsx');
   const appContent = readFileSync(appPath, 'utf8');
 
   assert(appContent.includes("const [guidedStep, setGuidedStep] = useState('STEP_1');"), 'App initializes guidedStep to STEP_1');
-  assert(appContent.includes("setGuidedStep(targetStep.id)"), 'App switches guided steps dynamically via getStepByNum');
-  assert(appContent.includes("getStepByNum(e.key)"), 'App resolves numeric shortcut via getStepByNum');
+  assert(!appContent.includes("getStepByNum(e.key)"), 'App shell cleanly removed shortcut switching keys to prevent accidental jumps');
   assert(!appContent.includes("e.key === 'm'"), 'App cleanly eliminated M key expert toggle');
 }
 

@@ -124,13 +124,14 @@ async def get_job_status(job_id: str):
 _write_file_bytes = image_processor.write_file_bytes
 _read_image_dims = image_processor.read_image_dims
 _generate_residual_image = image_processor.generate_residual_image
+_generate_prediction_image = image_processor.generate_prediction_image
 _generate_fallback_plane = image_processor.generate_fallback_plane
 
 @router.get("/{job_id}/images/{image_type}")
 async def get_job_image(job_id: str, image_type: str, gain: int = 4):
     """
     Serves generated images for an analysis job:
-    image_type: 'original', 'reconstructed', 'residual', 'y', 'u', 'v'
+    image_type: 'original', 'reconstructed', 'residual', 'prediction', 'y', 'u', 'v'
     """
     try:
         session_dir = session_manager.get_session_dir(job_id)
@@ -188,6 +189,25 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
             img_h
         )
         return FileResponse(residual_png, media_type="image/png")
+
+    if norm_type == "prediction":
+        pred_png = session_dir / "prediction.png"
+        if pred_png.exists():
+            return FileResponse(pred_png, media_type="image/png")
+
+        # Ensure we have recon_png
+        if not recon_png.exists() and recon_yuv.exists():
+            await ffmpeg_adapter.convert_yuv_to_png(recon_yuv, recon_png, img_w, img_h)
+
+        await asyncio.to_thread(
+            _generate_prediction_image,
+            input_img,
+            recon_png,
+            pred_png,
+            img_w,
+            img_h
+        )
+        return FileResponse(pred_png, media_type="image/png")
 
     if norm_type in ["y", "u", "v"]:
         plane_png = session_dir / f"plane_{norm_type}.png"

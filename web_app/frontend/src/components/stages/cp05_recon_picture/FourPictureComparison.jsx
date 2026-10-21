@@ -76,6 +76,13 @@ const FourPictureComparison = ({
     return null;
   }, [jobId, resiGain, API_BASE_URL]);
 
+  const predImgUrl = useMemo(() => {
+    if (jobId) {
+      return `${API_BASE_URL}/api/v1/jobs/${jobId}/images/prediction`;
+    }
+    return activeOrigUrl;
+  }, [jobId, activeOrigUrl, API_BASE_URL]);
+
   // Maintain offscreen canvas for source frame (for extracting orig samples and perimeter)
   const [origFrameCanvas, setOrigFrameCanvas] = useState(null);
   useEffect(() => {
@@ -395,7 +402,7 @@ const FourPictureComparison = ({
     if (type === 'orig') return activeOrigUrl;
     if (type === 'recon') return reconImgUrl;
     if (type === 'resi') return residualImgUrl || activeOrigUrl;
-    if (type === 'pred') return null;
+    if (type === 'pred') return predImgUrl || activeOrigUrl;
     return activeOrigUrl;
   };
 
@@ -622,7 +629,13 @@ const FourPictureComparison = ({
       imgSrc = reconImgUrl;
     } else if (type === 'resi') {
       imgSrc = residualImgUrl || activeOrigUrl;
+    } else if (type === 'pred') {
+      imgSrc = predImgUrl || activeOrigUrl;
     }
+
+    const cuCoords = selectedCu && ctuX !== null && ctuY !== null
+      ? resolveCuCoordinates(selectedCu, ctuX, ctuY, selectedCu.width || 8)
+      : null;
 
     return (
       <div
@@ -686,57 +699,23 @@ const FourPictureComparison = ({
             }
           }}
         >
-          {type === 'pred' ? (
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                padding: '24px',
-                textAlign: 'center',
-                background: 'var(--apple-subtle)',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  color: 'var(--apple-blue)',
-                  padding: '3px 8px',
-                  borderRadius: '4px',
-                  background: 'var(--apple-blue-subtle)',
-                }}
-              >
-                [Scope: CU-Level Only]
-              </span>
-              <span style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', maxWidth: '260px' }}>
-                Select a CU to inspect discrete spatial prediction.
-              </span>
-            </div>
-          ) : (
-            <img
-              src={imgSrc}
-              alt={title}
-              onError={(e) => {
-                if (e.currentTarget.src !== imageSrc && imageSrc) {
-                  e.currentTarget.src = imageSrc;
-                }
-              }}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-                display: 'block',
-                imageRendering: 'pixelated',
-                filter: type === 'resi' && !residualImgUrl ? 'contrast(300%) invert(20%)' : 'none',
-              }}
-            />
-          )}
+          <img
+            src={imgSrc}
+            alt={title}
+            onError={(e) => {
+              if (e.currentTarget.src !== imageSrc && imageSrc) {
+                e.currentTarget.src = imageSrc;
+              }
+            }}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              display: 'block',
+              imageRendering: 'pixelated',
+              filter: type === 'resi' && !residualImgUrl ? 'contrast(300%) invert(20%)' : 'none',
+            }}
+          />
 
           {ctuX !== null && ctuY !== null && (
             <div
@@ -748,6 +727,22 @@ const FourPictureComparison = ({
                 height: `${(64 / imgHeight) * 100}%`,
                 border: '1.5px solid #0284C7',
                 background: 'rgba(2, 132, 199, 0.2)',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
+
+          {cuCoords && (
+            <div
+              style={{
+                position: 'absolute',
+                top: `${(cuCoords.absY / imgHeight) * 100}%`,
+                left: `${(cuCoords.absX / imgWidth) * 100}%`,
+                width: `${((selectedCu.width || 8) / imgWidth) * 100}%`,
+                height: `${((selectedCu.height || selectedCu.width || 8) / imgHeight) * 100}%`,
+                border: '1.5px solid #10B981',
+                boxShadow: '0 0 6px rgba(16, 185, 129, 0.6)',
+                background: type === 'pred' ? 'rgba(16, 185, 129, 0.15)' : 'transparent',
                 pointerEvents: 'none',
               }}
             />
