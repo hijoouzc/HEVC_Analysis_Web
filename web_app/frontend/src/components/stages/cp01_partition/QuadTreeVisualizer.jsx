@@ -134,7 +134,8 @@ function QuadTreeVisualizer({
     );
   }
 
-  const { max_depth } = partitionData;
+  const { leaf_nodes, max_depth } = partitionData;
+  const leafCount = leaf_nodes ?? leafNodes.length;
 
   const activeSafeRelX = activeNode ? getSafeRelCoord(activeNode.x, ctuPixelX) : 0;
   const activeSafeRelY = activeNode ? getSafeRelCoord(activeNode.y, ctuPixelY) : 0;
@@ -266,7 +267,7 @@ function QuadTreeVisualizer({
         </div>
         <div>
           <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>Leaf CUs</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-blue)' }}>{leaf_nodes || leafNodes.length}</div>
+          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-blue)' }}>{leafCount}</div>
         </div>
         <div>
           <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>Max Depth</div>
@@ -934,7 +935,7 @@ function QuadTreeVisualizer({
         description={HM_QUADTREE_RDO_SNIPPET.description}
         variables={[
           { name: 'Target CTU', value: `(${targetCtuX}, ${targetCtuY})`, highlight: true },
-          { name: 'Total Leaf CUs', value: leaf_nodes || leafNodes.length },
+          { name: 'Total Leaf CUs', value: leafCount },
           { name: 'Max QuadTree Depth', value: `${max_depth} / 3` },
           { name: 'Selected CU', value: activeNode ? `${activeW}×${activeH} @ (${activeNode.x}, ${activeNode.y})` : 'None', highlight: true },
           { name: 'CU Depth', value: activeNode?.depth ?? 0 },
@@ -951,7 +952,7 @@ function QuadTreeVisualizer({
         partitionNodes={partitionData.nodes}
         ctuX={targetCtuX}
         ctuY={targetCtuY}
-        leafCount={leaf_nodes || leafNodes.length}
+        leafCount={leafCount}
         maxDepth={max_depth}
       />
     </div>

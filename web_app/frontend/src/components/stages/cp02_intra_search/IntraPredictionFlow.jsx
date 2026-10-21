@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { INTRA_PRED_ANGLES, INV_ANGLES, generateIntraPredictionBlock } from '../../../utils/intraTraceUtils';
+import { INTRA_PRED_ANGLES, INV_ANGLES, generateIntraPredictionBlock, getPixelTrace } from '../../../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../../../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../../../utils/metricsUtils';
 import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
