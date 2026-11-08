@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ```bash
 pytest -v
 ```
-All **76 integration and unit tests** should pass (100% success rate, including real encoder execution tests).
+All tests must pass. Integration tests run the real encoder, so build `TAppEncoder` first.
 
 ### 3. Start Development Server
 ```bash

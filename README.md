@@ -1,288 +1,77 @@
-# HEVC Trace-Driven Intra Analysis & Visualization Tool
-> **Interactive Data-Flow & Microarchitectural Inspection Platform for ITU-T H.265 / ISO/IEC 23008-2 HEVC (HM-18.0)**
+# HEVC Trace-Driven Analysis & Visualization Tool (HM-18.0)
 
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI_0.141-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/Frontend-React_19_+_Vite_8-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
-[![HEVC HM](https://img.shields.io/badge/HM_Reference-HM--18.0_C++-00599C.svg?logo=cplusplus&logoColor=white)](https://hevc.hhi.fraunhofer.de)
-[![Standard](https://img.shields.io/badge/Standard-ITU--T_H.265_|_ISO/IEC_23008--2-E11D48.svg)](https://www.itu.int/rec/T-REC-H.265)
-[![License](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
+Nền tảng nghiên cứu/giảng dạy chạy bộ mã hóa tham chiếu **HM-18.0** đã gắn hook (`VisualDumper`), thu trace JSONL tại các điểm quyết định (CTU → CU → PU → TU) và trực quan hóa trên trình duyệt.
 
----
+## Kiến trúc
 
-## Overview
-
-The **HEVC Trace-Driven Intra Analysis & Visualization Tool** is a research and educational platform that bridges the gap between high-level video coding theory and low-level C++ reference implementations (**HM-18.0**).
-
-Instead of viewing video compression as a black box, this tool instruments the reference software at runtime to capture the exact microarchitectural decisions, mathematical matrices, and spatial predictions inside Coding Tree Units (CTUs), Coding Units (CUs), Prediction Units (PUs), and Transform Units (TUs).
-
-Designed with **Apple macOS Tahoe (applecn)** aesthetics and **ITU-R pixel-accurate standards** (100% discrete pixel fidelity, strictly rectangular $90^\circ$ corners on frames, CTUs, CUs, and matrix cells).
-
----
-
-## Architectural Overview & 5-Step Guided Workflow
-
-The platform centers around a unified **5-Step Guided Journey** organized chronologically following the exact encoder decision lifecycle inside HM-18.0 `TEncCu::xCompressCU`:
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              HEVC Video Analyzer (HM-18.0)                             │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│                          Sequential Guided Flow Lifecycle                              │
-├───────────────────┬───────────────────┬───────────────────┬───────────────────┬────────┤
-│ 01 Partition      │ 02 Prediction     │ 03 Residual & TU  │ 04 Reconstruction │ 05 RDO │
-│ (Frame & CU Split)│ (Intra / Inter)   │ (RQT & 2D Core)   │ (Picture & InLoop)│ (Cost) │
-├───────────────────┼───────────────────┼───────────────────┼───────────────────┼────────┤
-│ • CP_00 Frame/GOP │ • CP_02 Intra Ref │ • CP_04 Transform │ • CP_05 Recon     │ • CP_07│
-│ • CP_01 QuadTree  │ • CP_03 Intra/Int │   & RQT Spectrum  │ • CP_06 In-Loop   │ • RDO  │
-│   Raster & Z-scan │   Search Stepper  │ • 2D DCT-II / DST │   Filter (DBF/SAO)│   Sim  │
-└───────────────────┴───────────────────┴───────────────────┴───────────────────┴────────┘
-           (Apple macOS Tahoe stepper chips bar • Single-source inspector panel)
+```text
+┌───────────────────────────────┐
+│ React 19 + Vite (frontend)    │  5-step Guided Flow: Partition → Prediction →
+└──────────────▲────────────────┘  Residual & TU → Reconstruction → RD Decision
+               │ REST / JSON
+┌──────────────▼────────────────┐
+│ FastAPI (backend)             │  Job manager, FFmpeg YUV adapter,
+└──────────────▲────────────────┘  trace parser (CP_00 … CP_07)
+               │ subprocess + trace.jsonl
+┌──────────────▼────────────────┐
+│ HM-18.0 TAppEncoder (C++)     │  VisualDumper hooks trong TLibCommon / TLibEncoder
+└───────────────────────────────┘
 ```
 
-Instead of disjointed mode toggling, all granular microarchitectural checkpoints (`CP_00` to `CP_07`, `RDO_SIM`) are encapsulated as specialized vertical stage modules (`src/components/stages/`) seamlessly embedded into each step of the guided lifecycle.
+Chi tiết: [`docs/08_HM_ENCODER_ARCHITECTURE.md`](docs/08_HM_ENCODER_ARCHITECTURE.md).
 
----
-
-## Key Features
-
-### 1. 5-Step Guided Journey (`Guided Flow`)
-- **Step 1: Frame & CU Partition (`01 Partition`)**:
-  - **Incremental Trace Playback**: Full-frame CTU transport bar (`Start Encode`, `Prev/Next CTU`, `Prev/Next CU`, `Reset`, and speed controls `0.5s`, `1.0s`, `2.0s`).
-  - **Split CU vs Leaf CU Inspection**: Seamless inspection of parent split nodes ($64\times 64$, $32\times 32$) vs final leaf coding units.
-  - **Playhead Decoupling**: Inspecting any CU node preserves playback state without altering the current CTU playhead.
-  - **CTU Spatial Mini-Map**: Compact spatial mini-map with real-time viewport tracking.
-- **Step 2: Intra Prediction (`02 Prediction`)**:
-  - **4N+1 Perimeter & MDIS**: Reconstructs top, left, and corner reference samples with Mode Dependent Intra Smoothing (3-tap $[1, 2, 1]/4$ filter).
-  - **35 Prediction Modes**: Planar (0), DC (1), and 33 Angular modes (2–34) with exact $1/32$-pel projection rays.
-  - **RMD Funnel & 3 MPMs**: Rough Mode Decision SATD pre-screening and Most Probable Mode derivation from spatial neighbors.
-  - **Real HM Prediction**: Bit-exact prediction matrix extracted directly from HM-18.0 C++ `predIntraAng()`.
-- **Step 3: Transform & Quantization (`03 Residual & TU`)**:
-  - **RQT Hierarchy & Call Stack**: Interactive Transform Unit tree visualization with execution call stack stepper.
-  - **2D Core Transforms**: Exact integer DCT-II for $8\times 8$–$32\times 32$ and DST-VII for $4\times 4$ luma intra blocks.
-  - **Quantization & Sparsity**: Quantized levels $Q(u, v)$, $QP$ / $Q_{\text{step}}$ indicators, and energy compaction metrics.
-- **Step 4: Reconstruction (`04 Reconstruction`)**:
-  - **Picture Buffer & 4-Way Comparison**: Original ($S$), Prediction ($P$), Residual ($R$), and Reconstruction ($S'$) across $Y$, $Cb$, $Cr$ channels.
-  - **Mathematical Verification**: Confirms $S' = \text{Clip3}(0, 255, P + R')$.
-  - **In-Loop Filtering**: Deblocking Filter (boundary strength $bS \in \{0, 1, 2\}$) and Sample Adaptive Offset (SAO Edge/Band offsets).
-- **Step 5: RDO Decision (`05 RD Decision`)**:
-  - **Lagrangian Cost Comparison**: Benchmarks Best No-Split Cost ($J_{\text{nosplit}}$) vs Best Split Cost ($J_{\text{split}}$) with verified HM provenance.
-  - **Actual CTU Bits**: Displays ground-truth bitstream output measured directly after `encodeCtu()`.
-  - **Interactive RDO Simulator**: Sandbox simulation with live $QP$ slider, $\lambda$ multiplier, and Draw.io export.
-- **Unified Controls & Streamlined UI**:
-  - Single-line Apple macOS Tahoe stepper chips bar (`01 Partition` › `02 Prediction` › `03 Residual & TU` › `04 Reconstruction` › `05 RD Decision`).
-  - Unified Channel selector (`Y`, `Cb`, `Cr` via key `C`) and Matrix Values toggle (`Values` / `123` via key `V`).
-  - Zero-clutter, glass-box aesthetic without repetitive status badges or verbose banners.
-
----
-
-### 2. Feature-First Vertical Stage Architecture (`components/stages/`)
-Component architecture follows high cohesion and low coupling by organizing stages into dedicated feature folders:
-- `stages/cp00_frame_gop/`: Temporal GOP hierarchy, POC, slice types (I, P, B), and L0/L1 reference lists.
-- `stages/cp01_partition/`: Multi-layer SVG/Canvas partition map, boundary forced-split detection, and QuadTree inspector.
-- `stages/cp02_intra_search/`: 5-phase intra search stepper, candidate leaderboard, and chroma modes.
-- `stages/cp03_inter_search/`: Motion vector estimation (MV, MVD), search windows, and AMVP candidates.
-- `stages/cp04_transform_quant/`: Tri-matrix comparison (Residual $R$, DCT Spectrum $C$, Quantized $Q$).
-- `stages/cp05_recon_picture/`: Full-frame before/after split slider and discrete CU planar inspection ($Y, Cb, Cr$).
-- `stages/cp06_inloop_filter/`: Boundary edge profiles ($\beta, t_C$) and SAO classification offsets.
-- `stages/cp07_cabac_entropy/`: Context modeling (`ctxIdx`), state transitions (`pStateIdx`), and bitrate allocation.
-- `stages/rdo_simulator/`: Standalone in-browser HM `xCompressCU` QuadTree simulator.
-
----
-
-### 3. Real HM-18.0 Prediction & Verified RDO Telemetry
-- **Bit-Exact Prediction Capture**: VisualDumper hooks capture `INTRA_TU_PRED` immediately after `predIntraAng()`, eliminating heuristic approximations.
-- **Pre-Split Incumbent Preservation**: Records incumbent non-split cost before split search recursion to avoid overwrites.
-- **Best-Split Accumulator**: Dedicated tracking ensures `cost_split` reliably reflects the true optimal split decision across multi-QP evaluations.
-- **CTU Actual Bitstream Metric**: Anchors total bits to `TEncSlice::compressSlice` post-`encodeCtu()`.
-
----
-
-### 4. Scoped Query & Caching Architecture
-Optimized network communication via `useAnalysisSession` eliminates redundant round-trips:
-- **Hierarchical Query Scoping**:
-  - **Job Level** (`fetchJobCheckpoints`): Fetches `CP_00_FRAME_GOP` and `partitions` once per encode session.
-  - **CTU Level** (`fetchCtuCheckpoints`): Fetches CTU-wide checkpoints (`CP_01_PARTITION`, `CP_04_TRANSFORM_RQT`, `CP_05_RECON_PICTURE`, `CP_06_INLOOP_FILTER`, `CP_07_CABAC_ENTROPY`, `rdo-decisions`) when CTU selection changes.
-  - **CU Level** (`fetchCuCheckpoints`): Only requests CU-specific data (`CP_02_INTRA_REF`, `CP_03_INTRA_SEARCH`, `CP_03_INTER_SEARCH`) when a leaf CU is actively selected.
-- **Request Cancellation**: In-flight requests for intra pipelines use `AbortController` to cancel stale responses during fast scrubbing.
-- **In-Memory LRU Cache**: Avoids re-fetching previously viewed CTUs and CUs.
-
----
-
-### 5. Modular Apple Design System (`components/apple/`)
-Built with 10 focused single-responsibility primitives:
-- `AppleCard`, `AppleButton`, `SegmentedControl`, `AppleBadge`, `AppleSlider`, `AppleToggle`, `AppleSelect`, `AppleTabs`, `AppleTooltip`, and `AppleModal`.
-- Clean barrel export (`components/apple/index.jsx`) guarantees full backward-compatibility with 39 named exports.
-
----
-
-### 6. Unified Analysis Inspector (Right Panel)
-- **Single Source of Truth**: Unified panel displaying target CTU coordinates, CU dimensions, QuadTree depth, selected Intra mode, RDO cost $J$, line buffer availability ($A, B, C, D$), and sequence telemetry.
-- Toggle visibility anytime via the header button or keyboard shortcut `I`.
-
----
-
-## Global Keyboard Shortcuts
-
-| Shortcut | Action |
-| :--- | :--- |
-| `1` – `5` | Switch directly between Guided Steps 1 through 5 |
-| `C` / `c` | Cycle Active Channel (`Y` $\to$ `Cb` $\to$ `Cr` $\to$ `Y`) in Guided Flow |
-| `V` / `v` | Toggle Matrix Cell Values overlay (`showValues`) in Guided Flow |
-| `I` / `i` | Toggle Unified Analysis Inspector panel |
-| `D` / `d` | Toggle Dark / Light theme |
-| `Space` | Toggle CTU auto-play / pause timeline animation |
-| `ArrowLeft` / `ArrowRight` | Step backward / forward through modes or CTUs |
-| `Escape` | Deselect active pixel / dismiss overlays |
-
----
-
-## System Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                   React 19 + Vite Frontend                      │
-│   (Apple Minimalist Design, Zero CLS, Responsive Pixel Canvas)   │
-└───────────────────────────────▲──────────────────────────────────┘
-                                │ HTTP / REST JSON (Async Job & CP_00..07, RDO_SIM)
-┌───────────────────────────────▼──────────────────────────────────┐
-│                     FastAPI Python Backend                       │
-│  • Job Manager & Session Isolation (UUID Workspace)              │
-│  • Checkpoint Parsing Pipeline (CP_00 to CP_07 Checkpoints)      │
-│  • FFmpeg Native YUV420p Color Conversion & Scaling Adapter       │
-└───────────────────────────────▲──────────────────────────────────┘
-                                │ Subprocess Execution + Trace Pipes
-┌───────────────────────────────▼──────────────────────────────────┐
-│                 HM-18.0 Reference Software (C++)                 │
-│  • VisualDumper Instrumentation Hooks across TLibCommon and      │
-│    TLibEncoder (TEncCu, TEncSearch, TComTrQuant, TComLoopFilter) │
-│  • Emits structured JSONL microarchitectural traces at encode    │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Quick Start (One-Click Launch)
-
-A unified startup script is provided to automate environment initialization, dependency installation, encoder detection/auto-compilation, and service startup:
+## Khởi động nhanh
 
 ```bash
-# Clone the repository
-git clone https://github.com/hijoouzc/HEVC_Analysis_Web.git
-cd HEVC_Analysis_Web
-
-# Run the unified launcher
 ./run_tool.sh
 ```
 
-Access the application in your browser:
-- **Web Application**: `http://localhost:5173`
-- **Interactive API Docs (Swagger)**: `http://localhost:8000/docs`
-- **Health Check**: `http://localhost:8000/health`
+Script tự cài dependency, build encoder nếu chưa có và chạy cả hai dịch vụ:
 
----
+- Web: `http://localhost:5173`
+- API docs (Swagger): `http://localhost:8000/docs`
+- Health: `http://localhost:8000/health`
 
-## Manual Setup & Build Guide
+## Cài đặt thủ công
 
-### Prerequisites
-- **Linux** (Ubuntu 20.04/22.04/24.04 recommended) or macOS
-- **GCC / G++ 11+** with C++17 support
-- **CMake 3.16+**
-- **Python 3.10+** (Python 3.12 / 3.14 recommended)
-- **Node.js 18+** (Node 22 recommended) and `npm`
-- **FFmpeg** (installed and available in `PATH`)
-
-### 1. Build HM-18.0 Encoder with Visual Instrumentation
-The visual trace hooks are enabled by default (`ENABLE_VISUAL_DUMP=ON`).
+**Yêu cầu:** Linux hoặc macOS, GCC/G++ hỗ trợ C++17, CMake ≥ 3.16, Python ≥ 3.10, Node.js ≥ 18, FFmpeg trong `PATH`.
 
 ```bash
-# Configure and build Release binary with CMake
+# 1. Build HM-18.0 có hook (ENABLE_VISUAL_DUMP=ON mặc định)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
 ```
 
-### 2. Backend Setup
-```bash
-cd web_app/backend
+2. Backend: xem [`web_app/backend/README.md`](web_app/backend/README.md).
+3. Frontend: xem [`web_app/frontend/README.md`](web_app/frontend/README.md).
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
+## Cấu trúc thư mục
 
-# Install dependencies
-pip install --upgrade pip
-pip install -r requirements.txt
-
-# Run automated test suite (76 tests)
-pytest -v
-
-# Start backend server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### 3. Frontend Setup
-```bash
-cd web_app/frontend
-
-# Install dependencies
-npm install
-
-# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 137 files)
-npm run lint
-
-# Run automated test suite (19 comprehensive test suites, 100% passed)
-npm test
-
-# Start development server
-npm run dev -- --host 0.0.0.0 --port 5173
-```
-
----
-
-## Project Structure
-
-```
+```text
 HEVC_reference_software/
-├── bin/                          # Compiled HM executables (TAppEncoder, etc.)
-├── build/                        # CMake build directory
-├── cfg/                          # HM encoder configuration profiles
-├── doc/                          # HM reference software documentation
-├── docs/                         # Technical & architectural specifications
-├── source/                       # HM-18.0 C++ Source Code
-│   ├── App/                      # Application wrappers (TAppEncoder, TAppDecoder)
-│   └── Lib/                      # Core libraries (TLibCommon, TLibEncoder, TLibDecoder)
-│       ├── TLibCommon/
-│       │   ├── VisualDumper.h    # C++ Visual Instrumentation Header
-│       │   ├── VisualDumper.cpp  # Trace serialization engine
-│       │   ├── TComTrQuant.cpp   # Transform & Quantization dumper hook
-│       │   └── TComLoopFilter.cpp# Deblocking filter dumper hook
-│       └── TLibEncoder/
-│           ├── TEncCu.cpp        # QuadTree partition dumper hook
-│           ├── TEncSearch.cpp    # Intra/Inter prediction search hooks
-│           ├── TEncGOP.cpp       # Frame GOP structure dumper hook
-│           ├── TEncSampleAdaptiveOffset.cpp # SAO dumper hook
-│           └── TEncSbac.cpp      # CABAC entropy dumper hook
-├── web_app/                      # Fullstack Analysis Platform
-│   ├── backend/                  # FastAPI Application
-│   │   ├── app/                  # Application core, API routers, parsers, engine
-│   │   ├── tests/                # Unit & Integration test suite (76 tests)
-│   │   └── requirements.txt      # Python dependencies
-│   └── frontend/                 # React 19 + Vite Application
-│       ├── src/
-│       │   ├── components/       # Guided Viewports, Inspector, Canvas Visualizers
-│       │   │   ├── apple/        # Modular Apple macOS Tahoe Design System (10 components)
-│       │   │   ├── guided/       # 5-Step Guided Flow orchestration (guidedSteps.js, etc.)
-│       │   │   └── stages/       # Feature-first vertical stage modules (cp00..cp07, rdo_sim)
-│       │   ├── hooks/            # Scoped session queries (useAnalysisSession), playback, cache
-│       │   ├── utils/            # HEVC Color utilities, RDO simulator, draw.io generator
-│       │   └── tests/            # 19 ESM test suites (100% passed)
-│       └── package.json          # Node dependencies
-├── workspace/                    # Transient encoding sessions & workspace
-├── run_tool.sh                   # Unified launcher script
-└── README.md                     # Project documentation
+├── source/                 # Mã nguồn HM-18.0
+│   └── Lib/TLibCommon/VisualDumper.{h,cpp}   # Bộ ghi trace
+├── cfg/                    # Cấu hình encoder HM
+├── bin/                    # Binary sau khi build
+├── doc/                    # Tài liệu gốc của HM (upstream)
+├── docs/                   # Tài liệu kỹ thuật của dự án (xem docs/README.md)
+├── web_app/
+│   ├── backend/            # FastAPI
+│   └── frontend/           # React 19 + Vite
+├── workspace/              # Session encode tạm thời (tự sinh)
+├── .agents/                # Rules & skills cho AI agent (xem AGENTS.md)
+└── run_tool.sh             # Launcher
 ```
 
----
+## Tài liệu
+
+| Chủ đề | Vị trí |
+| :--- | :--- |
+| Thuật toán HEVC, kiến trúc HM, kiến trúc hệ thống | [`docs/README.md`](docs/README.md) |
+| Tính năng giao diện, phím tắt, design system | [`web_app/frontend/README.md`](web_app/frontend/README.md) |
+| API và checkpoint endpoint | [`web_app/backend/README.md`](web_app/backend/README.md) |
+| Quy tắc phát triển cho agent | [`AGENTS.md`](AGENTS.md) |
 
 ## License
 
-This software package is distributed under the **BSD 3-Clause License**. See the `LICENSE` file for details.
+BSD 3-Clause — xem [`COPYING`](COPYING).

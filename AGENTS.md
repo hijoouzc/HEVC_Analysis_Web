@@ -35,15 +35,15 @@ HEVC_reference_software/
 
 When approaching specialized tasks in this repository, consult and follow the corresponding skill:
 
-1. **`hevc-pixel-accurate-design`** ([`SKILL.md`](file:///.agents/skills/hevc-pixel-accurate-design/SKILL.md)):
+1. **`hevc-pixel-accurate-design`** ([`SKILL.md`](./.agents/skills/hevc-pixel-accurate-design/SKILL.md)):
    - Enforce discrete sample rendering (`imageSmoothingEnabled = false`), ITU-R BT.709 color matrices, signed residual heatmaps, and zero browser blurring.
-2. **`hevc-hm18-telemetry-pipeline`** ([`SKILL.md`](file:///.agents/skills/hevc-hm18-telemetry-pipeline/SKILL.md)):
+2. **`hevc-hm18-telemetry-pipeline`** ([`SKILL.md`](./.agents/skills/hevc-hm18-telemetry-pipeline/SKILL.md)):
    - C++ `VisualDumper` hooks (`CP_00` to `CP_07`), `trace.jsonl` streaming, and asynchronous job submission.
-3. **`hevc-intra-prediction-analysis`** ([`SKILL.md`](file:///.agents/skills/hevc-intra-prediction-analysis/SKILL.md)):
+3. **`hevc-intra-prediction-analysis`** ([`SKILL.md`](./.agents/skills/hevc-intra-prediction-analysis/SKILL.md)):
    - $4N+1$ perimeter samples, MDIS 3-tap filtering, 35 intra modes (Planar, DC, 33 Angular with 1/32-pel math), 3 MPM derivation, and 4:2:0 chroma modes.
-4. **`hevc-guided-flow-sync`** ([`SKILL.md`](file:///.agents/skills/hevc-guided-flow-sync/SKILL.md)):
+4. **`hevc-guided-flow-sync`** ([`SKILL.md`](./.agents/skills/hevc-guided-flow-sync/SKILL.md)):
    - Single Source of Truth `(ctuX, ctuY, cu, channel, mode)`, 5-step Guided Journey, cross-tab bidirectional sync, and coordinate overflow safety on channel switch.
-5. **`hevc-rdo-decision-engine`** ([`SKILL.md`](file:///.agents/skills/hevc-rdo-decision-engine/SKILL.md)):
+5. **`hevc-rdo-decision-engine`** ([`SKILL.md`](./.agents/skills/hevc-rdo-decision-engine/SKILL.md)):
    - Lagrangian cost $J = D + \lambda \cdot R$, QuadTree recursion ($J_{\text{split}}$ vs $J_{\text{nosplit}}$), Integer Core Transforms (ICT DCT-II / DST-VII), and zero-allocation client simulation.
 
 ---
@@ -56,6 +56,6 @@ All agent actions must respect the rules in `.agents/rules/`:
 - **Canvas Rendering for Blocks $\ge 16\times 16$**: Never spawn 4,096 DOM nodes for large blocks; use direct canvas buffer rendering.
 - **Zero-Allocation in Loops**: Reuse static typed arrays (`Int16Array`, `Float32Array`) in simulation loops.
 - **100% Green Quality Gate**:
-  - `npm test -- --run` in `web_app/frontend` (all 17 test suites must pass).
-  - `./venv/bin/pytest tests/` in `web_app/backend` (all 47 tests must pass).
+  - `npm test -- --run` in `web_app/frontend` (all suites must pass).
+  - `./venv/bin/pytest tests/` in `web_app/backend` (all tests must pass).
   - `npx oxlint` in `web_app/frontend` (0 warnings, 0 errors).

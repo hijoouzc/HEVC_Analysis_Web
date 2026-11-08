@@ -28,7 +28,7 @@
 
 The Joint Collaborative Team on Video Coding (JCT-VC) established strict coding guidelines for the reference implementation of High Efficiency Video Coding (HEVC), known as the HEVC Test Model (HM) [1], [2]. To ensure rigorous maintainability, cross-platform portability, and architectural transparency across thousands of source files, HM adopts a modified version of Hungarian notation coupled with standardized scope and type prefixes.
 
-This document serves as the formal IEEE-style specification for naming conventions, variable decoding logic, data structures, and core execution routines in the HM-18.0 reference software.
+This document describes naming conventions, variable decoding, data structures, and core routines in the HM-18.0 reference software.
 
 ---
 
@@ -41,11 +41,11 @@ In the HM reference software, variable and function names immediately signal the
 
 | Prefix | Scope / Role | C++ Language Semantic | Source Code Example |
 | :---: | :--- | :--- | :--- |
-| `x...` | **eXtension / eXecute** | Private/protected member helper function | [`xCompressCU`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L531), [`xCheckBestMode`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L1826) |
+| `x...` | **eXtension / eXecute** | Private/protected member helper function | [`xCompressCU`](../source/Lib/TLibEncoder/TEncCu.cpp#L531), [`xCheckBestMode`](../source/Lib/TLibEncoder/TEncCu.cpp#L1826) |
 | `m_` | **Member Variable** | Class instance attribute | `m_puhDepth`, `m_dTotalCost`, `m_cMv` |
 | `g_` | **Global Variable / Table** | Global lookup table or constant array | `g_aucConvertToBit`, `g_auiZscanToRaster` |
 | `r` | **Reference Argument** | C++ reference parameter pass-by-reference (`&`) | `rpcBestCU`, `ruiBits`, `rcDistParam` |
-| `c` | **Class / Complex Instance** | Direct struct/class instance (value object) | `cMv` ([`TComMv`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibCommon/TComMv.h)), `cMvField` |
+| `c` | **Class / Complex Instance** | Direct struct/class instance (value object) | `cMv` ([`TComMv`](../source/Lib/TLibCommon/TComMv.h)), `cMvField` |
 | `a` | **Array Structure** | Static array or contiguous member buffer | `m_acCUMvField`, `aacAMVPInfo` |
 
 ---
@@ -130,7 +130,7 @@ $$\text{Identifier} = \text{Prefix}_{\text{PassMode}} + \text{Prefix}_{\text{Poi
 ## V. Key Data Structures and Variables in HM-18.0
 
 ### A. CU and CTU Data Representation in `TComDataCU`
-The [`TComDataCU`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibCommon/TComDataCU.h#L64) class serves as the comprehensive in-memory model storing coding parameters for an entire CTU and its recursive subdivisions:
+The [`TComDataCU`](../source/Lib/TLibCommon/TComDataCU.h#L64) class serves as the comprehensive in-memory model storing coding parameters for an entire CTU and its recursive subdivisions:
 * `m_puhDepth`: 1D array mapping recursive quadtree depth ($d \in [0, 3]$) for each $4\times 4$ base partition.
 * `m_pePartSize`: Array of partition structure enums (`SIZE_2Nx2N`, `SIZE_2NxN`, `SIZE_Nx2N`, `SIZE_NxN`, AMP).
 * `m_pePredMode`: Array of prediction modes (`MODE_INTER`, `MODE_INTRA`).
@@ -146,7 +146,7 @@ The [`TComDataCU`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_refer
 * `m_skipFlag`: Syntax flag indicating activation of zero-residual Skip mode.
 
 ### B. RDO Optimization and Search Variables in `TEncCu` and `TEncSearch`
-The encoding optimization engine in [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h#L73) and [`TEncSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.h#L88) governs recursive exploration:
+The encoding optimization engine in [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h#L73) and [`TEncSearch`](../source/Lib/TLibEncoder/TEncSearch.h#L88) governs recursive exploration:
 * `rpcBestCU` / `rpcTempCU`: Dual instance pointers tracking the global minimum candidate (`Best`) versus trial state (`Temp`).
 * `uiDepth`: Current depth level in recursive exploration ($0 \le \text{uiDepth} \le D_{\max}$).
 * `uhNextDepth`: Child depth parameter ($\text{uiDepth} + 1$).
@@ -170,23 +170,23 @@ The encoding optimization engine in [`TEncCu`](file:///home/hoinguyen/Documents/
 
 | Function Identifier | Host Class | Source Definition | Primary Technical Mandate |
 | :--- | :--- | :--- | :--- |
-| [`compressCtu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L238) | [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:238` | Root entry point for CTU processing; initializes depth 0 buffers and evaluates picture boundary safety (`bBoundary`). |
-| [`xCompressCU`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L531) | [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:531` | Depth-first recursive quadtree engine testing non-split modes against 4 sub-CU partitioned candidates. |
-| [`xCheckBestMode`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L1826) | [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:1826` | Compares candidate RD cost ($J_{\text{temp}} < J_{\text{best}}$); performs zero-copy pointer and buffer swaps upon finding superior candidates. |
-| [`xCheckRDCostMerge2Nx2N`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L716) | [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:716` | Evaluates $2N\times 2N$ Merge and Skip candidates early to establish tight upper-bound thresholds ($J_{\text{best}}$). |
-| [`xCheckRDCostInter`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L1635) | [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:1635` | Evaluates Inter prediction candidates across symmetric (2Nx2N, 2NxN, Nx2N) and asymmetric (AMP) partitions. |
-| [`xCheckRDCostIntra`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.cpp#L1695) | [`TEncCu`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:1695` | Coordinates 35-mode Intra prediction search for $2N\times 2N$ and $N\times N$ configurations. |
-| [`predInterSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.cpp#L3057) | [`TEncSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:3057` | Iterates over prediction blocks to execute integer and sub-pixel motion estimation against reference frames in DPB. |
-| [`estIntraPredLumaQT`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.cpp#L2204) | [`TEncSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:2204` | Two-pass Intra search: Phase 1 fast SATD screening across 35 modes; Phase 2 full RDO evaluation over Top-K and MPM lists. |
-| [`encodeResAndCalcRdInterCU`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.cpp#L4720) | [`TEncSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:4720` | Executes residual transform, quantization, CABAC entropy encoding, and distortion calculation for Inter blocks. |
-| [`xEstimateInterResidualQT`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.cpp#L4838) | [`TEncSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:4838` | Recursively evaluates Residual Quadtree (RQT) transform splits to determine optimal transform block size. |
-| [`xRecurIntraCodingLumaQT`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.cpp#L1431) | [`TEncSearch`](file:///home/hoinguyen/Documents/Video_Compression/HEVC_reference_software/source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:1431` | Recursively transforms, quantizes, and reconstructs Intra luma transform blocks in closed-loop order. |
+| [`compressCtu`](../source/Lib/TLibEncoder/TEncCu.cpp#L238) | [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:238` | Root entry point for CTU processing; initializes depth 0 buffers and evaluates picture boundary safety (`bBoundary`). |
+| [`xCompressCU`](../source/Lib/TLibEncoder/TEncCu.cpp#L531) | [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:531` | Depth-first recursive quadtree engine testing non-split modes against 4 sub-CU partitioned candidates. |
+| [`xCheckBestMode`](../source/Lib/TLibEncoder/TEncCu.cpp#L1826) | [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:1826` | Compares candidate RD cost ($J_{\text{temp}} < J_{\text{best}}$); performs zero-copy pointer and buffer swaps upon finding superior candidates. |
+| [`xCheckRDCostMerge2Nx2N`](../source/Lib/TLibEncoder/TEncCu.cpp#L716) | [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:716` | Evaluates $2N\times 2N$ Merge and Skip candidates early to establish tight upper-bound thresholds ($J_{\text{best}}$). |
+| [`xCheckRDCostInter`](../source/Lib/TLibEncoder/TEncCu.cpp#L1635) | [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:1635` | Evaluates Inter prediction candidates across symmetric (2Nx2N, 2NxN, Nx2N) and asymmetric (AMP) partitions. |
+| [`xCheckRDCostIntra`](../source/Lib/TLibEncoder/TEncCu.cpp#L1695) | [`TEncCu`](../source/Lib/TLibEncoder/TEncCu.h) | `TEncCu.cpp:1695` | Coordinates 35-mode Intra prediction search for $2N\times 2N$ and $N\times N$ configurations. |
+| [`predInterSearch`](../source/Lib/TLibEncoder/TEncSearch.cpp#L3057) | [`TEncSearch`](../source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:3057` | Iterates over prediction blocks to execute integer and sub-pixel motion estimation against reference frames in DPB. |
+| [`estIntraPredLumaQT`](../source/Lib/TLibEncoder/TEncSearch.cpp#L2204) | [`TEncSearch`](../source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:2204` | Two-pass Intra search: Phase 1 fast SATD screening across 35 modes; Phase 2 full RDO evaluation over Top-K and MPM lists. |
+| [`encodeResAndCalcRdInterCU`](../source/Lib/TLibEncoder/TEncSearch.cpp#L4720) | [`TEncSearch`](../source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:4720` | Executes residual transform, quantization, CABAC entropy encoding, and distortion calculation for Inter blocks. |
+| [`xEstimateInterResidualQT`](../source/Lib/TLibEncoder/TEncSearch.cpp#L4838) | [`TEncSearch`](../source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:4838` | Recursively evaluates Residual Quadtree (RQT) transform splits to determine optimal transform block size. |
+| [`xRecurIntraCodingLumaQT`](../source/Lib/TLibEncoder/TEncSearch.cpp#L1431) | [`TEncSearch`](../source/Lib/TLibEncoder/TEncSearch.h) | `TEncSearch.cpp:1431` | Recursively transforms, quantizes, and reconstructs Intra luma transform blocks in closed-loop order. |
 
 ---
 
 ## References
 
 * [1] G. J. Sullivan, J.-R. Ohm, W.-J. Han, and T. Wiegand, "Overview of the High Efficiency Video Coding (HEVC) Standard," *IEEE Transactions on Circuits and Systems for Video Technology*, vol. 22, no. 12, pp. 1649–1668, Dec. 2012.
-* [2] *High Efficiency Video Coding (HEVC) Reference Software HM-18.0*, Joint Collaborative Team on Video Coding (JCT-VC) of ITU-T SG 16 WP 3 and ISO/IEC JTC 1/SC 29/WG 11, 2014.
+* [2] *High Efficiency Video Coding (HEVC) Reference Software HM-18.0*, Joint Collaborative Team on Video Coding (JCT-VC) of ITU-T SG 16 WP 3 and ISO/IEC JTC 1/SC 29/WG 11. Repository: https://vcgit.hhi.fraunhofer.de/jvet/HM
 * [3] I.-K. Kim et al., "High Efficiency Video Coding (HEVC) Test Model 16 (HM 16) Encoder Description," Joint Collaborative Team on Video Coding (JCT-VC), document JCTVC-S1002, Strasbourg, France, Oct. 2014.
 * [4] V. Sze, M. Budagavi, and G. J. Sullivan, Eds., *High Efficiency Video Coding (HEVC): Algorithms and Architectures*, Springer, 2014.

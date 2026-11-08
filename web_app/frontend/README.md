@@ -98,7 +98,7 @@ The design system is split into 10 single-responsibility modules:
 - `AppleTabs.jsx`: Tab navigation components.
 - `AppleTooltip.jsx`: Floating micro-tooltips.
 - `AppleModal.jsx`: Portaled dialog overlays.
-- `index.jsx`: Barrel file preserving all 39 named exports with zero consumer breakages.
+- `index.jsx`: Barrel file re-exporting all components.
 
 ---
 
@@ -169,10 +169,10 @@ npm run preview
 
 ### Code Quality & Testing
 ```bash
-# Run ultra-fast linter (oxlint: 0 warnings, 0 errors across 137 files)
+# Lint (must report 0 warnings, 0 errors)
 npx oxlint
 
-# Run automated test suites (19 test suites, 100% passed)
+# Run test suites (all must pass)
 npm test
 ```
 
