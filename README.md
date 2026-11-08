@@ -18,7 +18,7 @@ Nền tảng nghiên cứu/giảng dạy chạy bộ mã hóa tham chiếu **HM-
 └───────────────────────────────┘
 ```
 
-Chi tiết: [`docs/08_HM_ENCODER_ARCHITECTURE.md`](docs/08_HM_ENCODER_ARCHITECTURE.md).
+Chi tiết: [`docs/HM_ENCODER_ARCHITECTURE.md`](docs/HM_ENCODER_ARCHITECTURE.md).
 
 ## Khởi động nhanh
 

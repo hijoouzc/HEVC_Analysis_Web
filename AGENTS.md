@@ -20,7 +20,6 @@ HEVC_reference_software/
 │       ├── ui-apple-tahoe-standard.md        # macOS Tahoe HIG, anti-jitter, 100% English
 │       ├── react-performance-canvas.md       # 60 FPS canvas rendering & zero-allocation
 │       └── zero-regression-test-integrity.md # Test gates (Vitest, Pytest, Oxlint)
-├── agent -> .agents                  # Root symlink for `./agent` convention
 ├── source/                           # HM-18.0 C++ reference software source code
 │   └── Lib/TLibCommon/VisualDumper.* # Telemetry hook singleton
 ├── docs/                             # In-depth IEEE & engineering documentation
