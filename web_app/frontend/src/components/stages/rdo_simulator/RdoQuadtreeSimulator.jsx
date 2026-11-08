@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useDeferredValue, useRef, useCallback } from 'react';
 import {
-  runHevcQuadtreeSimulation,
+  runTComDataCUSimulation
+} from '../../../utils/tcomDataCUEngine';
+import {
   generateSyntheticCtuPattern,
   computeLambda,
   computeQstep
@@ -13,6 +15,7 @@ import RdoDecisionCard from './subcomponents/RdoDecisionCard';
 import PixelMicroscope from './subcomponents/PixelMicroscope';
 import CandidateModesTable from './subcomponents/CandidateModesTable';
 import TreeCallStack from './subcomponents/TreeCallStack';
+import TComDataCUMemoryPanel from './subcomponents/TComDataCUMemoryPanel';
 import HmSourceCodeModal from '../../common/HmSourceCodeModal';
 import DrawioExportModal from '../../common/DrawioExportModal';
 import { HM_RDO_COST_SIMULATION_SNIPPET } from '../../../constants/hmSourceSnippets';
@@ -110,14 +113,17 @@ function RdoQuadtreeSimulator({
 
   // Synchronous calculation function (used for initial render, tests, and error fallback)
   const runSyncSimulation = useCallback(() => {
-    return runHevcQuadtreeSimulation({
+    return runTComDataCUSimulation({
       ctuPatch: activeCtuPatch,
       qp: deferredQp,
+      ctuX,
+      ctuY,
+      imageDims,
       groundTruthNodes: isGroundTruthActive ? partitionData.nodes : null,
       rdoDecisions: isGroundTruthActive ? currentCtuDecisions : null,
       candidateDetails: isGroundTruthActive ? candidateDetails : null
     });
-  }, [activeCtuPatch, deferredQp, isGroundTruthActive, partitionData, currentCtuDecisions, candidateDetails]);
+  }, [activeCtuPatch, deferredQp, ctuX, ctuY, imageDims, isGroundTruthActive, partitionData, currentCtuDecisions, candidateDetails]);
 
   // Synchronous fallback (and initial value) for immediate render & tests
   const syncSimResult = useMemo(() => {
@@ -170,13 +176,16 @@ function RdoQuadtreeSimulator({
         params: {
           ctuPatch: activeCtuPatch,
           qp: deferredQp,
+          ctuX,
+          ctuY,
+          imageDims,
           groundTruthNodes: isGroundTruthActive ? partitionData.nodes : null,
           rdoDecisions: isGroundTruthActive ? currentCtuDecisions : null,
           candidateDetails: isGroundTruthActive ? candidateDetails : null
         }
       });
     }
-  }, [activeCtuPatch, deferredQp, isGroundTruthActive, partitionData?.nodes, currentCtuDecisions, candidateDetails]);
+  }, [activeCtuPatch, deferredQp, ctuX, ctuY, imageDims, isGroundTruthActive, partitionData?.nodes, currentCtuDecisions, candidateDetails]);
 
   const simResult = workerResult || syncSimResult;
 
@@ -238,7 +247,7 @@ function RdoQuadtreeSimulator({
       <div className="stage-section-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
           <div className="stage-section-title">
-            CU QuadTree RDO &amp; xCompressCU
+            HM-18.0 TComDataCU Microscope &amp; xCompressCU Stepper
           </div>
           {isGroundTruthActive ? (
             <Badge variant="blue" style={{ fontSize: '11px' }}>
@@ -249,6 +258,12 @@ function RdoQuadtreeSimulator({
               SYNTHETIC SANDBOX SIMULATION
             </Badge>
           )}
+          <Badge variant="blue" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+            TComDataCU C++ STATE
+          </Badge>
+          <Badge variant="purple" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+            MORTON Z-SCAN (256 UNITS)
+          </Badge>
           {partitionData?.ctu_actual_bits != null && (
             <Badge variant="green" style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }} title="Written bitstream size by TEncSlice::encodeCtu()">
               Actual bits — CTU: {partitionData.ctu_actual_bits.toLocaleString()} b
@@ -434,33 +449,41 @@ function RdoQuadtreeSimulator({
         </div>
       </Card>
 
-      {/* 4. Main 2-Column Inspector Area */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(330px, 350px) minmax(0, 1fr)', gap: '0.85rem' }}>
-        {/* Left Column: 64x64 CTU Partition Canvas & RDO Decision Math Panel */}
+      {/* 4. Main 3-Column Inspector Area: Visual Canvas <-> Stepper & Decision <-> TComDataCU Memory */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(280px, 310px) minmax(320px, 1fr) minmax(320px, 360px)',
+        gap: '0.85rem',
+        alignItems: 'start'
+      }}>
+        {/* Column 1: 64x64 CTU Partition Canvas & Pixel Microscope */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', minWidth: 0, boxSizing: 'border-box' }}>
           <PartitionCanvas
             activeCtuPatch={activeCtuPatch}
             currentStep={currentStep}
             activeNode={activeNode}
             treeRoot={simTree}
+            ctuX={ctuX}
+            ctuY={ctuY}
+            imageDims={imageDims}
           />
 
+          <PixelMicroscope
+            size={activeNode.size}
+            origBlock={currentStep?.origBlock}
+            activeEval={activeEval}
+            showValues={showValues}
+          />
+        </div>
+
+        {/* Column 2: RDO Decision Math, Candidate Modes & Call Stack */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', minWidth: 0, boxSizing: 'border-box' }}>
           <RdoDecisionCard
             qp={qp}
             qstepVal={qstepVal}
             lambdaVal={lambdaVal}
             activeEval={activeEval}
             currentStep={currentStep}
-          />
-        </div>
-
-        {/* Right Column: 4-Picture Microscope & Tree Call Stack */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', minWidth: 0, boxSizing: 'border-box' }}>
-          <PixelMicroscope
-            size={activeNode.size}
-            origBlock={currentStep?.origBlock}
-            activeEval={activeEval}
-            showValues={showValues}
           />
 
           <CandidateModesTable
@@ -473,6 +496,18 @@ function RdoQuadtreeSimulator({
             activeNodeId={activeNode.id}
             callStack={currentStep?.callStack}
             onExportDrawio={() => setShowDrawioModal(true)}
+          />
+        </div>
+
+        {/* Column 3: TComDataCU In-Memory State & 256-Partition Morton Z-Scan Grid */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', minWidth: 0, boxSizing: 'border-box' }}>
+          <TComDataCUMemoryPanel
+            currentStep={currentStep}
+            tcomDataCU={simResult?.finalTComDataCU}
+            activeCu={selectedCu}
+            imageDims={imageDims}
+            ctuX={ctuX}
+            ctuY={ctuY}
           />
         </div>
       </div>

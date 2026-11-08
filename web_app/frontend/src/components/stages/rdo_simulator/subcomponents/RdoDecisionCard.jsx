@@ -28,7 +28,23 @@ export default function RdoDecisionCard({
       boxSizing: 'border-box'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '20px', flexShrink: 0 }}>
-        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--label)', whiteSpace: 'nowrap' }}>RDO Decision</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--label)', whiteSpace: 'nowrap' }}>RDO Decision</span>
+          {currentStep?.bForceSplit && (
+            <span style={{
+              fontSize: '9px',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 700,
+              color: '#ef4444',
+              backgroundColor: 'rgba(239, 68, 68, 0.12)',
+              padding: '1px 5px',
+              borderRadius: '3px',
+              border: '0.5px solid rgba(239, 68, 68, 0.3)',
+            }}>
+              FORCED SPLIT (Boundary)
+            </span>
+          )}
+        </div>
         <span style={{
           fontFamily: 'var(--font-mono)',
           fontSize: '11px',

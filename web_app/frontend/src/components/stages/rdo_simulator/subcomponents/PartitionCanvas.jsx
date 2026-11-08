@@ -16,7 +16,10 @@ function PartitionCanvas({
   activeCtuPatch,
   currentStep,
   activeNode = {},
-  treeRoot = null
+  treeRoot = null,
+  _ctuX = 0,
+  _ctuY = 0,
+  _imageDims = { width: 640, height: 360 },
 }) {
   const dConf = HEVC_DEPTH_COLORS[activeNode?.depth] || HEVC_DEPTH_COLORS[0];
   const canvasRef = useRef(null);
@@ -76,7 +79,22 @@ function PartitionCanvas({
       boxSizing: 'border-box'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '22px', flexShrink: 0, whiteSpace: 'nowrap' }}>
-        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--apple-label-primary)', whiteSpace: 'nowrap' }}>Partition QuadTree (64×64)</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--apple-label-primary)', whiteSpace: 'nowrap' }}>Partition QuadTree (64×64)</span>
+          {currentStep?.mortonRange && (
+            <span style={{
+              fontSize: '10px',
+              fontFamily: 'JetBrains Mono, monospace',
+              color: 'var(--system-blue)',
+              backgroundColor: 'rgba(0, 122, 255, 0.1)',
+              padding: '1px 5px',
+              borderRadius: '3px',
+              fontWeight: 600,
+            }}>
+              Z [{currentStep.mortonRange.startZIdx}..{currentStep.mortonRange.endZIdx}]
+            </span>
+          )}
+        </div>
         <span style={{
           fontSize: '11px',
           color: dConf.text,
