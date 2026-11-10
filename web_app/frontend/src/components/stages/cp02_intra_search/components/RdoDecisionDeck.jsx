@@ -1,12 +1,14 @@
 import React from 'react';
 import { getIntraModeInfo } from '../../../../utils/colorUtils';
 import Step1BoundaryInitView from '../pipeline/Step1BoundaryInitView';
+import Step2RmdFunnelView from '../pipeline/Step2RmdFunnelView';
 import Step5ChromaWinnerView from '../pipeline/Step5ChromaWinnerView';
 import { SegmentedControl, Badge, Card, Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '../../../apple';
 
 /**
  * RdoDecisionDeck: Right column component in Intra Studio
- * Exposes RDO Candidates Table, Boundary MDIS Filter, and Chroma Intra Modes.
+ * Exposes RDO Candidates Table, RMD Funnel, Boundary MDIS Filter, and Chroma Intra Modes.
+ * Aligned strictly with HM-18.0 TEncSearch 4-phase intra prediction pipeline.
  */
 const RdoDecisionDeck = ({
   deckTab,
@@ -28,6 +30,22 @@ const RdoDecisionDeck = ({
   effectivePipelineData = null,
   transformEvent = null,
 }) => {
+  const mpmModes = effectivePipelineData?.step3_candidates?.mpm_modes || [0, 1, 26];
+
+  const availableTabs = React.useMemo(() => {
+    const tabs = [
+      { id: 'candidates', label: 'Candidates' },
+      { id: 'rmd', label: 'RMD Funnel' },
+      { id: 'boundary', label: 'Boundary MDIS' },
+    ];
+    if (channel !== 'Y') {
+      tabs.push({ id: 'chroma', label: 'Chroma Modes' });
+    }
+    return tabs;
+  }, [channel]);
+
+  const activeDeckTab = (deckTab === 'chroma' && channel === 'Y') ? 'candidates' : deckTab;
+
   return (
     <Card
       style={{
@@ -46,19 +64,15 @@ const RdoDecisionDeck = ({
           RDO Decision Deck
         </span>
         <SegmentedControl
-          value={deckTab}
+          value={activeDeckTab}
           onChange={setDeckTab}
           size="small"
-          items={[
-            { id: 'candidates', label: 'RDO Candidates' },
-            { id: 'boundary', label: 'Boundary MDIS' },
-            { id: 'chroma', label: 'Chroma Modes' },
-          ]}
+          items={availableTabs}
         />
       </div>
 
       {/* TAB 1: RDO Candidates Table */}
-      {deckTab === 'candidates' && (
+      {activeDeckTab === 'candidates' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: 0 }}>
           <div style={{ fontSize: '11px', color: 'var(--apple-label-secondary)', fontFamily: 'JetBrains Mono' }}>
             Click any candidate row to preview its prediction live:
@@ -67,11 +81,11 @@ const RdoDecisionDeck = ({
             <Table size="small" style={{ tableLayout: 'fixed', width: '100%' }}>
               <TableHeader>
                 <TableRow>
-                  <TableHead style={{ width: '85px', minWidth: '85px' }}>Rank</TableHead>
-                  <TableHead style={{ width: '50px', minWidth: '50px' }}>Mode</TableHead>
-                  <TableHead style={{ width: '135px', minWidth: '135px' }}>Name</TableHead>
-                  <TableHead style={{ width: '80px', minWidth: '80px', textAlign: 'right' }}>Cost (J)</TableHead>
-                  <TableHead style={{ width: '75px', minWidth: '75px', textAlign: 'right' }}>Δ Cost</TableHead>
+                  <TableHead style={{ width: '18%', minWidth: '55px', padding: '4px 6px' }}>Rank</TableHead>
+                  <TableHead style={{ width: '18%', minWidth: '55px', padding: '4px 6px' }}>Mode</TableHead>
+                  <TableHead style={{ width: '28%', minWidth: '65px', padding: '4px 6px' }}>Name</TableHead>
+                  <TableHead style={{ width: '20%', minWidth: '55px', textAlign: 'right', padding: '4px 6px' }}>Cost (J)</TableHead>
+                  <TableHead style={{ width: '16%', minWidth: '45px', textAlign: 'right', padding: '4px 6px' }}>Δ Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -83,6 +97,8 @@ const RdoDecisionDeck = ({
                   const isCurrent = cand.mode === selectedMode;
                   const bestCost = sortedCandidates.length > 0 ? sortedCandidates[0]?.cost : (modesData[0]?.cost ?? 0);
                   const delta = isWinner ? 'Best' : (cand.cost !== undefined && bestCost !== undefined ? `+${(cand.cost - bestCost).toFixed(1)}` : '—');
+                  const isMpm = mpmModes.includes(cand.mode);
+
                   return (
                     <TableRow
                       key={`cand-row-${cand.mode}`}
@@ -94,7 +110,7 @@ const RdoDecisionDeck = ({
                       }}
                       style={{
                         cursor: 'pointer',
-                        height: '36px',
+                        height: '28px',
                         background: isCurrent ? 'rgba(0, 122, 255, 0.08)' : (isWinner ? 'rgba(52, 199, 89, 0.06)' : 'transparent'),
                         borderLeft: isCurrent ? '3px solid var(--apple-blue)' : (isWinner ? '3px solid var(--system-green)' : '3px solid transparent'),
                         fontFamily: 'JetBrains Mono',
@@ -102,19 +118,36 @@ const RdoDecisionDeck = ({
                         fontSize: '11px'
                       }}
                     >
-                      <TableCell style={{ fontWeight: 700, width: '85px', whiteSpace: 'nowrap' }}>
-                        {isWinner ? <Badge variant="green" style={{ minWidth: '65px', justifyContent: 'center' }}>#1 Winner</Badge> : `#${idx + 1}`}
+                      <TableCell style={{ fontWeight: 700, padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                        {isWinner ? <Badge variant="green" style={{ fontSize: '9.5px', padding: '1px 5px', justifyContent: 'center' }}>#1 Best</Badge> : `#${idx + 1}`}
                       </TableCell>
-                      <TableCell style={{ fontWeight: 700, color: 'var(--apple-blue)', width: '50px', whiteSpace: 'nowrap' }}>
-                        M{cand.mode}
+                      <TableCell style={{ fontWeight: 700, color: 'var(--apple-blue)', padding: '2px 6px', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          M{cand.mode}
+                          {isMpm && (
+                            <span
+                              style={{
+                                fontSize: '8.5px',
+                                padding: '0 3px',
+                                borderRadius: '3px',
+                                background: 'rgba(0, 122, 255, 0.15)',
+                                color: 'var(--apple-blue)',
+                                fontWeight: 600,
+                              }}
+                              title="Most Probable Mode (MPM) from neighbor CUs"
+                            >
+                              MPM
+                            </span>
+                          )}
+                        </span>
                       </TableCell>
-                      <TableCell style={{ width: '135px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <TableCell style={{ padding: '2px 6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={info.name}>
                         {info.name}
                       </TableCell>
-                      <TableCell style={{ fontWeight: 600, width: '80px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <TableCell style={{ fontWeight: 600, textAlign: 'right', padding: '2px 6px', whiteSpace: 'nowrap' }}>
                         {typeof cand.cost === 'number' ? cand.cost.toFixed(1) : cand.cost}
                       </TableCell>
-                      <TableCell style={{ color: isWinner ? 'var(--system-green)' : 'var(--apple-label-secondary)', width: '75px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      <TableCell style={{ color: isWinner ? 'var(--system-green)' : 'var(--apple-label-secondary)', textAlign: 'right', padding: '2px 6px', whiteSpace: 'nowrap' }}>
                         {delta}
                       </TableCell>
                     </TableRow>
@@ -123,11 +156,33 @@ const RdoDecisionDeck = ({
               </TableBody>
             </Table>
           </div>
+          <div style={{ fontSize: '10px', color: 'var(--apple-label-tertiary)', borderTop: '0.5px solid var(--separator)', paddingTop: '6px' }}>
+            HM TEncSearch: Pool = Top-K(SATD) ∪ MPMs evaluated with SSE + CABAC.
+          </div>
         </div>
       )}
 
-      {/* TAB 2: Boundary & MDIS Filter */}
-      {deckTab === 'boundary' && (
+      {/* TAB 2: RMD Funnel (35 Modes Screening) */}
+      {activeDeckTab === 'rmd' && (
+        <div style={{ minWidth: 0, overflowX: 'auto', width: '100%' }}>
+          <Step2RmdFunnelView
+            rmdModes={effectivePipelineData?.step2_rmd || modesData}
+            kThreshold={effectivePipelineData?.step3_candidates?.k_threshold ?? (N <= 8 ? 8 : 3)}
+            selectedMode={selectedMode}
+            onSelectMode={(targetMode) => {
+              if (modesData && onSelectModeIndex) {
+                const targetIdx = modesData.findIndex(d => d.mode === targetMode);
+                if (targetIdx !== -1) onSelectModeIndex(targetIdx);
+              }
+            }}
+            N={N}
+            mpmModes={mpmModes}
+          />
+        </div>
+      )}
+
+      {/* TAB 3: Boundary & MDIS Filter */}
+      {activeDeckTab === 'boundary' && (
         <div style={{ minWidth: 0, overflowX: 'auto', width: '100%' }}>
           <Step1BoundaryInitView
             refTopRaw={refTopRaw}
@@ -143,8 +198,8 @@ const RdoDecisionDeck = ({
         </div>
       )}
 
-      {/* TAB 3: Chroma Intra Modes */}
-      {deckTab === 'chroma' && (
+      {/* TAB 4: Chroma Intra Modes */}
+      {activeDeckTab === 'chroma' && (
         <div style={{ minWidth: 0, overflowX: 'auto', width: '100%' }}>
           <Step5ChromaWinnerView
             pipelineData={effectivePipelineData}

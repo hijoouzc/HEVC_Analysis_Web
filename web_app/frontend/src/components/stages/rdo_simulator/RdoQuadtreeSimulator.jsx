@@ -16,9 +16,7 @@ import PixelMicroscope from './subcomponents/PixelMicroscope';
 import CandidateModesTable from './subcomponents/CandidateModesTable';
 import TreeCallStack from './subcomponents/TreeCallStack';
 import TComDataCUMemoryPanel from './subcomponents/TComDataCUMemoryPanel';
-import HmSourceCodeModal from '../../common/HmSourceCodeModal';
 import DrawioExportModal from '../../common/DrawioExportModal';
-import { HM_RDO_COST_SIMULATION_SNIPPET } from '../../../constants/hmSourceSnippets';
 import { Button, Card, Badge, Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from '../../apple';
 
 /**
@@ -52,7 +50,6 @@ function RdoQuadtreeSimulator({
   const [internalShowValues, setInternalShowValues] = useState(true);
   const showValues = propsShowValues !== undefined ? propsShowValues : internalShowValues;
   const setShowValues = onToggleValues || setInternalShowValues;
-  const [showHmModal, setShowHmModal] = useState(false);
   const [showDrawioModal, setShowDrawioModal] = useState(false);
 
   // Extract 64x64 discrete Luma samples (BT.709) from imageSrc
@@ -284,15 +281,6 @@ function RdoQuadtreeSimulator({
             [+] Draw.io XML
           </Button>
 
-          <Button
-            variant="filled"
-            size="small"
-            onClick={() => setShowHmModal(true)}
-            title="Inspect HM-18.0 C++ Source Code for xCompressCU"
-          >
-            &lt;&gt; Show HM Code
-          </Button>
-
           {onNavigateToStage && (
             <Button
               variant="gray"
@@ -511,26 +499,6 @@ function RdoQuadtreeSimulator({
           />
         </div>
       </div>
-
-      {/* HM-18.0 Source Code Inspector Modal for RDO Evaluation & xCompressCU */}
-      <HmSourceCodeModal
-        isOpen={showHmModal}
-        onClose={() => setShowHmModal(false)}
-        title={HM_RDO_COST_SIMULATION_SNIPPET.title}
-        sourceFile={HM_RDO_COST_SIMULATION_SNIPPET.sourceFile}
-        functionName={HM_RDO_COST_SIMULATION_SNIPPET.functionName}
-        standardRef={HM_RDO_COST_SIMULATION_SNIPPET.standardRef}
-        description={HM_RDO_COST_SIMULATION_SNIPPET.description}
-        variables={[
-          { name: 'Active QP', value: qp, highlight: true },
-          { name: 'Quantization Step (Qstep)', value: qstepVal.toFixed(2) },
-          { name: 'Lagrange Multiplier (λ)', value: lambdaVal.toFixed(2), highlight: true },
-          { name: 'Active Node', value: `${activeNode.size}×${activeNode.size} samples (Depth ${activeNode.depth ?? 0})` },
-          { name: 'Simulation Step', value: `${safeStepIdx + 1} / ${totalSteps}` },
-          { name: 'Current Event', value: currentStep?.type || 'EVAL' },
-        ]}
-        codeSnippet={HM_RDO_COST_SIMULATION_SNIPPET.codeSnippet}
-      />
 
       {/* Draw.io / diagrams.net XML Export Modal */}
       <DrawioExportModal

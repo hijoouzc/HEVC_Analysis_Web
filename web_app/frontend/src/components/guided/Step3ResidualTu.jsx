@@ -6,6 +6,7 @@ import { Badge, SegmentedControl } from '../apple';
  * Step3ResidualTu (Guided Flow Step 3)
  * Spatial Residual R(x,y) + Transform RQT Hierarchy & Frequency Domain C(u,v), Q(u,v).
  * Enforces mathematically correct separation of Spatial vs Frequency domains.
+ * Streamlined layout strictly aligned with HM-18.0 TComTrQuant & TEncSearch execution flow.
  */
 export function Step3ResidualTu({
   transformData,
@@ -22,8 +23,9 @@ export function Step3ResidualTu({
   showValues = undefined,
   resiGain = 4,
 }) {
-  const [activeDomainView, setActiveDomainView] = useState('full'); // 'full' | 'spatial' | 'frequency'
+  const [activeDomainView, setActiveDomainView] = useState('full'); // 'full' | 'tree' | 'dual'
   const [internalChannel, setInternalChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const channel = propsChannel !== undefined ? propsChannel : internalChannel;
   const setChannel = onSelectChannel || setInternalChannel;
 
@@ -46,11 +48,26 @@ export function Step3ResidualTu({
   const activeRecords = forwardTransformRecords.length > 0 ? forwardTransformRecords : transformData;
   const primaryRecord = activeRecords?.[0] || null;
 
+  // Derive initialViewLayout for TransformQuantVisualizer
+  const mappedLayout = activeDomainView === 'tree' ? 'tree' : (activeDomainView === 'full' ? 'matrix' : 'dual');
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      {/* Controls: Chroma Channel Switcher & Domain Mode Switcher */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', flexWrap: 'wrap', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      {/* Top Command Header: Component & Domain View Mode Switcher */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px',
+          padding: '6px 12px',
+          background: 'var(--fill-1)',
+          border: '0.5px solid var(--separator)',
+          borderRadius: '8px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {primaryRecord && (
             <Badge variant="blue" style={{ fontSize: '10px' }} title={`Quantization Step: Qstep = 2^((QP-4)/6)`}>
               QP {primaryRecord.qp} (Qstep: {Math.pow(2, (primaryRecord.qp - 4) / 6).toFixed(2)})
@@ -89,10 +106,9 @@ export function Step3ResidualTu({
           onChange={setActiveDomainView}
           size="small"
           items={[
-            { id: 'full', label: 'Unified RQT Explorer' },
+            { id: 'full', label: 'Tri-Matrix Flow' },
             { id: 'tree', label: 'RQT Geometric Tree' },
-            { id: 'spatial', label: 'Spatial Domain: S - P = R' },
-            { id: 'frequency', label: 'Frequency Domain: C & Q' },
+            { id: 'dual', label: 'Dual View (Tree + Matrix)' },
           ]}
         />
       </div>
@@ -110,11 +126,11 @@ export function Step3ResidualTu({
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
         <div style={{ padding: '3px 8px', borderRadius: '4px', background: 'var(--fill-1)', border: '0.5px solid var(--separator)', fontSize: '10.5px', fontFamily: 'var(--font-mono)' }}>
           <span style={{ color: 'var(--apple-blue)', fontWeight: 700 }}>SPATIAL DOMAIN (x, y): </span>
-          <span style={{ color: 'var(--apple-label-secondary)' }}>Matrices S, P, R</span>
+          <span style={{ color: 'var(--apple-label-secondary)' }}>Residual R = S − P</span>
         </div>
         <div style={{ padding: '3px 8px', borderRadius: '4px', background: 'var(--fill-1)', border: '0.5px solid var(--separator)', fontSize: '10.5px', fontFamily: 'var(--font-mono)' }}>
           <span style={{ color: 'var(--system-purple)', fontWeight: 700 }}>FREQUENCY DOMAIN (u, v): </span>
-          <span style={{ color: 'var(--apple-label-secondary)' }}>DCT/DST &amp; Quantized Levels</span>
+          <span style={{ color: 'var(--apple-label-secondary)' }}>DCT-II / DST-VII C(u, v) &rarr; Quantized Q(u, v)</span>
         </div>
       </div>
 
@@ -131,7 +147,7 @@ export function Step3ResidualTu({
           targetCuY={selectedCu?.abs_y ?? selectedCu?.y ?? null}
           targetCuSize={selectedCu?.width ?? null}
           selectedCu={selectedCu}
-          initialViewLayout={activeDomainView === 'tree' ? 'tree' : 'dual'}
+          initialViewLayout={mappedLayout}
           channel={channel}
           onSelectChannel={setChannel}
           showValues={showValues}
@@ -139,58 +155,75 @@ export function Step3ResidualTu({
         />
       </div>
 
-      {/* Candidate Modes RDO Leaderboard */}
+      {/* Candidate Modes RDO Leaderboard (Collapsible On-Demand) */}
       {data && data.length > 0 && (
-        <div className="stage-section-card" style={{ padding: '10px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--apple-label)' }}>
-              Candidate Modes RDO Leaderboard &bull; Evaluated via xRecurIntraCodingLumaQT
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
+              Candidate Modes RDO Leaderboard (Evaluated in Step 2)
             </span>
-            <Badge variant="green" style={{ fontSize: '9px' }}>
-              HM TRACE: Ranked by Min Cost
-            </Badge>
+            <button
+              type="button"
+              onClick={() => setShowLeaderboard((prev) => !prev)}
+              style={{
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                background: showLeaderboard ? 'var(--fill-3)' : 'var(--fill-2)',
+                border: '0.5px solid var(--separator)',
+                color: 'var(--apple-label-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              {showLeaderboard ? '▴ Hide' : '▾ Show Leaderboard'}
+            </button>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-              gap: '6px',
-            }}
-          >
-            {data.slice(0, 8).map((m, idx) => {
-              const isSelected = (currentMode?.mode === m.mode);
-              const isWinner = idx === 0;
-              return (
-                <div
-                  key={m.mode}
-                  style={{
-                    padding: '6px 8px',
-                    borderRadius: '5px',
-                    border: isSelected ? '1px solid var(--system-blue)' : '0.5px solid var(--separator)',
-                    background: isSelected ? 'var(--fill-2)' : 'var(--fill-1)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '2px',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--apple-label)' }}>
-                      Mode {m.mode}
+          {showLeaderboard && (
+            <div
+              className="stage-section-card"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
+                gap: '6px',
+                padding: '8px 12px',
+              }}
+            >
+              {data.slice(0, 8).map((m, idx) => {
+                const isSelected = (currentMode?.mode === m.mode);
+                const isWinner = idx === 0;
+                return (
+                  <div
+                    key={m.mode}
+                    style={{
+                      padding: '6px 8px',
+                      borderRadius: '5px',
+                      border: isSelected ? '1px solid var(--system-blue)' : '0.5px solid var(--separator)',
+                      background: isSelected ? 'var(--fill-2)' : 'var(--fill-1)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--apple-label)' }}>
+                        Mode {m.mode}
+                      </span>
+                      {isWinner && (
+                        <Badge variant="green" style={{ fontSize: '8.5px', padding: '0 4px' }}>
+                          Winner
+                        </Badge>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '10px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                      Cost: {Number(m.cost).toFixed(1)}
                     </span>
-                    {isWinner && (
-                      <Badge variant="green" style={{ fontSize: '8.5px', padding: '0 4px' }}>
-                        Winner
-                      </Badge>
-                    )}
                   </div>
-                  <span style={{ fontSize: '10px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                    Cost: {Number(m.cost).toFixed(1)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

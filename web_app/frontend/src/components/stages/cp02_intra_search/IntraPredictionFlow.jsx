@@ -1,17 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { INTRA_PRED_ANGLES, INV_ANGLES, generateIntraPredictionBlock, getPixelTrace } from '../../../utils/intraTraceUtils';
+import { generateIntraPredictionBlock, getPixelTrace } from '../../../utils/intraTraceUtils';
 import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../../../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../../../utils/metricsUtils';
 import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
-import {
-  HM_INTRA_PREDICTION_SNIPPET,
-  HM_EST_INTRAPRED_LUMA_SNIPPET,
-  HM_RECUR_INTRA_CODING_SNIPPET,
-  HM_CHROMA_INTRA_SNIPPET
-} from '../../../constants/hmSourceSnippets';
-import { PIPELINE_STEPS } from '../../../constants/intraPipelineSteps';
 import AngularCompass from './AngularCompass';
-import HmSourceCodeModal from '../../common/HmSourceCodeModal';
 import BlockMatrixGrid from '../../common/BlockMatrixGrid';
 import ReferencePerimeter from './pipeline/ReferencePerimeter';
 import IntraPipelineStepper from './pipeline/IntraPipelineStepper';
@@ -62,6 +54,7 @@ const IntraPredictionFlow = ({
   showChannelBadge = false,
   showSpatialMiniMap = false,
   showCuSizeBadge = false,
+  showPipeline = false,
   selectedCu = null,
   partitionData = null,
   onSelectBlock = null,
@@ -81,8 +74,6 @@ const IntraPredictionFlow = ({
   const setShowValues = setInternalShowValues;
 
   const [selectedPixel, setSelectedPixel] = useState(null);
-  const [showHmModal, setShowHmModal] = useState(false);
-  const [activeSnippet, setActiveSnippet] = useState(HM_INTRA_PREDICTION_SNIPPET);
   const [frameCanvas, setFrameCanvas] = useState(null);
 
   const handleSelectPixel = useCallback((coord) => {
@@ -212,10 +203,6 @@ const IntraPredictionFlow = ({
   const N = targetN;
   const totalPixels = N * N;
   const refSpan = 2 * N + 1;
-
-  const angle = INTRA_PRED_ANGLES[selectedMode] ?? 0;
-  const invAngle = INV_ANGLES[angle] ?? 0;
-  const hasEdgeFilter = (channel === 'Y') && (selectedMode === 1 || selectedMode === 10 || selectedMode === 26) && N <= 16;
 
   const { refTopRaw, refLeftRaw } = useMemo(() => {
     const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, N);
@@ -401,7 +388,8 @@ const IntraPredictionFlow = ({
 
   const cellSize = N <= 4 ? 40 : N <= 8 ? 32 : 36;
   const largeCellSize = N <= 4 ? 44 : N <= 8 ? 36 : 36;
-  const quadrantHeight = '415px';
+  // Adaptive quadrant height: eliminates massive empty space for 4x4/8x8 while preserving large-block geometry
+  const quadrantHeight = N <= 4 ? '230px' : N <= 8 ? '320px' : '415px';
 
   const activeCoord = useMemo(() => {
     if (!selectedPixel) return null;
@@ -578,17 +566,7 @@ const IntraPredictionFlow = ({
     };
   }, [pipelineData, initialPipelineData, modesData, selectedMode, modeData, blockSize, ctuX, ctuY, jobId, refTopRaw, refLeftRaw, refTopFilt, refLeftFilt, isMDISSmoothed]);
 
-  const handleOpenHmSnippet = useCallback((snippet) => {
-    if (snippet) {
-      setActiveSnippet(snippet);
-    } else {
-      if (activePipelineStep === 1) setActiveSnippet(HM_INTRA_PREDICTION_SNIPPET);
-      else if (activePipelineStep === 2 || activePipelineStep === 3) setActiveSnippet(HM_EST_INTRAPRED_LUMA_SNIPPET);
-      else if (activePipelineStep === 4) setActiveSnippet(HM_RECUR_INTRA_CODING_SNIPPET);
-      else if (activePipelineStep === 5) setActiveSnippet(HM_CHROMA_INTRA_SNIPPET);
-    }
-    setShowHmModal(true);
-  }, [activePipelineStep]);
+  const handleOpenHmSnippet = useCallback(() => {}, []);
 
   return (
     <div className="flow-container" style={{ width: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', gap: '10px', overflowX: 'auto' }}>
@@ -757,15 +735,17 @@ const IntraPredictionFlow = ({
             />
           )}
 
-          <SegmentedControl
-            value={activeTab}
-            onChange={setActiveTab}
-            size="small"
-            items={[
-              { id: 'studio', label: 'Studio Workspace' },
-              { id: 'pipeline', label: 'RDO Pipeline Flow' },
-            ]}
-          />
+          {showPipeline && (
+            <SegmentedControl
+              value={activeTab}
+              onChange={setActiveTab}
+              size="small"
+              items={[
+                { id: 'studio', label: 'Studio Workspace' },
+                { id: 'pipeline', label: 'RDO Pipeline Flow' },
+              ]}
+            />
+          )}
 
           {propsShowValues === undefined && (
             <Button
@@ -798,8 +778,8 @@ const IntraPredictionFlow = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '5px 12px',
-        background: 'var(--fill-2)',
+        padding: '4px 10px',
+        background: 'var(--fill-1)',
         borderRadius: '6px',
         border: '0.5px solid var(--separator)',
         fontSize: '11px',
@@ -808,14 +788,14 @@ const IntraPredictionFlow = ({
         width: '100%'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>PROVENANCE:</span>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>SOURCE:</span>
           {(!pipelineData || pipelineData.is_fallback) ? (
-            <Badge variant="orange" title="Distortion and bits estimated from spatial matrices (pred + resi) prior to Full RDO transform/quantization trace dump">
-              FALLBACK ESTIMATED (pred + resi)
+            <Badge variant="orange" style={{ fontSize: '9.5px', padding: '1px 6px' }} title="Distortion and bits estimated from spatial matrices (pred + resi) prior to Full RDO transform/quantization trace dump">
+              Spatial Estimation
             </Badge>
           ) : (
-            <Badge variant="green" title="Exact measured RDO Distortion (SSE), Rate (Bits), and Cost from HM-18.0 VisualDumper INTRA_FULL_RDO trace">
-              HM-18.0 MEASURED (Trace Ground Truth)
+            <Badge variant="green" style={{ fontSize: '9.5px', padding: '1px 6px' }} title="Exact measured RDO Distortion (SSE), Rate (Bits), and Cost from HM-18.0 VisualDumper INTRA_FULL_RDO trace">
+              HM-18.0 Measured (Trace GT)
             </Badge>
           )}
           {selectedCu && (
@@ -824,16 +804,15 @@ const IntraPredictionFlow = ({
             </span>
           )}
         </div>
-        <div style={{ color: 'var(--apple-label-tertiary)', fontSize: '10px' }}>
-          {(!pipelineData || pipelineData.is_fallback)
-            ? 'Candidate costs derived from reconstructed spatial prediction'
-            : 'Candidate costs measured through HM TEncSearch Full RDO'
-          }
+        <div style={{ color: 'var(--apple-label-tertiary)', fontSize: '10.5px' }}>
+          {showPipeline
+            ? 'HM TEncSearch: RMD (35 Modes) → MPM → Full RDO (SSE + CABAC) → Chroma'
+            : 'HM TEncSearch: 35 Spatial Angular Modes + MPM Derivation'}
         </div>
       </div>
 
       {/* 2. MAIN VIEWPORT AREA */}
-      {activeTab === 'studio' ? (
+      {(!showPipeline || activeTab === 'studio') ? (
         /* PROFESSIONAL 2-COLUMN STUDIO WORKSPACE */
         <div
           style={{
@@ -1630,29 +1609,6 @@ const IntraPredictionFlow = ({
           </Card>
         </div>
       )}
-
-      {/* HM-18.0 Source Code Inspector Modal */}
-      <HmSourceCodeModal
-        isOpen={showHmModal}
-        onClose={() => setShowHmModal(false)}
-        title={activeSnippet.title}
-        sourceFile={activeSnippet.sourceFile}
-        functionName={activeSnippet.functionName}
-        standardRef={activeSnippet.standardRef}
-        description={activeSnippet.description}
-        variables={[
-          { name: 'Active Pipeline Stage', value: `Step ${activePipelineStep}: ${PIPELINE_STEPS[activePipelineStep - 1]?.title || ''}`, highlight: true },
-          { name: 'Selected Mode', value: `Mode ${selectedMode} (${modeInfo.name})`, highlight: true },
-          { name: 'Color Channel', value: `${channel} (${channel === 'Y' ? 'Luma' : isU ? 'Cb' : 'Cr'})` },
-          { name: 'Block Dimension (N)', value: `${N}×${N} samples` },
-          { name: 'Intra Pred Angle (Δ)', value: `${angle}/32 pel`, highlight: true },
-          { name: 'Inverse Angle', value: invAngle !== 0 ? invAngle : 'N/A' },
-          { name: 'Top K Pruning Target', value: `K = ${blockSize <= 8 ? 8 : 3}` },
-          { name: 'MDIS Filter', value: isMDISSmoothed ? 'ENABLED (3-tap [1, 2, 1]/4)' : 'BYPASSED' },
-          { name: 'Boundary Filter', value: hasEdgeFilter ? 'ACTIVE' : 'OFF' },
-        ]}
-        codeSnippet={activeSnippet.codeSnippet}
-      />
     </div>
   );
 };

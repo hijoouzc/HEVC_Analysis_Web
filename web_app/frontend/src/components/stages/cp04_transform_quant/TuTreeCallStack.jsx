@@ -197,7 +197,7 @@ export default function TuTreeCallStack({
         </div>
       </div>
 
-      {/* 2. Playback / Stepper Controller ("có tính năng để chạy") */}
+      {/* 2. Playback / Stepper Controller */}
       <div
         style={{
           background: 'var(--fill-1)',

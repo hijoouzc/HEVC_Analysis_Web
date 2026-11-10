@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildQuadtreeTree, computeTreeLayout } from '../../src/utils/quadtreeTreeLayout.js';
+import { buildQuadtreeTree, computeTreeLayout, buildSimulatorQuadtreeTree } from '../../src/utils/quadtreeTreeLayout.js';
 import { generateDrawioXml } from '../../src/utils/drawioXmlGenerator.js';
+import { runHevcQuadtreeSimulation, generateSyntheticCtuPattern } from '../../src/utils/hevcRdoSimulator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -181,8 +182,6 @@ assert(xml.includes('edgeStyle=orthogonalEdgeStyle'), 'XML contains orthogonal c
 // TEST SUITE 5: RDO Simulator Tree & Pruning Consistency
 // -------------------------------------------------------------
 console.log('\nTest Suite 5: RDO Simulator Tree & Pruning Consistency');
-import { runHevcQuadtreeSimulation, generateSyntheticCtuPattern } from '../../src/utils/hevcRdoSimulator.js';
-import { buildSimulatorQuadtreeTree } from '../../src/utils/quadtreeTreeLayout.js';
 
 const pattern = generateSyntheticCtuPattern('gradient');
 const simResult = runHevcQuadtreeSimulation({ ctuPatch: pattern, qp: 32 });

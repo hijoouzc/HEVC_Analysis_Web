@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import SetupScreen from './components/app/SetupScreen';
 import ActiveStageViewport from './components/app/ActiveStageViewport';
-import AnalysisInspector from './components/app/AnalysisInspector';
 import RdoQuadtreeSimulator from './components/stages/rdo_simulator/RdoQuadtreeSimulator';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { useAnalysisSession } from './hooks/useAnalysisSession';
@@ -22,7 +21,6 @@ import './index.css';
  */
 function App() {
   const [isStandaloneSim, setIsStandaloneSim] = useState(false);
-  const [showInspector, setShowInspector] = useState(true);
   const [backendStatus, setBackendStatus] = useState('Checking...');
   const [guidedStep, setGuidedStep] = useState('STEP_1'); // 'STEP_1'..'STEP_5'
 
@@ -142,7 +140,7 @@ function App() {
                 fontWeight: 600,
               }}
             >
-              HM-18.0
+              HEVC / H.265
             </span>
             <span
               style={{
@@ -193,19 +191,6 @@ function App() {
               <Badge variant="blue" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', minWidth: '85px', justifyContent: 'center' }}>
                 CTU ({ctuX !== null ? ctuX : 0}, {ctuY !== null ? ctuY : 0})
               </Badge>
-            )}
-
-            {/* Info Toggle */}
-            {data && (
-              <Button
-                variant={showInspector ? 'tinted' : 'gray'}
-                size="small"
-                onClick={() => setShowInspector((prev) => !prev)}
-                title="Toggle Info (I)"
-                style={{ width: '80px', minWidth: '80px', justifyContent: 'center' }}
-              >
-                {showInspector ? 'Hide Info' : 'Info (i)'}
-              </Button>
             )}
 
             {/* Theme Toggle */}
@@ -350,8 +335,6 @@ function App() {
                 rdoDecisions={rdoDecisions}
                 jobId={jobId}
                 API_BASE_URL={API_BASE_URL}
-                showInspector={showInspector}
-                setShowInspector={setShowInspector}
                 handleSelectSize={handleSelectSize}
                 handleSelectBlock={handleSelectBlock}
                 setCuSize={setCuSize}
@@ -359,27 +342,6 @@ function App() {
                 guidedStep={guidedStep}
                 setGuidedStep={setGuidedStep}
               />
-
-              {/* Right Column: Unified Apple Info Inspector */}
-              {showInspector && (
-                <AnalysisInspector
-                  file={file}
-                  imageDims={imageDims}
-                  ctuX={ctuX}
-                  ctuY={ctuY}
-                  analyzedCtu={analyzedCtu}
-                  selectedCu={selectedCu}
-                  analyzedCuSize={analyzedCuSize}
-                  currentMode={currentMode}
-                  partitionData={partitionData}
-                  ctuPartitionsMap={ctuPartitionsMap}
-                  onClose={() => setShowInspector(false)}
-                  onReAnalyze={(targetX, targetY) => {
-                    handleUpload(null, targetX, targetY);
-                  }}
-                  loading={loading}
-                />
-              )}
             </div>
           )}
         </ErrorBoundary>

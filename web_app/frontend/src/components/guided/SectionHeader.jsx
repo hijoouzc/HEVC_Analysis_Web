@@ -14,7 +14,7 @@ export function SectionHeader({
   title = '',
   hmFunction = '',
   description = '',
-  badge = 'HM-18.0',
+  badge = 'HEVC / H.265',
   badgeVariant = 'blue',
   rightContent = null,
 }) {

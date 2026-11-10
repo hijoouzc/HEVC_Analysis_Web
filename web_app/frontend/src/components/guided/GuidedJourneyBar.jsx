@@ -30,6 +30,8 @@ export function GuidedJourneyBar({
   onToggleValues = null,
   resiGain = 4,
   onSelectResiGain = null,
+  streamMode = 'single',
+  onToggleStreamMode = null,
 }) {
   const isParentCu = Boolean(selectedCu?.split);
   const cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64';
@@ -90,8 +92,36 @@ export function GuidedJourneyBar({
           </Badge>
         </div>
 
-        {/* Right: Unified Global Controls (Values + Channel) */}
+        {/* Right: Unified Global Controls (View Mode + Values + Channel + Gain) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          {/* View Mode Switcher: Single Step vs Continuous Stream */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+              VIEW:
+            </span>
+            <button
+              type="button"
+              onClick={() => onToggleStreamMode && onToggleStreamMode()}
+              style={{
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: streamMode === 'single' ? 'var(--system-blue)' : 'var(--window-bg)',
+                color: streamMode === 'single' ? '#FFFFFF' : 'var(--apple-label)',
+                border: '0.5px solid var(--separator)',
+                cursor: 'pointer',
+                fontWeight: 600,
+                transition: 'all 0.15s ease',
+              }}
+              title={streamMode === 'single' ? 'Focused Step Mode: Rendering current active step only. Click to switch to Continuous Stream.' : 'Continuous Stream Mode: Rendering all 5 steps sequentially. Click to switch to Focused Step.'}
+            >
+              {streamMode === 'single' ? 'Single Step' : 'Continuous'}
+            </button>
+          </div>
+
+          <span style={{ color: 'var(--separator)', fontSize: '11px' }}>•</span>
+
           {/* Values Matrix Overlay Toggle */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
@@ -160,38 +190,40 @@ export function GuidedJourneyBar({
 
           <span style={{ color: 'var(--separator)', fontSize: '11px' }}>•</span>
 
-          {/* Unified Residual Gain Switcher [ 1× | 2× | 4× | 8× ] */}
+          {/* Unified Residual Gain Switcher (Single Cycle Button) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+            <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
               GAIN:
             </span>
-            <div style={{ display: 'flex', gap: '2px' }}>
-              {[1, 2, 4, 8].map((g) => {
-                const isActive = (resiGain ?? 4) === g;
-                return (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => onSelectResiGain && onSelectResiGain(g)}
-                    style={{
-                      fontSize: '10px',
-                      fontFamily: 'var(--font-mono)',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      background: isActive ? 'var(--system-blue)' : 'var(--window-bg)',
-                      color: isActive ? '#FFFFFF' : 'var(--apple-label)',
-                      border: '0.5px solid var(--separator)',
-                      cursor: 'pointer',
-                      fontWeight: isActive ? 700 : 500,
-                      transition: 'all 0.15s ease',
-                    }}
-                    title={`Residual Boost Gain ${g}×`}
-                  >
-                    {g}×
-                  </button>
-                );
-              })}
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!onSelectResiGain) return;
+                const gains = [1, 2, 4, 8];
+                const curIdx = gains.indexOf(resiGain ?? 4);
+                const nextGain = gains[(curIdx + 1) % gains.length];
+                onSelectResiGain(nextGain);
+              }}
+              style={{
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                background: 'var(--fill-2)',
+                color: 'var(--apple-label)',
+                border: '0.5px solid var(--separator)',
+                cursor: 'pointer',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+                transition: 'all 0.15s ease',
+              }}
+              title={`Residual Boost Gain ${resiGain ?? 4}×. Click to cycle: 1× → 2× → 4× → 8×`}
+            >
+              <span>{resiGain ?? 4}×</span>
+              <span style={{ fontSize: '8px', opacity: 0.6 }}>↻</span>
+            </button>
           </div>
         </div>
       </div>

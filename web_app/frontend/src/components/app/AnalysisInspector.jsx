@@ -180,14 +180,14 @@ const AnalysisInspector = ({
               {cuW} × {cuH} samples
             </strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '6px' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>Tree Depth:</span>
-            <strong style={{ color: depthConf.text }}>Depth {cuDepth} (64×64 → {cuW}×{cuH})</strong>
+            <strong style={{ color: depthConf.text, whiteSpace: 'nowrap' }}>Depth {cuDepth} ({cuW}×{cuH})</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '6px' }}>
             <span style={{ color: 'var(--apple-label-2)' }}>Intra Mode:</span>
             {modeInfo ? (
-              <strong style={{ color: 'var(--system-purple)' }}>
+              <strong style={{ color: 'var(--system-purple)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }} title={`Mode ${activeModeNum} (${modeInfo.name})`}>
                 Mode {activeModeNum} ({modeInfo.name})
               </strong>
             ) : (

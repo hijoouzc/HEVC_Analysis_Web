@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Card, Badge, SegmentedControl } from '../../apple';
+import { Badge, SegmentedControl } from '../../apple';
 import SyntaxBreakdownTable from './subcomponents/SyntaxBreakdownTable';
 import BacIntervalStudio from './subcomponents/BacIntervalStudio';
 import BinarizationTreeViewer from './subcomponents/BinarizationTreeViewer';
@@ -75,65 +75,49 @@ function CabacEntropyVisualizer({
         />
       </div>
 
-      {/* Top Telemetry Header */}
+      {/* Compact Telemetry Ribbon (1-Line HUD, 34px) */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '10px',
-          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px 12px',
+          padding: '6px 12px',
+          background: 'var(--fill-1)',
+          border: '0.5px solid var(--separator)',
+          borderRadius: '8px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '11px',
+          boxSizing: 'border-box',
         }}
       >
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            TOTAL CABAC BINS
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {totalBins.toLocaleString()} Bins
-            </span>
-            <Badge variant="blue">HM TEncSbac</Badge>
-          </div>
-        </Card>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>TOTAL CABAC BINS:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>{totalBins.toLocaleString()} Bins</span>
+          <Badge variant="blue" style={{ fontSize: '9.5px', padding: '1px 5px' }}>HM TEncSbac</Badge>
+        </div>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            ENCODED BITSTREAM
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {totalBits.toLocaleString()} Bits
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              ({(totalBits / 8).toFixed(1)} Bytes)
-            </span>
-          </div>
-        </Card>
+        <span style={{ color: 'var(--separator)' }}>|</span>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            SYNTAX ELEMENT DIVERSITY
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {syntaxElements.length} Types
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              in active window
-            </span>
-          </div>
-        </Card>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>ENCODED BITSTREAM:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>{totalBits.toLocaleString()} Bits</span>
+          <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>({(totalBits / 8).toFixed(1)} Bytes)</span>
+        </div>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            CABAC FSM MODEL
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              63 States (0..62) &bull; MPS/LPS
-            </span>
-          </div>
-        </Card>
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>SYNTAX ELEMENTS:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>{syntaxElements.length} Types</span>
+        </div>
+
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>CABAC FSM:</span>
+          <span style={{ color: 'var(--apple-label)', fontWeight: 600 }}>63 States (0..62) &bull; MPS/LPS</span>
+        </div>
       </div>
 
       {/* Main Active Tab Content */}

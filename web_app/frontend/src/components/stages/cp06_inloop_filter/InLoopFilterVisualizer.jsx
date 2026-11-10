@@ -33,67 +33,62 @@ function InLoopFilterVisualizer({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
-      {/* Top Telemetry Header */}
+      {/* Compact Telemetry Ribbon (1-Line HUD, 34px) */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '10px',
-          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px 12px',
+          padding: '6px 12px',
+          background: 'var(--fill-1)',
+          border: '0.5px solid var(--separator)',
+          borderRadius: '8px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '11px',
+          boxSizing: 'border-box',
         }}
       >
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            DEBLOCKING FILTER (DBF)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {edges.length} Edges
-            </span>
-            <Badge variant={inloopFilterData?.bs2_edges > 0 ? 'orange' : (edges.length > 0 ? 'blue' : 'gray')}>
-              {inloopFilterData?.bs2_edges > 0 ? `${inloopFilterData.bs2_edges} Strong (bS=2)` : (edges.length > 0 ? `${edges.length} Normal (bS=1)` : 'No 8×8 Edges')}
-            </Badge>
-          </div>
-        </Card>
+        {/* Metric 1: DBF Edges */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>DEBLOCKING FILTER (DBF):</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>{edges.length} Edges</span>
+          <Badge variant={inloopFilterData?.bs2_edges > 0 ? 'orange' : (edges.length > 0 ? 'blue' : 'gray')} style={{ fontSize: '9.5px', padding: '1px 5px' }}>
+            {inloopFilterData?.bs2_edges > 0 ? `${inloopFilterData.bs2_edges} Strong (bS=2)` : (edges.length > 0 ? `${edges.length} Normal (bS=1)` : 'No 8×8 Edges')}
+          </Badge>
+        </div>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            SAO CTU DECISION
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {sao ? getSaoModeName(sao.sao_mode) : 'Off (Mode 0)'}
-            </span>
-            <Badge variant={sao && sao.sao_mode > 0 ? 'green' : 'gray'}>
-              {sao && sao.sao_mode > 0 ? 'Active' : 'Bypass'}
-            </Badge>
-          </div>
-        </Card>
+        <span style={{ color: 'var(--separator)' }}>|</span>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            ACTIVE EDGE bS &amp; THRESHOLDS
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              bS = {activeEdge ? activeEdge.bs : 0}
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              β={activeEdge ? activeEdge.beta : 0} &bull; tC={activeEdge ? activeEdge.tc : 0}
-            </span>
-          </div>
-        </Card>
+        {/* Metric 2: SAO CTU Decision */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>SAO CTU DECISION:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>{sao ? getSaoModeName(sao.sao_mode) : 'Off (Mode 0)'}</span>
+          <Badge variant={sao && sao.sao_mode > 0 ? 'green' : 'gray'} style={{ fontSize: '9.5px', padding: '1px 5px' }}>
+            {sao && sao.sao_mode > 0 ? 'Active' : 'Bypass'}
+          </Badge>
+        </div>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            SAO SAMPLE OFFSETS
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              Y: [{sao?.offset_y?.join(', ') || '0, 0, 0, 0'}]
-            </span>
-          </div>
-        </Card>
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 3: Active Edge bS & Thresholds */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>ACTIVE EDGE:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>bS={activeEdge ? activeEdge.bs : 0}</span>
+          <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>
+            (β={activeEdge ? activeEdge.beta : 0}, tC={activeEdge ? activeEdge.tc : 0})
+          </span>
+        </div>
+
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 4: SAO Sample Offsets */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>OFFSETS:</span>
+          <span style={{ color: 'var(--apple-label)', fontWeight: 600 }}>
+            Y: [{sao?.offset_y?.join(', ') || '0, 0, 0, 0'}]
+          </span>
+        </div>
       </div>
 
       {/* Main Content Area */}

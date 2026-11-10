@@ -23,72 +23,73 @@ function InterSearchVisualizer({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
-      {/* Top Telemetry Header */}
+      {/* Compact Telemetry Ribbon (1-Line HUD, 34px) */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '10px',
-          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px 12px',
+          padding: '6px 12px',
+          background: 'var(--fill-1)',
+          border: '0.5px solid var(--separator)',
+          borderRadius: '8px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '11px',
+          boxSizing: 'border-box',
         }}
       >
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            INTER ESTIMATION STATUS
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {hasData ? `${interSearchData.length} PUs Evaluated` : (isIntraSlice ? 'I-SLICE Anchor' : 'No Inter Records')}
-            </span>
-            <Badge variant={hasData ? 'blue' : 'gray'}>
-              {hasData ? 'HM TEncSearch::predInterSearch' : 'Idle'}
+        {/* Metric 1: Inter Estimation Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>INTER ESTIMATION STATUS:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
+            {hasData ? `${interSearchData.length} PUs Evaluated` : (isIntraSlice ? 'I-SLICE Anchor' : 'No Inter Records')}
+          </span>
+          <Badge variant={hasData ? 'blue' : 'gray'} style={{ fontSize: '9.5px', padding: '1px 5px' }}>
+            {hasData ? 'HM TEncSearch::predInterSearch' : 'Idle'}
+          </Badge>
+        </div>
+
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 2: Active PU Motion Vector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>ACTIVE PU MOTION VECTOR:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
+            {activePu ? `(${activePu.mv_x}, ${activePu.mv_y})` : '(0, 0)'}
+          </span>
+          <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>
+            1/4-pel precision
+          </span>
+        </div>
+
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 3: Motion Vector Difference (MVD) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>MVD:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
+            {activePu ? `(${activePu.mvd_x}, ${activePu.mvd_y})` : '(0, 0)'}
+          </span>
+          <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>
+            MVP Idx {activePu ? activePu.mvp_idx : 0}
+          </span>
+        </div>
+
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 4: Chosen Ref Picture */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>REF:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
+            {activePu ? `List ${activePu.ref_list} [Idx ${activePu.ref_idx}]` : 'None'}
+          </span>
+          {activePu && (
+            <Badge variant="blue" style={{ fontSize: '9.5px', padding: '1px 5px' }}>
+              Cost {Math.round(activePu.cost).toLocaleString()}
             </Badge>
-          </div>
-        </Card>
-
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            ACTIVE PU MOTION VECTOR
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {activePu ? `(${activePu.mv_x}, ${activePu.mv_y})` : '(0, 0)'}
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              1/4-pel precision
-            </span>
-          </div>
-        </Card>
-
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            MOTION VECTOR DIFFERENCE (MVD)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {activePu ? `(${activePu.mvd_x}, ${activePu.mvd_y})` : '(0, 0)'}
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              MVP Idx {activePu ? activePu.mvp_idx : 0}
-            </span>
-          </div>
-        </Card>
-
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            CHOSEN REF PICTURE
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              {activePu ? `List ${activePu.ref_list} [Idx ${activePu.ref_idx}]` : 'None'}
-            </span>
-            {activePu && (
-              <Badge variant="blue">
-                Cost {Math.round(activePu.cost).toLocaleString()}
-              </Badge>
-            )}
-          </div>
-        </Card>
+          )}
+        </div>
       </div>
 
       {/* Main Content Area */}

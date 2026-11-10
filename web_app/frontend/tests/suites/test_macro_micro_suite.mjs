@@ -2,6 +2,7 @@ import assert from 'assert';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { getSampleColorAndTextColor, getResidualColorAndTextColor } from '../../src/utils/colorUtils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,8 +88,6 @@ it('Correctly projects click percentages [0..1] on Macro Canvas to exact pixel a
 // Test Suite 2: Colorimetry & High-Contrast Typography
 // =============================================================================
 console.log('\nTest Suite 2: Colorimetry & High-Contrast Typography');
-
-import { getSampleColorAndTextColor, getResidualColorAndTextColor } from '../../src/utils/colorUtils.js';
 
 it('Residual color coding conforms to ITU-R standards (Positive=Warm, Negative=Cool, Zero=Neutral)', () => {
   const zeroStyle = getResidualColorAndTextColor(0, 64);

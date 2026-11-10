@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { GopReferenceVisualizer } from '../stages/cp00_frame_gop';
+import { GopReferenceVisualizer, TComPicSymVisualizer } from '../stages/cp00_frame_gop';
 import { QuadTreeVisualizer } from '../stages/cp01_partition';
 import { Badge, SegmentedControl, Button } from '../apple';
 import { useHmTracePlayback } from '../../hooks/useHmTracePlayback';
@@ -143,16 +143,18 @@ export function Step1FrameTree({
     }
   }, [playback, handleCuNavigation, onProceedToPrediction]);
 
-  const currentPart = ctuPartitionsMap?.[`${playback.currentCtu?.ctuX ?? ctuX}_${playback.currentCtu?.ctuY ?? ctuY}`] || partitionData;
+  const activeKey = ctuX !== null && ctuY !== null ? `${ctuX}_${ctuY}` : null;
+  const currentPart = activeKey ? (ctuPartitionsMap?.[activeKey] || partitionData) : null;
 
   const selectedCu = playback.inspectedCu || propsSelectedCu;
   const isSplitCu = Boolean(selectedCu?.split);
   const _cuTypeBadge = isSplitCu ? 'Split CU' : 'Leaf CU';
   const _cuSizeStr = selectedCu ? `${selectedCu.width || 8}×${selectedCu.height || 8}` : '64×64 (CTU)';
-  const _cuPosStr = selectedCu ? `(${selectedCu.x ?? selectedCu.abs_x ?? 0}, ${selectedCu.y ?? selectedCu.abs_y ?? 0})` : `CTU (${ctuX}, ${ctuY})`;
+  const _cuPosStr = selectedCu ? `(${selectedCu.x ?? selectedCu.abs_x ?? 0}, ${selectedCu.y ?? selectedCu.abs_y ?? 0})` : (ctuX !== null && ctuY !== null ? `CTU (${ctuX}, ${ctuY})` : 'No CTU');
 
   // Maintain an offscreen canvas for source image Luma extraction
   const [frameCanvas, setFrameCanvas] = useState(null);
+  const [showSorigDrawer, setShowSorigDrawer] = useState(false);
 
   useEffect(() => {
     if (!imageSrc) return;
@@ -296,7 +298,7 @@ export function Step1FrameTree({
           )}
 
           <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--apple-label)', whiteSpace: 'nowrap' }}>
-            CTU: <strong>({playback.currentCtu?.ctuX ?? ctuX}, {playback.currentCtu?.ctuY ?? ctuY})</strong>
+            CTU: <strong>{ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : 'None'}</strong>
             <span style={{ color: 'var(--apple-label-tertiary)', marginLeft: '4px' }}>
               [{playback.playheadCtuIdx > 0 ? playback.playheadCtuIdx : 0}/{playback.totalCtus}]
             </span>
@@ -425,32 +427,35 @@ export function Step1FrameTree({
 
           <div style={{ width: '1px', height: '14px', background: 'var(--separator)', margin: '0 2px' }} />
 
-          {/* Playback Speed */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-            {[
-              { label: '0.5s', val: 500 },
-              { label: '1.0s', val: 1000 },
-              { label: '2.0s', val: 2000 },
-            ].map((sp) => (
-              <button
-                key={sp.val}
-                type="button"
-                onClick={() => playback.setSpeedMs(sp.val)}
-                style={{
-                  fontSize: '9.5px',
-                  fontFamily: 'var(--font-mono)',
-                  padding: '2px 5px',
-                  borderRadius: '4px',
-                  background: playback.speedMs === sp.val ? 'var(--fill-3)' : 'transparent',
-                  border: playback.speedMs === sp.val ? '0.5px solid var(--separator)' : 'none',
-                  color: playback.speedMs === sp.val ? 'var(--apple-label)' : 'var(--apple-label-tertiary)',
-                  cursor: 'pointer',
-                }}
-              >
-                {sp.label}
-              </button>
-            ))}
-          </div>
+          {/* Playback Speed (Single Cycle Button) */}
+          <button
+            type="button"
+            onClick={() => {
+              const speeds = [500, 1000, 2000];
+              const curIdx = speeds.indexOf(playback.speedMs ?? 1000);
+              const nextSpeed = speeds[(curIdx + 1) % speeds.length];
+              playback.setSpeedMs(nextSpeed);
+            }}
+            style={{
+              fontSize: '10px',
+              fontFamily: 'var(--font-mono)',
+              padding: '2px 7px',
+              borderRadius: '4px',
+              background: 'var(--fill-2)',
+              border: '0.5px solid var(--separator)',
+              color: 'var(--apple-label)',
+              cursor: 'pointer',
+              fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '3px',
+              transition: 'all 0.15s ease',
+            }}
+            title={`Playback Speed ${((playback.speedMs ?? 1000) / 1000).toFixed(1)}s. Click to cycle: 0.5s → 1.0s → 2.0s`}
+          >
+            <span>{((playback.speedMs ?? 1000) / 1000).toFixed(1)}s</span>
+            <span style={{ fontSize: '8px', opacity: 0.6 }}>↻</span>
+          </button>
         </div>
       </div>
 
@@ -459,7 +464,11 @@ export function Step1FrameTree({
         <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--apple-label-secondary)' }}>
           {subView === 'frame'
             ? 'Full Frame CTU Processing Grid'
-            : `CTU (${playback.currentCtu?.ctuX ?? ctuX}, ${playback.currentCtu?.ctuY ?? ctuY}) QuadTree Decomposition`}
+            : subView === 'picsym'
+              ? 'TComPicSym: Picture Symbol Map, 2D Tiles & Dynamic Slices'
+              : ctuX !== null && ctuY !== null
+                ? `CTU (${ctuX}, ${ctuY}) QuadTree Decomposition`
+                : 'CTU QuadTree Decomposition'}
         </span>
         <SegmentedControl
           value={subView}
@@ -467,6 +476,7 @@ export function Step1FrameTree({
           size="small"
           items={[
             { id: 'frame', label: 'Frame & GOP Sequence' },
+            { id: 'picsym', label: 'Tile & Slice' },
             { id: 'quadtree', label: 'CU QuadTree Hierarchy' },
           ]}
         />
@@ -489,26 +499,29 @@ export function Step1FrameTree({
             />
           </div>
 
-          {/* S_orig Raw Block Telemetry Preview */}
+          {/* S_orig Raw Block Telemetry Preview (Collapsible On-Demand Drawer) */}
           {selectedCu && (
             <div
               className="stage-section-card"
               style={{
-                padding: '12px 14px',
+                padding: '8px 12px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '8px',
                 background: 'var(--fill-1)',
               }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--apple-label)' }}>
                     Output S_orig Sample Matrix &bull; Coding Unit ({selectedCu.x ?? selectedCu.abs_x ?? 0}, {selectedCu.y ?? selectedCu.abs_y ?? 0})
                   </span>
                   <Badge variant={sourceProvenance === 'trace' ? 'green' : 'blue'} style={{ fontSize: '9px' }}>
                     {sourceProvenance === 'trace' ? 'HM TRACE: S_orig' : 'FRAME BT.709: S_orig'}
                   </Badge>
+                  <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)' }}>
+                    [{selectedCu.width || 8}&times;{selectedCu.height || 8}]
+                  </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {onProceedToPrediction && (
@@ -522,77 +535,108 @@ export function Step1FrameTree({
                       Next: Intra Prediction ({selectedCu.width || 8}&times;{selectedCu.height || 8}) &rarr;
                     </Button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setShowSorigDrawer((s) => !s)}
+                    style={{
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-mono)',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: showSorigDrawer ? 'var(--fill-3)' : 'var(--fill-2)',
+                      border: '0.5px solid var(--separator)',
+                      color: 'var(--apple-label)',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title="Toggle raw luminance sample matrix inspection"
+                  >
+                    <span>S_orig Matrix</span>
+                    <span style={{ fontSize: '9px', opacity: 0.75 }}>{showSorigDrawer ? 'Hide ▴' : 'Show ▾'}</span>
+                  </button>
                 </div>
               </div>
 
-              {Array.isArray(rawOrgSamples) && rawOrgSamples.length > 0 ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-                  {(selectedCu.width || 8) <= 8 ? (
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: `repeat(${selectedCu.width || 8}, minmax(18px, 24px))`,
-                        gap: '1px',
-                        background: 'var(--separator)',
-                        padding: '1px',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      {rawOrgSamples.slice(0, (selectedCu.width || 8) * (selectedCu.height || 8)).map((val, idx) => (
-                        <div
-                          key={idx}
-                          style={{
-                            height: '20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '8.5px',
-                            fontFamily: 'var(--font-mono)',
-                            background: `rgb(${val}, ${val}, ${val})`,
-                            color: val > 128 ? '#000000' : '#FFFFFF',
-                          }}
-                          title={`Sample (${idx % (selectedCu.width || 8)}, ${Math.floor(idx / (selectedCu.width || 8))}): Y=${val}`}
-                        >
-                          {val}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <CuSampleCanvas
-                      samples={rawOrgSamples}
-                      width={selectedCu.width || 8}
-                      height={selectedCu.height || 8}
-                    />
-                  )}
+              {showSorigDrawer && (
+                Array.isArray(rawOrgSamples) && rawOrgSamples.length > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '0.5px solid var(--separator)' }}>
+                    {(selectedCu.width || 8) <= 8 ? (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: `repeat(${selectedCu.width || 8}, minmax(18px, 24px))`,
+                          gap: '1px',
+                          background: 'var(--separator)',
+                          padding: '1px',
+                          borderRadius: '4px',
+                        }}
+                      >
+                        {rawOrgSamples.slice(0, (selectedCu.width || 8) * (selectedCu.height || 8)).map((val, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              height: '20px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '8.5px',
+                              fontFamily: 'var(--font-mono)',
+                              background: `rgb(${val}, ${val}, ${val})`,
+                              color: val > 128 ? '#000000' : '#FFFFFF',
+                            }}
+                            title={`Sample (${idx % (selectedCu.width || 8)}, ${Math.floor(idx / (selectedCu.width || 8))}): Y=${val}`}
+                          >
+                            {val}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <CuSampleCanvas
+                        samples={rawOrgSamples}
+                        width={selectedCu.width || 8}
+                        height={selectedCu.height || 8}
+                      />
+                    )}
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-                    <span style={{ color: 'var(--apple-label-secondary)' }}>
-                      Block Dimensions: <strong>{selectedCu.width || 8}&times;{selectedCu.height || 8}</strong>
-                    </span>
-                    <span style={{ color: 'var(--apple-label-secondary)' }}>
-                      Total Luma Samples: <strong>{(selectedCu.width || 8) * (selectedCu.height || 8)}</strong>
-                    </span>
-                    <span style={{ color: 'var(--apple-label-secondary)' }}>
-                      Depth in CTU: <strong>{selectedCu.depth ?? 0}</strong>
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
+                      <span style={{ color: 'var(--apple-label-secondary)' }}>
+                        Block Dimensions: <strong>{selectedCu.width || 8}&times;{selectedCu.height || 8}</strong>
+                      </span>
+                      <span style={{ color: 'var(--apple-label-secondary)' }}>
+                        Total Luma Samples: <strong>{(selectedCu.width || 8) * (selectedCu.height || 8)}</strong>
+                      </span>
+                      <span style={{ color: 'var(--apple-label-secondary)' }}>
+                        Depth in CTU: <strong>{selectedCu.depth ?? 0}</strong>
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontStyle: 'italic' }}>
-                  Select a CU node in the QuadTree to inspect its raw luminance samples.
-                </div>
+                ) : (
+                  <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontStyle: 'italic', paddingTop: '4px', borderTop: '0.5px solid var(--separator)' }}>
+                    Select a CU node in the QuadTree to inspect its raw luminance samples.
+                  </div>
+                )
               )}
             </div>
           )}
         </div>
-      ) : (
-        <GopReferenceVisualizer
+      ) : subView === 'picsym' ? (
+        <TComPicSymVisualizer
           imageSrc={imageSrc}
           imageDims={imageDims}
-          ctuX={playback.currentCtu?.ctuX ?? ctuX}
-          ctuY={playback.currentCtu?.ctuY ?? ctuY}
+          ctuX={ctuX}
+          ctuY={ctuY}
+          ctuPartitionsMap={ctuPartitionsMap}
+          partitionData={playback.activeCtuPartitions || partitionData}
+          frameGopData={frameGopData}
           onSelectCTU={(x, y) => {
             if (onSelectCTU) onSelectCTU(x, y);
+            if (x === null || y === null) {
+              return;
+            }
             const idx = playback.ctuSequence.findIndex((c) => c.ctuX === x && c.ctuY === y);
             if (idx !== -1) {
               playback.jumpToCtu(idx);
@@ -600,9 +644,38 @@ export function Step1FrameTree({
           }}
           onNavigateToQuadTree={(x, y) => {
             if (onSelectCTU) onSelectCTU(x, y);
+            if (x !== null && y !== null) {
+              const idx = playback.ctuSequence.findIndex((c) => c.ctuX === x && c.ctuY === y);
+              if (idx !== -1) {
+                playback.jumpToCtu(idx);
+              }
+            }
+            setSubView('quadtree');
+          }}
+        />
+      ) : (
+        <GopReferenceVisualizer
+          imageSrc={imageSrc}
+          imageDims={imageDims}
+          ctuX={ctuX}
+          ctuY={ctuY}
+          onSelectCTU={(x, y) => {
+            if (onSelectCTU) onSelectCTU(x, y);
+            if (x === null || y === null) {
+              return;
+            }
             const idx = playback.ctuSequence.findIndex((c) => c.ctuX === x && c.ctuY === y);
             if (idx !== -1) {
               playback.jumpToCtu(idx);
+            }
+          }}
+          onNavigateToQuadTree={(x, y) => {
+            if (onSelectCTU) onSelectCTU(x, y);
+            if (x !== null && y !== null) {
+              const idx = playback.ctuSequence.findIndex((c) => c.ctuX === x && c.ctuY === y);
+              if (idx !== -1) {
+                playback.jumpToCtu(idx);
+              }
             }
             setSubView('quadtree');
           }}

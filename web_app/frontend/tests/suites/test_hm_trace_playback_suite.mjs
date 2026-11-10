@@ -1,6 +1,11 @@
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import {
+  computeFrameCtuGeometry,
+  deriveCtuProcessingSequence,
+  extractCtuLeafNodes,
+} from '../../src/hooks/useHmTracePlayback.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,12 +17,6 @@ function assert(condition, message) {
   }
   console.log(`  PASS: ${message}`);
 }
-
-import {
-  computeFrameCtuGeometry,
-  deriveCtuProcessingSequence,
-  extractCtuLeafNodes,
-} from '../../src/hooks/useHmTracePlayback.js';
 
 console.log('\n=== RUNNING HM TRACE PLAYBACK & STATE SEPARATION TEST SUITE ===');
 

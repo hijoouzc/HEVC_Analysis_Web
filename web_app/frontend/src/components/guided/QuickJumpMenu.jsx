@@ -146,7 +146,7 @@ export function QuickJumpMenu({
           >
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--apple-label)' }}>
-                HM-18.0 Execution Stages
+                Pipeline Execution Stages
               </span>
               <span style={{ fontSize: '10.5px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
                 Select a stage to smooth-scroll

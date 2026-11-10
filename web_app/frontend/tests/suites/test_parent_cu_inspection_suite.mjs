@@ -1,6 +1,10 @@
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
+import {
+  extractCtuLeafNodes,
+  extractAllCtuNodes,
+} from '../../src/hooks/useHmTracePlayback.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -12,11 +16,6 @@ function assert(condition, message) {
   }
   console.log(`  PASS: ${message}`);
 }
-
-import {
-  extractCtuLeafNodes,
-  extractAllCtuNodes,
-} from '../../src/hooks/useHmTracePlayback.js';
 
 console.log('\n=== RUNNING PARENT / INTERMEDIATE CU INSPECTION TEST SUITE ===');
 

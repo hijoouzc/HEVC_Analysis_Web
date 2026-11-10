@@ -1,8 +1,6 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import HmSourceCodeModal from '../../common/HmSourceCodeModal';
 import BlockMatrixGrid from '../../common/BlockMatrixGrid';
 import TuTreeCallStack from './TuTreeCallStack';
-import { HM_TRANSFORM_QUANT_SNIPPET } from '../../../constants/hmSourceSnippets';
 import { Button, SegmentedControl } from '../../apple';
 import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
 
@@ -38,12 +36,16 @@ function TransformQuantVisualizer({
   const [userSelectedTuIdx, setUserSelectedTuIdx] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null); // { x, y }
   const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 });
-  const [showHmModal, setShowHmModal] = useState(false);
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
   const [internalShowValues, setInternalShowValues] = useState(true);
   const showValues = propsShowValues !== undefined ? propsShowValues : internalShowValues;
   const setShowValues = onToggleValues || setInternalShowValues;
   const [viewLayout, setViewLayout] = useState(initialViewLayout); // 'dual' | 'tree' | 'matrix'
+  const [prevInitialLayout, setPrevInitialLayout] = useState(initialViewLayout);
+  if (initialViewLayout !== prevInitialLayout) {
+    setPrevInitialLayout(initialViewLayout);
+    setViewLayout(initialViewLayout);
+  }
 
   const handleCellClick = useCallback((coord) => {
     setSelectedCell(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
@@ -225,15 +227,15 @@ function TransformQuantVisualizer({
   const macroCanvasSize = isZoom ? 180 : 140;
 
   return (
-    <div className="transform-quant-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+    <div className="transform-quant-container" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       {/* Component & TU Selector Bar */}
       <div className="apple-card" style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
         flexWrap: 'wrap',
-        gap: '0.75rem',
-        padding: '0.65rem 1rem',
+        gap: '8px',
+        padding: '6px 10px',
       }}>
         {/* Component Tabs */}
         {propsChannel === undefined && (
@@ -260,9 +262,9 @@ function TransformQuantVisualizer({
         )}
 
         {/* TU Block Selector & Controls */}
-        <div style={{ display: 'flex', gap: '0.65rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           {/* RQT View Layout Switcher */}
-          <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
             <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--apple-label-secondary)' }}>
               Layout:
             </span>
@@ -343,35 +345,54 @@ function TransformQuantVisualizer({
         </div>
       )}
 
-      {/* Metrics Banner */}
-      <div className="apple-card" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: '1rem',
-        padding: '0.85rem 1.25rem',
+      {/* Micro-HUD Strip: Core TComTrQuant Parameters & Live Telemetry */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '8px',
+        padding: '5px 12px',
+        background: 'var(--fill-1)',
+        border: '0.5px solid var(--separator)',
+        borderRadius: '6px',
+        fontSize: '11px',
+        fontFamily: 'var(--font-mono)',
+        boxSizing: 'border-box'
       }}>
-        <div>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>Transform Unit</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--apple-label-primary)' }}>{width} × {height} ({activeComp})</div>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'JetBrains Mono' }}>QP {qp}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span>
+            <strong style={{ color: 'var(--apple-label)' }}>TU:</strong> {width}×{height} ({activeComp})
+          </span>
+          <span style={{ color: 'var(--separator)' }}>&bull;</span>
+          <span>
+            <strong style={{ color: 'var(--apple-label-secondary)' }}>Core:</strong> {transformName}
+          </span>
+          <span style={{ color: 'var(--separator)' }}>&bull;</span>
+          <span>
+            <strong style={{ color: 'var(--apple-blue)' }}>Energy:</strong> {energyPercent}% (DC={dc_coeff})
+          </span>
+          <span style={{ color: 'var(--separator)' }}>&bull;</span>
+          <span>
+            <strong style={{ color: 'var(--apple-purple)' }}>Sparsity:</strong> {sparsityPercent}% ({zeroCoeffCount}/{width * height} zeros)
+          </span>
+          <span style={{ color: 'var(--separator)' }}>&bull;</span>
+          <span>
+            <strong style={{ color: '#10B981' }}>Sig Coeffs:</strong> {sig_coeff_count}
+          </span>
         </div>
-
-        <div>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>Energy Compaction</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--apple-blue)' }}>{energyPercent}%</div>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'JetBrains Mono' }}>DC = {dc_coeff}</div>
-        </div>
-
-        <div>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>Quantization Sparsity</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--apple-purple)' }}>{sparsityPercent}%</div>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'JetBrains Mono' }}>{zeroCoeffCount} / {width * height} zeros</div>
-        </div>
-
-        <div>
-          <div style={{ fontSize: '11px', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>Non-Zero Levels</div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#15803D' }}>{sig_coeff_count} coeffs</div>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'JetBrains Mono' }}>Magnitude non-zero count</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{
+            fontSize: '9.5px',
+            fontWeight: 700,
+            color: sig_coeff_count > 0 ? '#10B981' : '#8E8E93',
+            background: sig_coeff_count > 0 ? 'rgba(16, 185, 129, 0.12)' : 'var(--fill-2)',
+            border: sig_coeff_count > 0 ? '0.5px solid rgba(16, 185, 129, 0.3)' : '0.5px solid var(--separator)',
+            borderRadius: '4px',
+            padding: '1px 6px',
+          }}>
+            CBF_{activeComp} = {sig_coeff_count > 0 ? '1' : '0'}
+          </span>
         </div>
       </div>
 
@@ -379,8 +400,8 @@ function TransformQuantVisualizer({
       {(viewLayout === 'dual' || viewLayout === 'matrix') ? (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, minmax(310px, 1fr))',
-          gap: '1.25rem',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+          gap: '12px',
           alignItems: 'stretch',
           maxWidth: '100%',
           width: '100%',
@@ -389,23 +410,26 @@ function TransformQuantVisualizer({
         }}>
         {/* Matrix 1: Spatial Residual R(x, y) */}
         <div className="apple-card" style={{
-          padding: '1.25rem',
+          padding: '1rem',
           maxWidth: '100%',
-          height: '475px',
-          minHeight: '475px',
-          maxHeight: '475px',
+          height: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
+          minHeight: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
+          maxHeight: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
           display: 'flex',
           flexDirection: 'column',
           boxSizing: 'border-box',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', height: '22px', flexShrink: 0 }}>
             <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
               1. Spatial Residual R(x, y) [{resiGain}×]
             </h4>
+            <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--apple-blue)', background: 'rgba(0, 122, 255, 0.1)', padding: '1px 5px', borderRadius: '3px' }}>
+              Spatial
+            </span>
           </div>
 
-          <div style={{ width: '100%', height: '365px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
+          <div style={{ width: '100%', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
             <BlockMatrixGrid
               data={resi_matrix}
               width={width}
@@ -430,26 +454,31 @@ function TransformQuantVisualizer({
 
         {/* Matrix 2: 2D DCT Frequency Spectrum */}
         <div className="apple-card" style={{
-          padding: '1.25rem',
+          padding: '1rem',
           maxWidth: '100%',
-          height: '475px',
-          minHeight: '475px',
-          maxHeight: '475px',
+          height: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
+          minHeight: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
+          maxHeight: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
           display: 'flex',
           flexDirection: 'column',
           boxSizing: 'border-box',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
-              2. {transformName} Spectrum C(u, v)
-            </h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', height: '22px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
+                2. {transformName} Spectrum C(u, v)
+              </h4>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--system-purple)', background: 'rgba(175, 82, 222, 0.1)', padding: '1px 5px', borderRadius: '3px' }}>
+                Frequency
+              </span>
+            </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--apple-blue)', fontWeight: 700 }}>
               DC = {dc_coeff}
             </span>
           </div>
 
-          <div style={{ width: '100%', height: '365px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
+          <div style={{ width: '100%', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
             <BlockMatrixGrid
               data={dct_coeff}
               width={width}
@@ -479,26 +508,31 @@ function TransformQuantVisualizer({
 
         {/* Matrix 3: Quantized Coefficients QCoeff */}
         <div className="apple-card" style={{
-          padding: '1.25rem',
+          padding: '1rem',
           maxWidth: '100%',
-          height: '475px',
-          minHeight: '475px',
-          maxHeight: '475px',
+          height: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
+          minHeight: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
+          maxHeight: width <= 4 ? '270px' : width <= 8 ? '360px' : '475px',
           display: 'flex',
           flexDirection: 'column',
           boxSizing: 'border-box',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.75rem', height: '22px', flexShrink: 0 }}>
-            <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
-              3. Quantized QCoeff(u, v)
-            </h4>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', height: '22px', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', fontWeight: 800, color: 'var(--apple-label)', margin: 0 }}>
+                3. Quantized QCoeff(u, v)
+              </h4>
+              <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--system-purple)', background: 'rgba(175, 82, 222, 0.1)', padding: '1px 5px', borderRadius: '3px' }}>
+                Levels
+              </span>
+            </div>
             <span style={{ fontSize: '0.75rem', color: 'var(--apple-purple, #AF52DE)', fontWeight: 700 }}>
               QP = {qp}
             </span>
           </div>
 
-          <div style={{ width: '100%', height: '365px', overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
+          <div style={{ width: '100%', flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'safe center', flexShrink: 0 }}>
             <BlockMatrixGrid
               data={quant_coeff}
               width={width}
@@ -596,27 +630,6 @@ function TransformQuantVisualizer({
           </div>
         )}
       </div>
-
-      {/* HM-18.0 Source Code Inspector Modal for TU Transform & Quantization */}
-      <HmSourceCodeModal
-        isOpen={showHmModal}
-        onClose={() => setShowHmModal(false)}
-        title={HM_TRANSFORM_QUANT_SNIPPET.title}
-        sourceFile={HM_TRANSFORM_QUANT_SNIPPET.sourceFile}
-        functionName={HM_TRANSFORM_QUANT_SNIPPET.functionName}
-        standardRef={HM_TRANSFORM_QUANT_SNIPPET.standardRef}
-        description={HM_TRANSFORM_QUANT_SNIPPET.description}
-        variables={[
-          { name: 'Color Component', value: `${activeComp} (${activeComp === 'Y' ? 'Luma' : activeComp === 'Cb' ? 'Chroma Cb' : 'Chroma Cr'})`, highlight: true },
-          { name: 'Core Transform', value: transformName, highlight: true },
-          { name: 'TU Dimension', value: `${width}×${height} samples` },
-          { name: 'Quantization Parameter (QP)', value: qp },
-          { name: 'Significant Coefficients', value: `${sig_coeff_count} / ${width * height}` },
-          { name: 'Sparsity Ratio', value: `${sparsityPercent}%` },
-          { name: 'Energy Compaction Ratio', value: `${energyPercent}%` },
-        ]}
-        codeSnippet={HM_TRANSFORM_QUANT_SNIPPET.codeSnippet}
-      />
     </div>
   );
 }

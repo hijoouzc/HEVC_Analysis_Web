@@ -28,6 +28,17 @@ const MatrixCell = memo(function MatrixCell({
   cellSize = 36,
   onSelect
 }) {
+  const strVal = String(displayVal ?? '');
+  const valLen = strVal.length;
+  // Adaptive font scaling based on character length to eliminate number clipping:
+  const adaptiveFontSize = valLen >= 5
+    ? '9px'
+    : valLen >= 4
+      ? '9.5px'
+      : valLen >= 3
+        ? (cellSize >= 36 ? '11px' : '10px')
+        : (cellSize >= 36 ? '12px' : '11px');
+
   return (
     <div
       onClick={() => onSelect({ x, y })}
@@ -43,11 +54,11 @@ const MatrixCell = memo(function MatrixCell({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: cellSize >= 40 ? '0.78rem' : cellSize >= 32 ? '0.66rem' : cellSize >= 26 ? '0.56rem' : '0.48rem',
-        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: adaptiveFontSize,
+        fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
         fontVariantNumeric: 'tabular-nums',
         fontWeight: style.fontWeight || 700,
-        letterSpacing: '-0.35px',
+        letterSpacing: valLen >= 4 ? '-0.45px' : '-0.2px',
         overflow: 'hidden',
         whiteSpace: 'nowrap',
         textOverflow: 'clip',
@@ -192,16 +203,15 @@ function BlockMatrixGrid({
       <div
         style={{
           width: '100%',
-          height: '360px',
-          minHeight: '360px',
-          maxHeight: '360px',
+          height: 'auto',
+          minHeight: `${gridDim}px`,
           overflowX: 'auto',
           overflowY: 'hidden',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'safe center',
           boxSizing: 'border-box',
-          padding: '2px 0'
+          padding: '4px 0'
         }}
       >
         <div
@@ -266,13 +276,12 @@ function BlockMatrixGrid({
         justifyContent: 'safe center',
         width: '100%',
         maxWidth: '100%',
-        height: '360px',
-        minHeight: '360px',
-        maxHeight: '360px',
+        height: 'auto',
+        minHeight: 'fit-content',
         overflowX: 'auto',
         overflowY: 'hidden',
         boxSizing: 'border-box',
-        padding: '2px 0'
+        padding: '4px 0'
       }}
     >
       {/* Pane 1: Macro Energy Canvas */}

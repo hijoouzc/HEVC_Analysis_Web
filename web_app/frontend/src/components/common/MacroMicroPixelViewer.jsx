@@ -20,6 +20,12 @@ const MicroPixelCell = React.memo(function MicroPixelCell({
   text,
   onSelectPixel
 }) {
+  const strVal = String(text ?? '');
+  const valLen = strVal.length;
+  const adaptiveFontSize = valLen >= 4
+    ? '9.5px'
+    : (cellSize >= 40 ? '12px' : '11px');
+
   return (
     <div
       onClick={() => onSelectPixel && onSelectPixel({ x: gx, y: gy, val })}
@@ -28,10 +34,11 @@ const MicroPixelCell = React.memo(function MicroPixelCell({
         height: `${cellSize}px`,
         backgroundColor: bg,
         color: color,
-        fontFamily: 'JetBrains Mono, monospace',
-        fontSize: cellSize >= 40 ? '0.78rem' : '0.68rem',
+        fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+        fontVariantNumeric: 'tabular-nums',
+        fontSize: adaptiveFontSize,
         fontWeight: 700,
-        letterSpacing: '-0.4px',
+        letterSpacing: valLen >= 4 ? '-0.45px' : '-0.2px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

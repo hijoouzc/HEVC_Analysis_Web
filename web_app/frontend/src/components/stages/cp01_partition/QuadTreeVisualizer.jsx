@@ -1,9 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { getIntraModeInfo, HEVC_DEPTH_COLORS, HEVC_MODE_COLORS } from '../../../utils/colorUtils';
-import HmSourceCodeModal from '../../common/HmSourceCodeModal';
 import DrawioExportModal from '../../common/DrawioExportModal';
 import QuadtreeHierarchyGraph from '../../common/QuadtreeHierarchyGraph';
-import { HM_QUADTREE_RDO_SNIPPET } from '../../../constants/hmSourceSnippets';
 
 /**
  * QuadTreeVisualizer (CP_01_PARTITION)
@@ -26,7 +24,6 @@ function QuadTreeVisualizer({
   const [colorScheme, setColorScheme] = useState('outline'); // 'outline' (default: clean transparent, no mode overlay), 'mode', 'depth'
   const [textureMode, setTextureMode] = useState('color'); // 'color', 'grayscale', 'off'
   const [viewLayout, setViewLayout] = useState('dual'); // 'dual' (side-by-side), '2d' (spatial grid only), 'tree' (quadtree graph only)
-  const [showHmModal, setShowHmModal] = useState(false);
   const [showDrawioModal, setShowDrawioModal] = useState(false);
 
   const nodes = useMemo(() => partitionData?.nodes || [], [partitionData?.nodes]);
@@ -207,17 +204,6 @@ function QuadTreeVisualizer({
             <span>Draw.io XML</span>
           </button>
 
-          <button
-            type="button"
-            className="apple-btn-secondary"
-            onClick={() => setShowHmModal(true)}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-            title="Inspect HM-18.0 C++ Source Code for xCompressCU QuadTree"
-          >
-            <span>&lt;&gt;</span>
-            <span>Show HM Code</span>
-          </button>
-
           {onNavigateToSim && (
             <button
               type="button"
@@ -254,104 +240,86 @@ function QuadTreeVisualizer({
         </div>
       </div>
 
-      {/* Top Stats Banner */}
-      <div className="apple-card" style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-        gap: '1rem',
-        padding: '0.85rem 1.25rem'
-      }}>
-        <div>
-          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>CTU Target</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-label)' }}>({targetCtuX}, {targetCtuY})</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>Leaf CUs</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-blue)' }}>{leafCount}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>Max Depth</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-orange, #FF9500)' }}>{max_depth} / 3</div>
-        </div>
-        <div>
-          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: 'var(--apple-label-secondary)', fontWeight: 700 }}>CU Size Range</div>
-          <div style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--apple-label)' }}>64×64 → 8×8 samples</div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
-          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Color Overlay:</span>
-          <div className="apple-segmented">
+      {/* Compact Display Controls Ribbon */}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px',
+          padding: '4px 10px',
+          background: 'var(--fill-1)',
+          borderRadius: '6px',
+          border: '0.5px solid var(--separator)',
+          fontSize: '11px',
+          fontFamily: 'var(--font-mono)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>OVERLAY:</span>
+            <div className="apple-segmented" style={{ height: '22px' }}>
+              <button
+                type="button"
+                className={`apple-segmented-item ${colorScheme === 'outline' ? 'active' : ''}`}
+                onClick={() => setColorScheme('outline')}
+                style={{ padding: '0 8px', fontSize: '10px' }}
+                title="Clean transparent CU partition lines with NO mode color overlay"
+              >
+                None
+              </button>
+              <button
+                type="button"
+                className={`apple-segmented-item ${colorScheme === 'mode' ? 'active' : ''}`}
+                onClick={() => setColorScheme('mode')}
+                style={{ padding: '0 8px', fontSize: '10px' }}
+                title="Prediction Modes cell overlay: INTRA / INTER / SKIP"
+              >
+                Mode
+              </button>
+              <button
+                type="button"
+                className={`apple-segmented-item ${colorScheme === 'depth' ? 'active' : ''}`}
+                onClick={() => setColorScheme('depth')}
+                style={{ padding: '0 8px', fontSize: '10px' }}
+                title="Quadtree Depth levels overlay: D0..D3"
+              >
+                Depth
+              </button>
+            </div>
+          </div>
+
+          <div style={{ width: '1px', height: '14px', background: 'var(--separator)' }} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>TEXTURE:</span>
             <button
               type="button"
-              className={`apple-segmented-item ${colorScheme === 'outline' ? 'active' : ''}`}
-              onClick={() => setColorScheme('outline')}
-              title="Clean transparent CU partition lines with NO mode color overlay"
+              className="apple-btn-secondary"
+              onClick={() => setTextureMode(m => m === 'color' ? 'grayscale' : m === 'grayscale' ? 'off' : 'color')}
+              style={{
+                height: '22px',
+                padding: '0 8px',
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Toggle CTU block texture: COLOR / GRAYSCALE / OFF"
             >
-              None
-            </button>
-            <button
-              type="button"
-              className={`apple-segmented-item ${colorScheme === 'mode' ? 'active' : ''}`}
-              onClick={() => setColorScheme('mode')}
-              title="Prediction Modes cell overlay: INTRA / INTER / SKIP"
-            >
-              Mode
-            </button>
-            <button
-              type="button"
-              className={`apple-segmented-item ${colorScheme === 'depth' ? 'active' : ''}`}
-              onClick={() => setColorScheme('depth')}
-              title="Quadtree Depth levels overlay: D0..D3"
-            >
-              Depth
+              {textureMode === 'color' ? 'COLOR' : textureMode === 'grayscale' ? 'GRAY' : 'OFF'}
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
-          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Texture:</span>
-          <button
-            type="button"
-            className="apple-btn-secondary"
-            onClick={() => setTextureMode(m => m === 'color' ? 'grayscale' : m === 'grayscale' ? 'off' : 'color')}
-            style={{
-              width: '76px',
-              height: '28px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxSizing: 'border-box',
-              userSelect: 'none'
-            }}
-            title="Toggle CTU block texture: COLOR / GRAYSCALE / OFF"
-          >
-            <span style={{ width: '56px', textAlign: 'center', display: 'inline-block' }}>
-              {textureMode === 'color' ? 'COLOR' : textureMode === 'grayscale' ? 'GRAY' : 'OFF'}
-            </span>
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.3rem' }}>
-          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--apple-label-secondary)' }}>Pred Modes:</span>
-          <button
-            type="button"
-            className="apple-btn-secondary"
-            onClick={() => setColorScheme(c => c === 'mode' ? 'outline' : 'mode')}
-            style={{
-              width: '124px',
-              height: '28px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxSizing: 'border-box',
-              userSelect: 'none'
-            }}
-            title="Toggle PRED MODES cell overlay (INTRA, INTER, SKIP) ON / OFF"
-          >
-            <span>OVERLAY:</span>
-            <span style={{ width: '28px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
-              {colorScheme === 'mode' ? 'ON' : 'OFF'}
-            </span>
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--apple-label-tertiary)', fontSize: '10.5px' }}>
+          <span>CTU ({targetCtuX}, {targetCtuY})</span>
+          <span>&bull;</span>
+          <span style={{ color: 'var(--apple-blue)', fontWeight: 600 }}>{leafCount} Leaf CUs</span>
+          <span>&bull;</span>
+          <span>Depth D0–D3 (64→8)</span>
         </div>
       </div>
 
@@ -923,27 +891,6 @@ function QuadTreeVisualizer({
           />
         </div>
       )}
-
-      {/* HM-18.0 Source Code Inspector Modal for xCompressCU */}
-      <HmSourceCodeModal
-        isOpen={showHmModal}
-        onClose={() => setShowHmModal(false)}
-        title={HM_QUADTREE_RDO_SNIPPET.title}
-        sourceFile={HM_QUADTREE_RDO_SNIPPET.sourceFile}
-        functionName={HM_QUADTREE_RDO_SNIPPET.functionName}
-        standardRef={HM_QUADTREE_RDO_SNIPPET.standardRef}
-        description={HM_QUADTREE_RDO_SNIPPET.description}
-        variables={[
-          { name: 'Target CTU', value: `(${targetCtuX}, ${targetCtuY})`, highlight: true },
-          { name: 'Total Leaf CUs', value: leafCount },
-          { name: 'Max QuadTree Depth', value: `${max_depth} / 3` },
-          { name: 'Selected CU', value: activeNode ? `${activeW}×${activeH} @ (${activeNode.x}, ${activeNode.y})` : 'None', highlight: true },
-          { name: 'CU Depth', value: activeNode?.depth ?? 0 },
-          { name: 'Best Mode', value: activeNode?.mode ?? 'INTRA' },
-          { name: 'RDO Cost', value: activeNode?.cost !== null && activeNode?.cost !== undefined ? Number(activeNode.cost).toFixed(1) : 'N/A' },
-        ]}
-        codeSnippet={HM_QUADTREE_RDO_SNIPPET.codeSnippet}
-      />
 
       {/* Draw.io / diagrams.net XML Export Modal */}
       <DrawioExportModal

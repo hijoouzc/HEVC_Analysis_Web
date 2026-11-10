@@ -1,6 +1,6 @@
 import React from 'react';
 import FullFrameViewer from './FullFrameViewer';
-import { Badge, Card } from '../../apple';
+import { Badge } from '../../apple';
 
 /**
  * GopReferenceVisualizer (CP_00_FRAME_GOP)
@@ -28,100 +28,101 @@ function GopReferenceVisualizer({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
-      {/* Top Bar: Frame & DPB Telemetry Header */}
+      {/* Top Bar: Compact Frame & DPB Telemetry Ribbon (1-Line HUD, 34px) */}
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '10px',
-          width: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '8px 12px',
+          padding: '6px 12px',
+          background: 'var(--fill-1)',
+          border: '0.5px solid var(--separator)',
+          borderRadius: '8px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: '11px',
+          boxSizing: 'border-box',
         }}
       >
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            FRAME STATUS
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              POC {currentFrame ? currentFrame.poc : 0}
-            </span>
-            <Badge variant={currentFrame?.slice_type === 'I' ? 'green' : 'blue'}>
-              {currentFrame ? `${currentFrame.slice_type}-SLICE` : 'I-SLICE'}
-            </Badge>
-          </div>
-        </Card>
+        {/* Metric 1: Frame Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>FRAME STATUS:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
+            POC {currentFrame ? currentFrame.poc : 0}
+          </span>
+          <Badge variant={currentFrame?.slice_type === 'I' ? 'green' : 'blue'} style={{ fontSize: '9.5px', padding: '1px 5px' }}>
+            {currentFrame ? `${currentFrame.slice_type}-SLICE` : 'I-SLICE'}
+          </Badge>
+        </div>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            TEMPORAL LAYER & QP
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-            <span style={{ fontSize: '15px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-              TID {currentFrame ? currentFrame.temporal_id : 0}
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--apple-label-secondary)', fontFamily: 'var(--font-mono)' }}>
-              QP {currentFrame ? currentFrame.qp : 22}
-            </span>
-          </div>
-        </Card>
+        <span style={{ color: 'var(--separator)' }}>|</span>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            DPB REF LIST 0 (L0)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-            {currentFrame && currentFrame.ref_l0 && currentFrame.ref_l0.length > 0 ? (
-              currentFrame.ref_l0.map((poc, idx) => (
-                <span
-                  key={`ref0-${idx}`}
-                  style={{
-                    fontSize: '11px',
-                    fontFamily: 'var(--font-mono)',
-                    padding: '1px 6px',
-                    background: 'var(--fill-3)',
-                    borderRadius: '4px',
-                    border: '0.5px solid var(--separator)',
-                  }}
-                >
-                  POC {poc}
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: '12px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                None (Intra Anchor)
+        {/* Metric 2: Temporal Layer & QP */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>TEMPORAL LAYER &amp; QP:</span>
+          <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
+            TID {currentFrame ? currentFrame.temporal_id : 0}
+          </span>
+          <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>
+            QP {currentFrame ? currentFrame.qp : 22}
+          </span>
+        </div>
+
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 3: DPB Ref List 0 (L0) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>DPB REF LIST 0 (L0):</span>
+          {currentFrame && currentFrame.ref_l0 && currentFrame.ref_l0.length > 0 ? (
+            currentFrame.ref_l0.map((poc, idx) => (
+              <span
+                key={`ref0-${idx}`}
+                style={{
+                  fontSize: '10.5px',
+                  fontFamily: 'var(--font-mono)',
+                  padding: '1px 5px',
+                  background: 'var(--fill-3)',
+                  borderRadius: '3px',
+                  border: '0.5px solid var(--separator)',
+                }}
+              >
+                POC {poc}
               </span>
-            )}
-          </div>
-        </Card>
+            ))
+          ) : (
+            <span style={{ color: 'var(--apple-label-tertiary)', fontSize: '10.5px' }}>
+              None (Intra Anchor)
+            </span>
+          )}
+        </div>
 
-        <Card style={{ padding: '10px 14px' }}>
-          <div style={{ fontSize: '11px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-            DPB REF LIST 1 (L1)
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-            {currentFrame && currentFrame.ref_l1 && currentFrame.ref_l1.length > 0 ? (
-              currentFrame.ref_l1.map((poc, idx) => (
-                <span
-                  key={`ref1-${idx}`}
-                  style={{
-                    fontSize: '11px',
-                    fontFamily: 'var(--font-mono)',
-                    padding: '1px 6px',
-                    background: 'var(--fill-3)',
-                    borderRadius: '4px',
-                    border: '0.5px solid var(--separator)',
-                  }}
-                >
-                  POC {poc}
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: '12px', color: 'var(--apple-label-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                None
+        <span style={{ color: 'var(--separator)' }}>|</span>
+
+        {/* Metric 4: DPB Ref List 1 (L1) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>DPB REF LIST 1 (L1):</span>
+          {currentFrame && currentFrame.ref_l1 && currentFrame.ref_l1.length > 0 ? (
+            currentFrame.ref_l1.map((poc, idx) => (
+              <span
+                key={`ref1-${idx}`}
+                style={{
+                  fontSize: '10.5px',
+                  fontFamily: 'var(--font-mono)',
+                  padding: '1px 5px',
+                  background: 'var(--fill-3)',
+                  borderRadius: '3px',
+                  border: '0.5px solid var(--separator)',
+                }}
+              >
+                POC {poc}
               </span>
-            )}
-          </div>
-        </Card>
+            ))
+          ) : (
+            <span style={{ color: 'var(--apple-label-tertiary)', fontSize: '10.5px' }}>
+              None
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Main View: Full Frame CTU Grid & Spatial Navigator */}

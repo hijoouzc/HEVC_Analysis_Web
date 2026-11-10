@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import HmSourceCodeModal from '../../common/HmSourceCodeModal';
-import { HM_CTU_BOUNDARY_SNIPPET } from '../../../constants/hmSourceSnippets';
 import { HEVC_DEPTH_COLORS } from '../../../utils/colorUtils';
+import { generateEdgeClampedPaddedImage } from '../../../utils/tcomPicSymEngine';
 
 /**
  * FullFrameViewer - HEVC Full Frame Coding Tree & CU Partition Visualizer
@@ -122,20 +121,23 @@ const StaticCtuGridLayer = React.memo(function StaticCtuGridLayer({
       {ctus.map(({ index, x, y, px, py, pw, ph, isBoundary }) => (
         <g
           key={`ctu-grid-${x}-${y}`}
-          onClick={() => onCtuClick(x, y)}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCtuClick(x, y);
+          }}
           style={{ cursor: 'pointer' }}
         >
-          {/* Boundary CTU: Render subtle out-of-bounds cross-hatch for nominal 64x64 extent only when showBoundary is active */}
+          {/* Boundary CTU: Render nominal 64x64 extent outline extending into padding when showBoundary is active */}
           {showBoundary && isBoundary && (
             <rect
               x={px}
               y={py}
               width={64}
               height={64}
-              fill="url(#ctu-boundary-hatch)"
-              stroke="rgba(245, 158, 11, 0.45)"
+              fill="none"
+              stroke="rgba(245, 158, 11, 0.55)"
               strokeWidth={1}
-              strokeDasharray="2 2"
+              strokeDasharray="3 3"
               vectorEffect="non-scaling-stroke"
             />
           )}
@@ -193,16 +195,16 @@ const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
       {/* 1. Active Selected CTU Reticle */}
       {activeCtu && (
         <>
-          {/* If boundary CTU: render out-of-bounds cross-hatch overlay only when showBoundary is active */}
+          {/* If boundary CTU: render nominal 64x64 reticle extending into padding */}
           {showBoundary && activeCtu.isBoundary && (
             <rect
               x={activeCtu.px}
               y={activeCtu.py}
               width={64}
               height={64}
-              fill="url(#ctu-boundary-hatch)"
+              fill="none"
               stroke="#F59E0B"
-              strokeWidth={2}
+              strokeWidth={1.8}
               strokeDasharray="4 2"
               vectorEffect="non-scaling-stroke"
             />
@@ -271,7 +273,6 @@ function FullFrameViewer({
   const showCtuNumbers = false;
   const [selectedCu, setSelectedCu] = useState(null);
   const [uncontrolledCtu, setUncontrolledCtu] = useState(null);
-  const [showHmModal, setShowHmModal] = useState(false);
 
   const activeCu = propsSelectedCu !== undefined ? propsSelectedCu : selectedCu;
 
@@ -284,13 +285,13 @@ function FullFrameViewer({
     return { x: activeCtuX, y: activeCtuY };
   }, [activeCtuX, activeCtuY]);
 
-  // Quick keyboard toggle: Press 'T' or 't' for partition toggle, 'B' or 'b' for boundary toggle
+  // Quick keyboard toggle: Press 'T' or 't' for partition toggle, 'B'/'b' or 'P'/'p' for padding toggle
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
       if (e.key === 't' || e.key === 'T') {
         setViewMode(prev => (prev === 'partition' ? 'original' : 'partition'));
-      } else if (e.key === 'b' || e.key === 'B') {
+      } else if (e.key === 'b' || e.key === 'B' || e.key === 'p' || e.key === 'P') {
         setShowBoundary(prev => !prev);
       }
     };
@@ -302,6 +303,29 @@ function FullFrameViewer({
   const ctuSize = 64;
   const numCols = Math.max(1, Math.ceil(width / ctuSize));
   const numRows = Math.max(1, Math.ceil(height / ctuSize));
+  const nominalWidth = numCols * ctuSize;
+  const nominalHeight = numRows * ctuSize;
+  const rightPadding = nominalWidth - width;
+  const bottomPadding = nominalHeight - height;
+  const viewW = showBoundary ? nominalWidth : width;
+  const viewH = showBoundary ? nominalHeight : height;
+
+  const [paddedImageSrc, setPaddedImageSrc] = useState(null);
+
+  useEffect(() => {
+    if (!imageSrc || !showBoundary || (rightPadding <= 0 && bottomPadding <= 0)) {
+      return;
+    }
+    let isCurrent = true;
+    generateEdgeClampedPaddedImage(imageSrc, width, height, nominalWidth, nominalHeight).then((src) => {
+      if (isCurrent) {
+        setPaddedImageSrc(src);
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [imageSrc, showBoundary, width, height, nominalWidth, nominalHeight, rightPadding, bottomPadding]);
 
   // Build grid of CTUs (Memoized, only changes on image dimension changes)
   const ctus = useMemo(() => {
@@ -369,44 +393,8 @@ function FullFrameViewer({
   // Lightweight active CTU bounding box data (Tier 1: CTU HM standard)
   const activeCtuData = useMemo(() => {
     if (!localCtu) return null;
-    const px = localCtu.x * ctuSize;
-    const py = localCtu.y * ctuSize;
-    const pw = Math.min(ctuSize, width - px);
-    const ph = Math.min(ctuSize, height - py);
-    const index = localCtu.y * numCols + localCtu.x;
-    const uiRPelX = px + ctuSize - 1;
-    const uiBPelY = py + ctuSize - 1;
-    const isBoundary = !(uiRPelX < width && uiBPelY < height);
-    return {
-      x: localCtu.x,
-      y: localCtu.y,
-      px,
-      py,
-      pw,
-      ph,
-      index,
-      uiRPelX,
-      uiBPelY,
-      isBoundary
-    };
-  }, [localCtu, width, height, ctuSize, numCols]);
-
-  // HM-18.0 Live Parameters for Source Code Inspector
-  const hmVariables = useMemo(() => {
-    if (!activeCtuData) return [];
-    return [
-      { name: 'pCtu->getCtuRsAddr()', value: activeCtuData.index, highlight: true },
-      { name: 'uiLPelX (CUPelX)', value: activeCtuData.px },
-      { name: 'uiTPelY (CUPelY)', value: activeCtuData.py },
-      { name: 'uiRPelX', value: activeCtuData.uiRPelX },
-      { name: 'uiBPelY', value: activeCtuData.uiBPelY },
-      { name: 'PicWidth', value: width },
-      { name: 'PicHeight', value: height },
-      { name: 'bBoundary', value: activeCtuData.isBoundary ? 'TRUE (Forced Split)' : 'FALSE (Regular RDO)', highlight: true },
-      { name: 'Valid Dimensions', value: `${activeCtuData.pw} × ${activeCtuData.ph} samples` }
-    ];
-  }, [activeCtuData, width, height]);
-
+    return ctus[localCtu.y * numCols + localCtu.x] || null;
+  }, [localCtu, ctus, numCols]);
 
   return (
     <div className="apple-card" style={{
@@ -434,7 +422,7 @@ function FullFrameViewer({
             color: 'var(--apple-label-secondary)',
             fontFamily: 'JetBrains Mono',
           }}>
-            {width} × {height} • {numCols} × {numRows} CTUs
+            {showBoundary && (rightPadding > 0 || bottomPadding > 0) ? `${nominalWidth} × ${nominalHeight} (Padded)` : `${width} × ${height}`} • {numCols} × {numRows} CTUs
           </span>
         </div>
 
@@ -523,9 +511,9 @@ function FullFrameViewer({
               border: showBoundary ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid var(--apple-hairline)',
               userSelect: 'none'
             }}
-            title="Toggle picture boundary CTU cross-hatch overlay (B)"
+            title="Toggle boundary padding and edge pixel repetition (B or P)"
           >
-            <span>BOUNDARY:</span>
+            <span>PADDING:</span>
             <span style={{ width: '28px', textAlign: 'center', display: 'inline-block', marginLeft: '4px' }}>
               {showBoundary ? 'ON' : 'OFF'}
             </span>
@@ -554,22 +542,6 @@ function FullFrameViewer({
             </span>
           </button>
 
-          {/* HM-18.0 Source Code Modal Trigger */}
-          <button
-            type="button"
-            className="apple-btn-tool"
-            onClick={() => setShowHmModal(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-              border: '1px solid var(--apple-hairline)'
-            }}
-            title="View HM C++ source code for compressCtu & boundary checking"
-          >
-            <span>[&lt;&gt;] HM Code</span>
-          </button>
-
           {onNavigateToQuadTree && activeCtuData && (
             <button
               type="button"
@@ -592,11 +564,19 @@ function FullFrameViewer({
 
       {/* Interactive Frame Canvas Viewport */}
       <div 
+        onClick={() => {
+          if (localCtu !== null || activeCu !== null) {
+            if (!onSelectCTU) setUncontrolledCtu(null);
+            setSelectedCu(null);
+            if (onSelectCTU) onSelectCTU(null, null);
+            if (onSelectCU) onSelectCU(null);
+          }
+        }}
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: `min(100%, calc((100vh - 210px) * ${width} / ${height}))`,
-          aspectRatio: `${width} / ${height}`,
+          maxWidth: `min(100%, calc((100vh - 210px) * ${viewW} / ${viewH}))`,
+          aspectRatio: `${viewW} / ${viewH}`,
           margin: '0 auto',
           border: '1px solid var(--apple-hairline)',
           borderRadius: 0,
@@ -626,10 +606,10 @@ function FullFrameViewer({
               [ENCODING IN PROGRESS... PLEASE WAIT]
             </div>
           )}
-          {/* Source Image Canvas */}
+          {/* Source Image Canvas (Renders edge-replicated padded frame when showBoundary is active) */}
           {imageSrc ? (
             <img
-              src={imageSrc}
+              src={showBoundary && paddedImageSrc ? paddedImageSrc : imageSrc}
               alt="Source Frame"
               style={{
                 width: '100%',
@@ -654,7 +634,7 @@ function FullFrameViewer({
           )}
 
           <svg
-            viewBox={`0 0 ${width} ${height}`}
+            viewBox={`0 0 ${viewW} ${viewH}`}
             style={{
               position: 'absolute',
               top: 0,
@@ -664,17 +644,83 @@ function FullFrameViewer({
               pointerEvents: 'all'
             }}
           >
-            <defs>
-              <pattern
-                id="ctu-boundary-hatch"
-                width="8"
-                height="8"
-                patternTransform="rotate(45 0 0)"
-                patternUnits="userSpaceOnUse"
-              >
-                <line x1="0" y1="0" x2="0" y2="8" stroke="#EF4444" strokeWidth="1.5" strokeOpacity="0.45" />
-              </pattern>
-            </defs>
+            {/* Edge Padding Delineation Lines, Subtle Tint & Badges (Active when showBoundary is ON) */}
+            {showBoundary && rightPadding > 0 && (
+              <g className="padding-delineation-right">
+                <line
+                  x1={width}
+                  y1={0}
+                  x2={width}
+                  y2={viewH}
+                  stroke="#F59E0B"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+                <rect
+                  x={width}
+                  y={0}
+                  width={rightPadding}
+                  height={viewH}
+                  fill="rgba(245, 158, 11, 0.08)"
+                  pointerEvents="none"
+                />
+                <text
+                  x={width + rightPadding / 2}
+                  y={14}
+                  fill="#F59E0B"
+                  fontSize="9"
+                  fontFamily="JetBrains Mono, monospace"
+                  fontWeight="700"
+                  textAnchor="middle"
+                  stroke="#000000"
+                  strokeWidth={1.2}
+                  paintOrder="stroke"
+                  pointerEvents="none"
+                >
+                  +{rightPadding}px
+                </text>
+              </g>
+            )}
+            {showBoundary && bottomPadding > 0 && (
+              <g className="padding-delineation-bottom">
+                <line
+                  x1={0}
+                  y1={height}
+                  x2={viewW}
+                  y2={height}
+                  stroke="#F59E0B"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  vectorEffect="non-scaling-stroke"
+                  pointerEvents="none"
+                />
+                <rect
+                  x={0}
+                  y={height}
+                  width={width}
+                  height={bottomPadding}
+                  fill="rgba(245, 158, 11, 0.08)"
+                  pointerEvents="none"
+                />
+                <text
+                  x={14}
+                  y={height + bottomPadding / 2 + 3}
+                  fill="#F59E0B"
+                  fontSize="9"
+                  fontFamily="JetBrains Mono, monospace"
+                  fontWeight="700"
+                  textAnchor="start"
+                  stroke="#000000"
+                  strokeWidth={1.2}
+                  paintOrder="stroke"
+                  pointerEvents="none"
+                >
+                  +{bottomPadding}px
+                </text>
+              </g>
+            )}
 
             {/* LAYER 1: Static Leaf CUs across ALL CTUs (Memoized, 0 re-render on CTU click) */}
             {viewMode === 'partition' && (
@@ -707,19 +753,6 @@ function FullFrameViewer({
             />
           </svg>
         </div>
-
-      {/* HM-18.0 Source Code Inspector Modal */}
-      <HmSourceCodeModal
-        isOpen={showHmModal}
-        onClose={() => setShowHmModal(false)}
-        title={HM_CTU_BOUNDARY_SNIPPET.title}
-        sourceFile={HM_CTU_BOUNDARY_SNIPPET.sourceFile}
-        functionName={HM_CTU_BOUNDARY_SNIPPET.functionName}
-        standardRef={HM_CTU_BOUNDARY_SNIPPET.standardRef}
-        description={HM_CTU_BOUNDARY_SNIPPET.description}
-        variables={hmVariables}
-        codeSnippet={HM_CTU_BOUNDARY_SNIPPET.codeSnippet}
-      />
     </div>
   );
 }

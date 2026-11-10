@@ -1,5 +1,4 @@
-import React from 'react';
-import { Button } from '../../../apple';
+import React, { useState } from 'react';
 import {
   HM_INTRA_PREDICTION_SNIPPET,
   HM_EST_INTRAPRED_LUMA_SNIPPET,
@@ -74,8 +73,9 @@ export default function IntraPipelineInspector({
   cuSize = 8,
   ctuX = 0,
   ctuY = 0,
-  onOpenHmSnippet = null
+  _onOpenHmSnippet = null
 }) {
+  const [showSpecDetails, setShowSpecDetails] = useState(false);
   const config = STAGE_INSPECTOR_CONFIG[activeStep] || STAGE_INSPECTOR_CONFIG[1];
 
   const bestLuma = pipelineData?.best_luma_mode ?? 0;
@@ -97,7 +97,7 @@ export default function IntraPipelineInspector({
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: '0.5rem',
-        marginBottom: '0.65rem'
+        marginBottom: showSpecDetails ? '0.65rem' : '0.45rem'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
           <span style={{
@@ -117,53 +117,73 @@ export default function IntraPipelineInspector({
           </span>
         </div>
 
-        <Button
-          variant="gray"
-          size="small"
-          onClick={() => onOpenHmSnippet && onOpenHmSnippet(config.snippet)}
-          title="Inspect bit-exact HM-18.0 C++ implementation"
+        {/* Show HM C++ Code & Formula Disclosure Pill */}
+        <button
+          type="button"
+          onClick={() => setShowSpecDetails((s) => !s)}
+          style={{
+            fontSize: '10px',
+            fontFamily: 'JetBrains Mono, monospace',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            background: showSpecDetails ? 'rgba(0, 122, 255, 0.14)' : 'var(--fill-2)',
+            color: showSpecDetails ? 'var(--apple-blue)' : 'var(--apple-label)',
+            border: showSpecDetails ? '0.5px solid rgba(0, 122, 255, 0.35)' : '0.5px solid var(--separator)',
+            cursor: 'pointer',
+            fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            transition: 'all 0.15s ease',
+          }}
+          title="Toggle C++ Function Signature & ITU-T Math Formula"
         >
-          &lt;&gt; Show HM C++ Code
-        </Button>
+          <span style={{ color: 'var(--apple-blue)', fontWeight: 700 }}>ƒx</span>
+          <span>Show HM C++ Code &amp; Formula</span>
+          <span style={{ fontSize: '9px', opacity: 0.75 }}>{showSpecDetails ? '▴' : '▾'}</span>
+        </button>
       </div>
 
-      {/* C++ Function Call Signature */}
-      <div style={{
-        background: 'var(--apple-surface, #F5F5F7)',
-        padding: '0.45rem 0.75rem',
-        borderRadius: '3px',
-        border: '1px solid var(--apple-hairline)',
-        fontFamily: 'JetBrains Mono',
-        fontSize: '0.74rem',
-        color: 'var(--apple-blue)',
-        fontWeight: 600,
-        marginBottom: '0.65rem',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap'
-      }}>
-        <span>{config.cppFunction}</span>
-        <span style={{ color: 'var(--apple-label-tertiary)', marginLeft: '0.75rem', fontSize: '0.68rem' }}>
-          // {config.cppFile}
-        </span>
-      </div>
+      {/* Collapsible Spec & Formula Details */}
+      {showSpecDetails && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginBottom: '0.65rem' }}>
+          {/* C++ Function Call Signature */}
+          <div style={{
+            background: 'var(--apple-surface, #F5F5F7)',
+            padding: '0.45rem 0.75rem',
+            borderRadius: '3px',
+            border: '1px solid var(--apple-hairline)',
+            fontFamily: 'JetBrains Mono',
+            fontSize: '0.74rem',
+            color: 'var(--apple-blue)',
+            fontWeight: 600,
+            overflowX: 'auto',
+            whiteSpace: 'nowrap'
+          }}>
+            <span>{config.cppFunction}</span>
+            <span style={{ color: 'var(--apple-label-tertiary)', marginLeft: '0.75rem', fontSize: '0.68rem' }}>
+              // {config.cppFile}
+            </span>
+          </div>
 
-      {/* Mathematical Formula Banner */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: '0.5rem',
-        padding: '0.55rem 0.75rem',
-        background: 'var(--apple-blue-subtle, rgba(0, 122, 255, 0.08))',
-        border: '1px solid rgba(0, 122, 255, 0.2)',
-        borderRadius: '3px',
-        marginBottom: '0.65rem'
-      }}>
-        <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.74rem', fontWeight: 700, color: 'var(--apple-label)' }}>
-          {config.mathFormula}
+          {/* Mathematical Formula Banner */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            padding: '0.55rem 0.75rem',
+            background: 'var(--apple-blue-subtle, rgba(0, 122, 255, 0.08))',
+            border: '1px solid rgba(0, 122, 255, 0.2)',
+            borderRadius: '3px',
+          }}>
+            <div style={{ fontFamily: 'JetBrains Mono', fontSize: '0.74rem', fontWeight: 700, color: 'var(--apple-label)' }}>
+              {config.mathFormula}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
 
       {/* Step Metric Badges Strip */}

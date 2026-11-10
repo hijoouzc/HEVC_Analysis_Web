@@ -137,7 +137,7 @@ export function CompactStepRibbon({
         >
           {hmFunction && (
             <div>
-              <span style={{ color: 'var(--apple-label-tertiary)', fontWeight: 600 }}>HM METHOD: </span>
+              <span style={{ color: 'var(--apple-label-tertiary)', fontWeight: 600 }}>METHOD: </span>
               <span style={{ color: 'var(--apple-blue)', fontWeight: 600 }}>{hmFunction}</span>
             </div>
           )}

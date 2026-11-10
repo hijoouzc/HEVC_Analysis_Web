@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Button, Badge } from '../apple';
+import { Button } from '../apple';
 import {
   GuidedJourneyBar,
   GuidedFooterNav,
@@ -63,6 +63,7 @@ const ActiveStageViewport = ({
   setGuidedStep = null,
 }) => {
   const [internalGuidedStep, setInternalGuidedStep] = useState('STEP_1');
+  const [streamMode, setStreamMode] = useState('single'); // 'single' (Default: Focused Step Mode) | 'continuous'
   const [activeChannel, setActiveChannel] = useState('Y'); // 'Y' | 'Cb' | 'Cr'
   const [guidedShowValues, setGuidedShowValues] = useState(true);
   const [guidedResiGain, setGuidedResiGain] = useState(4); // 1 | 2 | 4 | 8
@@ -72,16 +73,21 @@ const ActiveStageViewport = ({
 
   const handleGuidedStepChange = useCallback((targetStep) => {
     setStepFn(targetStep);
-    const el = document.getElementById(targetStep);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (streamMode === 'continuous') {
+      const el = document.getElementById(targetStep);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
-  }, [setStepFn]);
+  }, [setStepFn, streamMode]);
 
   const activeCuCoords = resolveCuCoordinates(selectedCu, ctuX, ctuY, cuSize || 8);
 
   // Sync active step with scroll position in guided continuous stream mode
   useEffect(() => {
+    if (streamMode !== 'continuous') return;
     const stepIds = GUIDED_STEPS.map((s) => s.id);
     const elements = stepIds.map((id) => document.getElementById(id)).filter(Boolean);
     if (!elements.length) return;
@@ -98,28 +104,10 @@ const ActiveStageViewport = ({
 
     elements.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [setStepFn]);
+  }, [setStepFn, streamMode]);
 
   return (
     <div className="workspace-main" style={{ minWidth: 0 }}>
-      {/* Top Header: Guided Stream Identity Badge */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '14px',
-          gap: '12px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <Badge variant="blue" style={{ fontSize: '11px', padding: '4px 10px' }}>
-            HM xCompressCU Guided Stream (Steps 1–5)
-          </Badge>
-        </div>
-      </div>
-
       {/* CTU / CU Size Desync Notice */}
       {hasDesync && (
         <div
@@ -190,212 +178,232 @@ const ActiveStageViewport = ({
               (reconPictureData.reconstructed_y?.length > 0 || reconPictureData.length > 0)
             }
             hasRdo={rdoDecisions && rdoDecisions.length > 0}
+            streamMode={streamMode}
+            onToggleStreamMode={() => setStreamMode((m) => (m === 'single' ? 'continuous' : 'single'))}
           />
         </div>
 
         {/* Section 1: Frame & CU Tree */}
-        <section id="STEP_1" style={{ scrollMarginTop: '30px' }}>
-          <SectionHeader
-            title="CU QuadTree Partitioning"
-            hmFunction="TEncCu::xCompressCU"
-            badge="Quadtree"
-          />
-          <Step1FrameTree
-            imageSrc={imagePreview}
-            imageDims={imageDims}
-            ctuX={ctuX}
-            ctuY={ctuY}
-            partitionData={partitionData}
-            ctuPartitionsMap={ctuPartitionsMap}
-            selectedCu={selectedCu}
-            onSelectCU={handleSelectCU}
-            onSelectCTU={handleSelectCTU}
-            onReAnalyze={(targetX, targetY) => handleUpload(null, targetX, targetY)}
-            loading={loading}
-            frameGopData={frameGopData}
-            onProceedToPrediction={() => handleGuidedStepChange('STEP_2')}
-            handleSelectSize={handleSelectSize}
-            setCuSize={setCuSize}
-            setCurrentModeIdx={setCurrentModeIdx}
-            data={data}
-          />
-        </section>
+        {(streamMode === 'continuous' || activeGuidedStep === 'STEP_1') && (
+          <section id="STEP_1" style={{ scrollMarginTop: '30px' }}>
+            <SectionHeader
+              title="CU QuadTree Partitioning"
+              hmFunction="TEncCu::xCompressCU"
+              badge="Quadtree"
+            />
+            <Step1FrameTree
+              imageSrc={imagePreview}
+              imageDims={imageDims}
+              ctuX={ctuX}
+              ctuY={ctuY}
+              partitionData={partitionData}
+              ctuPartitionsMap={ctuPartitionsMap}
+              selectedCu={selectedCu}
+              onSelectCU={handleSelectCU}
+              onSelectCTU={handleSelectCTU}
+              onReAnalyze={(targetX, targetY) => handleUpload(null, targetX, targetY)}
+              loading={loading}
+              frameGopData={frameGopData}
+              onProceedToPrediction={() => handleGuidedStepChange('STEP_2')}
+              handleSelectSize={handleSelectSize}
+              setCuSize={setCuSize}
+              setCurrentModeIdx={setCurrentModeIdx}
+              data={data}
+            />
+          </section>
+        )}
 
         {/* Stream Connector 1 -> 2 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px 0',
-            color: 'var(--apple-label-quaternary)',
-            fontSize: '12px',
-          }}
-        >
-          &darr;
-        </div>
+        {streamMode === 'continuous' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px 0',
+              color: 'var(--apple-label-quaternary)',
+              fontSize: '12px',
+            }}
+          >
+            &darr;
+          </div>
+        )}
 
         {/* Section 2: Prediction Candidates */}
-        <section id="STEP_2" style={{ scrollMarginTop: '30px' }}>
-          <SectionHeader
-            title="Intra &amp; Inter Prediction"
-            hmFunction="TEncSearch::estIntraPredLumaQT"
-            badge="Prediction"
-          />
-          <Step2Prediction
-            modeData={currentMode}
-            modesData={data}
-            currentModeIdx={currentModeIdx}
-            onSelectModeIndex={setCurrentModeIdx}
-            isPlaying={isPlaying}
-            onTogglePlay={() => setIsPlaying((p) => !p)}
-            refSamples={refSamples}
-            selectedCu={selectedCu}
-            cuSize={cuSize}
-            setCuSize={setCuSize}
-            setSelectedCu={setSelectedCu}
-            handleSelectSize={handleSelectSize}
-            imagePreview={imagePreview}
-            imageDims={imageDims}
-            ctuX={ctuX}
-            ctuY={ctuY}
-            jobId={jobId}
-            API_BASE_URL={API_BASE_URL}
-            transformData={transformData}
-            quantData={quantData}
-            interSearchData={interSearchData}
-            frameGopData={frameGopData}
-            onSelectBlock={handleSelectBlock}
-            partitionData={partitionData}
-            onProceedToResidual={() => handleGuidedStepChange('STEP_3')}
-            onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
-            channel={activeChannel}
-            onSelectChannel={setActiveChannel}
-            showValues={guidedShowValues}
-          />
-        </section>
+        {(streamMode === 'continuous' || activeGuidedStep === 'STEP_2') && (
+          <section id="STEP_2" style={{ scrollMarginTop: '30px' }}>
+            <SectionHeader
+              title="Intra &amp; Inter Prediction"
+              hmFunction="TEncSearch::estIntraPredLumaQT"
+              badge="Prediction"
+            />
+            <Step2Prediction
+              modeData={currentMode}
+              modesData={data}
+              currentModeIdx={currentModeIdx}
+              onSelectModeIndex={setCurrentModeIdx}
+              isPlaying={isPlaying}
+              onTogglePlay={() => setIsPlaying((p) => !p)}
+              refSamples={refSamples}
+              selectedCu={selectedCu}
+              cuSize={cuSize}
+              setCuSize={setCuSize}
+              setSelectedCu={setSelectedCu}
+              handleSelectSize={handleSelectSize}
+              imagePreview={imagePreview}
+              imageDims={imageDims}
+              ctuX={ctuX}
+              ctuY={ctuY}
+              jobId={jobId}
+              API_BASE_URL={API_BASE_URL}
+              transformData={transformData}
+              quantData={quantData}
+              interSearchData={interSearchData}
+              frameGopData={frameGopData}
+              onSelectBlock={handleSelectBlock}
+              partitionData={partitionData}
+              onProceedToResidual={() => handleGuidedStepChange('STEP_3')}
+              onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
+              channel={activeChannel}
+              onSelectChannel={setActiveChannel}
+              showValues={guidedShowValues}
+            />
+          </section>
+        )}
 
         {/* Stream Connector 2 -> 3 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px 0',
-            color: 'var(--apple-label-quaternary)',
-            fontSize: '12px',
-          }}
-        >
-          &darr;
-        </div>
+        {streamMode === 'continuous' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px 0',
+              color: 'var(--apple-label-quaternary)',
+              fontSize: '12px',
+            }}
+          >
+            &darr;
+          </div>
+        )}
 
         {/* Section 3: Residual & TU */}
-        <section id="STEP_3" style={{ scrollMarginTop: '30px' }}>
-          <SectionHeader
-            title="Residual Transform &amp; Quantization (RQT)"
-            hmFunction="TComTrQuant::transformNxN"
-            badge="RQT Engine"
-          />
-          <Step3ResidualTu
-            transformData={transformData}
-            quantData={quantData}
-            ctuX={ctuX}
-            ctuY={ctuY}
-            selectedCu={selectedCu}
-            currentMode={currentMode}
-            data={data}
-            onProceedToRecon={() => handleGuidedStepChange('STEP_4')}
-            onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
-            channel={activeChannel}
-            onSelectChannel={setActiveChannel}
-            showValues={guidedShowValues}
-            resiGain={guidedResiGain}
-          />
-        </section>
+        {(streamMode === 'continuous' || activeGuidedStep === 'STEP_3') && (
+          <section id="STEP_3" style={{ scrollMarginTop: '30px' }}>
+            <SectionHeader
+              title="Residual Transform &amp; Quantization (RQT)"
+              hmFunction="TComTrQuant::transformNxN"
+              badge="RQT Engine"
+            />
+            <Step3ResidualTu
+              transformData={transformData}
+              quantData={quantData}
+              ctuX={ctuX}
+              ctuY={ctuY}
+              selectedCu={selectedCu}
+              currentMode={currentMode}
+              data={data}
+              onProceedToRecon={() => handleGuidedStepChange('STEP_4')}
+              onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
+              channel={activeChannel}
+              onSelectChannel={setActiveChannel}
+              showValues={guidedShowValues}
+              resiGain={guidedResiGain}
+            />
+          </section>
+        )}
 
         {/* Stream Connector 3 -> 4 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px 0',
-            color: 'var(--apple-label-quaternary)',
-            fontSize: '12px',
-          }}
-        >
-          &darr;
-        </div>
+        {streamMode === 'continuous' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px 0',
+              color: 'var(--apple-label-quaternary)',
+              fontSize: '12px',
+            }}
+          >
+            &darr;
+          </div>
+        )}
 
         {/* Section 4: Reconstruction */}
-        <section id="STEP_4" style={{ scrollMarginTop: '30px' }}>
-          <SectionHeader
-            title="Committed Picture Reconstruction &amp; In-Loop Filters"
-            hmFunction="TComPic::getPicYuvRec"
-            badge="Picture Buffer"
-          />
-          <Step4ReconInLoop
-            imageSrc={imagePreview}
-            imageDims={imageDims}
-            ctuX={ctuX}
-            ctuY={ctuY}
-            currentMode={currentMode}
-            selectedCu={selectedCu}
-            cuSize={cuSize}
-            reconPictureData={reconPictureData}
-            inloopFilterData={inloopFilterData}
-            jobId={jobId}
-            API_BASE_URL={API_BASE_URL}
-            onSelectCTU={handleSelectCTU}
-            onNavigateToIntra={() => handleGuidedStepChange('STEP_2')}
-            splitDecision={rdoDecisions?.find(
-              (d) =>
-                (d.cu_x === activeCuCoords.absX || d.cu_x === activeCuCoords.relX) &&
-                (d.cu_y === activeCuCoords.absY || d.cu_y === activeCuCoords.relY)
-            )}
-            onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
-            channel={activeChannel}
-            onSelectChannel={setActiveChannel}
-            showValues={guidedShowValues}
-            resiGain={guidedResiGain}
-            onSelectResiGain={setGuidedResiGain}
-          />
-        </section>
+        {(streamMode === 'continuous' || activeGuidedStep === 'STEP_4') && (
+          <section id="STEP_4" style={{ scrollMarginTop: '30px' }}>
+            <SectionHeader
+              title="Committed Picture Reconstruction &amp; In-Loop Filters"
+              hmFunction="TComPic::getPicYuvRec"
+              badge="Picture Buffer"
+            />
+            <Step4ReconInLoop
+              imageSrc={imagePreview}
+              imageDims={imageDims}
+              ctuX={ctuX}
+              ctuY={ctuY}
+              currentMode={currentMode}
+              selectedCu={selectedCu}
+              cuSize={cuSize}
+              reconPictureData={reconPictureData}
+              inloopFilterData={inloopFilterData}
+              jobId={jobId}
+              API_BASE_URL={API_BASE_URL}
+              onSelectCTU={handleSelectCTU}
+              onNavigateToIntra={() => handleGuidedStepChange('STEP_2')}
+              splitDecision={rdoDecisions?.find(
+                (d) =>
+                  (d.cu_x === activeCuCoords.absX || d.cu_x === activeCuCoords.relX) &&
+                  (d.cu_y === activeCuCoords.absY || d.cu_y === activeCuCoords.relY)
+              )}
+              onProceedToRdo={() => handleGuidedStepChange('STEP_5')}
+              channel={activeChannel}
+              onSelectChannel={setActiveChannel}
+              showValues={guidedShowValues}
+              resiGain={guidedResiGain}
+              onSelectResiGain={setGuidedResiGain}
+            />
+          </section>
+        )}
 
         {/* Stream Connector 4 -> 5 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '4px 0',
-            color: 'var(--apple-label-quaternary)',
-            fontSize: '12px',
-          }}
-        >
-          &darr;
-        </div>
+        {streamMode === 'continuous' && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '4px 0',
+              color: 'var(--apple-label-quaternary)',
+              fontSize: '12px',
+            }}
+          >
+            &darr;
+          </div>
+        )}
 
         {/* Section 5: RD Decision & Simulator */}
-        <section id="STEP_5" style={{ scrollMarginTop: '30px' }}>
-          <SectionHeader
-            title="Rate-Distortion Decision &amp; Entropy Stream"
-            hmFunction="TEncCu::xCheckBestMode"
-            badge="RDO Engine"
-          />
-          <Step5RdDecision
-            rdoDecisions={rdoDecisions}
-            cabacEntropyData={cabacEntropyData}
-            selectedCu={selectedCu}
-            ctuX={ctuX}
-            ctuY={ctuY}
-            imageSrc={imagePreview}
-            imageDims={imageDims}
-            partitionData={ctuPartitionsMap?.[`${ctuX}_${ctuY}`] || partitionData}
-            onNavigateToStage={() => handleGuidedStepChange('STEP_1')}
-            showValues={guidedShowValues}
-          />
-        </section>
+        {(streamMode === 'continuous' || activeGuidedStep === 'STEP_5') && (
+          <section id="STEP_5" style={{ scrollMarginTop: '30px' }}>
+            <SectionHeader
+              title="Rate-Distortion Decision &amp; Entropy Stream"
+              hmFunction="TEncCu::xCheckBestMode"
+              badge="RDO Engine"
+            />
+            <Step5RdDecision
+              rdoDecisions={rdoDecisions}
+              cabacEntropyData={cabacEntropyData}
+              selectedCu={selectedCu}
+              ctuX={ctuX}
+              ctuY={ctuY}
+              imageSrc={imagePreview}
+              imageDims={imageDims}
+              partitionData={ctuPartitionsMap?.[`${ctuX}_${ctuY}`] || partitionData}
+              onNavigateToStage={() => handleGuidedStepChange('STEP_1')}
+              showValues={guidedShowValues}
+            />
+          </section>
+        )}
 
         {/* Guided Footer Navigation Bar */}
         <GuidedFooterNav
