@@ -188,10 +188,11 @@ class AnalysisService:
         ctu_y: int | None = None,
         cu_x: int | None = None,
         cu_y: int | None = None,
-        cu_size: int | None = None
+        cu_size: int | None = None,
+        poc: int | None = None
     ) -> list[CuRdoDecisionCheckpoint]:
         return self._partition_stage.get_cu_rdo_decisions(
-            job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, cu_size=cu_size
+            job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, cu_size=cu_size, poc=poc
         )
 
     def get_cu_inspection_data(
@@ -217,14 +218,15 @@ class AnalysisService:
         ctu_x: int | None = None,
         ctu_y: int | None = None,
         cu_x: int | None = None,
-        cu_y: int | None = None
+        cu_y: int | None = None,
+        poc: int | None = None
     ) -> list[IntraModeData]:
         return self._intra_stage.get_intra_search_data(
-            job_id, mode=mode, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y
+            job_id, mode=mode, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc
         )
 
-    def get_intra_search_summary(self, job_id: str) -> IntraSearchSummary:
-        return self._intra_stage.get_intra_search_summary(job_id)
+    def get_intra_search_summary(self, job_id: str, poc: int | None = None) -> IntraSearchSummary:
+        return self._intra_stage.get_intra_search_summary(job_id, poc=poc)
 
     def get_intra_ref_data(
         self,
@@ -233,10 +235,11 @@ class AnalysisService:
         ctu_x: int | None = None,
         ctu_y: int | None = None,
         cu_x: int | None = None,
-        cu_y: int | None = None
+        cu_y: int | None = None,
+        poc: int | None = None
     ) -> IntraRefCheckpoint:
         return self._intra_stage.get_intra_ref_data(
-            job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y
+            job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc
         )
 
     def compare_intra_modes(
@@ -255,10 +258,11 @@ class AnalysisService:
         ctu_x: int | None = None,
         ctu_y: int | None = None,
         cu_x: int | None = None,
-        cu_y: int | None = None
+        cu_y: int | None = None,
+        poc: int | None = None
     ) -> IntraPipelineFullResponse:
         return self._intra_stage.get_intra_pipeline_data(
-            job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y
+            job_id, cu_size=cu_size, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc
         )
 
     # Stage CP_03: Inter Search
@@ -266,9 +270,10 @@ class AnalysisService:
         self,
         job_id: str,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        poc: int | None = None
     ) -> list[InterSearchCheckpoint]:
-        return self._inter_stage.get_inter_search_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return self._inter_stage.get_inter_search_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
     # Stage CP_04: Transform & Quant
     def get_transform_quant_data(
@@ -280,10 +285,11 @@ class AnalysisService:
         cu_x: int | None = None,
         cu_y: int | None = None,
         cu_size: int | None = None,
-        intra_mode: int | None = None
+        intra_mode: int | None = None,
+        poc: int | None = None
     ) -> list[TransformQuantCheckpoint]:
         return self._transform_stage.get_transform_quant_data(
-            job_id, comp=comp, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, cu_size=cu_size, intra_mode=intra_mode
+            job_id, comp=comp, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, cu_size=cu_size, intra_mode=intra_mode, poc=poc
         )
 
     # Stage CP_05: Reconstruction Picture
@@ -291,18 +297,20 @@ class AnalysisService:
         self,
         job_id: str,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        poc: int | None = None
     ) -> list[ReconPictureCheckpoint]:
-        return self._recon_stage.get_recon_picture_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return self._recon_stage.get_recon_picture_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
     # Stage CP_06: In-Loop Filtering
     def get_inloop_filter_data(
         self,
         job_id: str,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        poc: int | None = None
     ) -> InLoopFilterFullResponse:
-        return self._filter_stage.get_inloop_filter_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y)
+        return self._filter_stage.get_inloop_filter_data(job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
     # Stage CP_07: CABAC Entropy
     def get_cabac_entropy_data(

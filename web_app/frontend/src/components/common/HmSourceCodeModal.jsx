@@ -270,7 +270,7 @@ export default function HmSourceCodeModal({
 
           {standardRef && (
             <Badge variant="purple" style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px' }}>
-              {standardRef}
+              {standardRef.replace(/ITU-T\s+H\.265\s*(?:Section|§)\s*[\d.]+(?:\s*\([^)]*\))?(?:\s*\/\s*[\d.]+(?:\s*\([^)]*\))?)?/gi, 'HEVC Spec').replace(/\s*\/\s*HEVC Book Chapter\s*\d+/gi, '').trim()}
             </Badge>
           )}
         </div>
@@ -479,7 +479,10 @@ export default function HmSourceCodeModal({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <Badge variant="purple">Standard Reference</Badge>
                   <strong style={{ fontSize: '13px', color: 'var(--apple-label)' }}>
-                    {standardRef || 'ITU-T Recommendation H.265 (High Efficiency Video Coding)'}
+                    {(standardRef || 'ITU-T Recommendation H.265 (High Efficiency Video Coding)')
+                      .replace(/ITU-T\s+H\.265\s*(?:Section|§)\s*[\d.]+(?:\s*\([^)]*\))?(?:\s*\/\s*[\d.]+(?:\s*\([^)]*\))?)?/gi, 'HEVC Reference Specification')
+                      .replace(/\s*\/\s*HEVC Book Chapter\s*\d+/gi, '')
+                      .trim()}
                   </strong>
                 </div>
                 <p style={{ fontSize: '12.5px', lineHeight: 1.6, color: 'var(--apple-label-secondary)', margin: '0 0 12px 0' }}>

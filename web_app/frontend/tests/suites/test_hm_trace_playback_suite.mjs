@@ -97,6 +97,7 @@ console.log('\nTest Suite 4: Code Architecture & Separation of Playhead vs Inspe
   assert(hookContent.includes('const [playheadCtuIdx, setPlayheadCtuIdx] = useState(0);'), 'Maintains playheadCtuIdx state');
   assert(hookContent.includes('const [inspectedCu, setInspectedCu] = useState('), 'Maintains independent inspectedCu state');
   assert(hookContent.includes('const [isInitial, setIsInitial] = useState(true);'), 'Maintains initial unencoded state (isInitial)');
+  assert(hookContent.indexOf('setActiveCuIdx') < hookContent.indexOf('prevTargetSeqIdx'), 'setActiveCuIdx declared before prevTargetSeqIdx to prevent TDZ');
 
   // Verify non-interference guarantee
   assert(hookContent.includes('setInspectedCu: handleSelectInspectedCu'), 'Exports dedicated inspection handler');

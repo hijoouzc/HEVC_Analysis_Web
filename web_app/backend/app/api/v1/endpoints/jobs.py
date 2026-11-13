@@ -1,9 +1,10 @@
 import asyncio
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
+import logging
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
 from app.domain.models.job import JobInfo
 from app.domain.models.roi import ROICoordinates, FrameMetadata
-from app.domain.exceptions import JobNotFoundError
+from app.domain.exceptions import JobNotFoundError, InvalidInputError
 from app.services.job_manager import job_manager
 from app.services.analysis_service import analysis_service
 from app.storage.session_manager import session_manager
@@ -11,7 +12,11 @@ from app.engine.ffmpeg_adapter import ffmpeg_adapter
 from app.engine.image_processor import image_processor
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_VALID_SCALE_MODES = {"native", "fast"}
+_VALID_PROFILES = {"all_intra", "low_delay_p", "random_access"}
 
 async def read_and_validate_upload_file(file: UploadFile, max_bytes: int = settings.MAX_UPLOAD_SIZE) -> bytes:
     chunk_size = 65536
@@ -56,13 +61,21 @@ async def submit_analysis_job(
     frames: int = Form(1)
 ):
     try:
+        if scale_mode not in _VALID_SCALE_MODES:
+            raise InvalidInputError(f"Invalid scale_mode '{scale_mode}'. Allowed: {sorted(_VALID_SCALE_MODES)}")
+        if profile not in _VALID_PROFILES:
+            raise InvalidInputError(f"Invalid profile '{profile}'. Allowed: {sorted(_VALID_PROFILES)}")
+
         content = await read_and_validate_upload_file(file)
-        job_id = session_manager.create_session()
+        job_id = await asyncio.to_thread(session_manager.create_session, None, True)
         input_image = session_manager.get_input_image_path(job_id)
-        
+
         await asyncio.to_thread(_write_file_bytes, input_image, content)
-            
-        orig_w, orig_h = await asyncio.to_thread(_read_image_dims, input_image)
+
+        try:
+            orig_w, orig_h = await asyncio.to_thread(_read_image_dims, input_image)
+        except (OSError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"Corrupted or unreadable image file: {exc}") from exc
             
         ctu_size = settings.CTU_SIZE
         calc_w, calc_h = analysis_service.compute_frame_dimensions(orig_w, orig_h, scale_mode)
@@ -111,13 +124,20 @@ async def submit_analysis_job(
         )
         
         return job_info
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except InvalidInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        logger.exception("Unexpected error submitting analysis job")
+        raise HTTPException(status_code=500, detail="Internal server error while submitting job.")
 
 @router.get("/{job_id}", response_model=JobInfo)
 async def get_job_status(job_id: str):
     try:
         return await job_manager.get_job(job_id)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
@@ -128,13 +148,19 @@ _generate_prediction_image = image_processor.generate_prediction_image
 _generate_fallback_plane = image_processor.generate_fallback_plane
 
 @router.get("/{job_id}/images/{image_type}")
-async def get_job_image(job_id: str, image_type: str, gain: int = 4):
+async def get_job_image(
+    job_id: str,
+    image_type: str,
+    gain: int = Query(4, ge=1, le=32, description="Residual visual amplification gain"),
+):
     """
     Serves generated images for an analysis job:
     image_type: 'original', 'reconstructed', 'residual', 'prediction', 'y', 'u', 'v'
     """
     try:
         session_dir = session_manager.get_session_dir(job_id)
+    except InvalidInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
@@ -147,7 +173,12 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
         job = await job_manager.get_job(job_id)
         img_w = job.frame.aligned_width
         img_h = job.frame.aligned_height
-    except Exception:
+    except JobNotFoundError:
+        orig_w, orig_h = await asyncio.to_thread(_read_image_dims, input_img)
+        img_w = max(64, round(orig_w / 8) * 8)
+        img_h = max(64, round(orig_h / 8) * 8)
+    except Exception as exc:
+        logger.warning("Falling back to input image dimensions for job '%s': %s", job_id, exc)
         orig_w, orig_h = await asyncio.to_thread(_read_image_dims, input_img)
         img_w = max(64, round(orig_w / 8) * 8)
         img_h = max(64, round(orig_h / 8) * 8)
@@ -199,13 +230,15 @@ async def get_job_image(job_id: str, image_type: str, gain: int = 4):
         if not recon_png.exists() and recon_yuv.exists():
             await ffmpeg_adapter.convert_yuv_to_png(recon_yuv, recon_png, img_w, img_h)
 
+        trace_path = session_manager.get_trace_path(job_id)
         await asyncio.to_thread(
             _generate_prediction_image,
             input_img,
             recon_png,
             pred_png,
             img_w,
-            img_h
+            img_h,
+            trace_path,
         )
         return FileResponse(pred_png, media_type="image/png")
 

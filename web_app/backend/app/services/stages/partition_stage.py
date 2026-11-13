@@ -1,3 +1,4 @@
+import logging
 from app.domain.models.checkpoint import (
     CTUPartitionCheckpoint,
     CuRdoDecisionCheckpoint,
@@ -14,6 +15,9 @@ from app.domain.enums import JobStatus
 from app.checkpoints.parsers.partition_parser import partition_parser
 from app.checkpoints.parsers.cu_rdo_decision_parser import cu_rdo_decision_parser
 from app.services.stages.base import BaseStageService
+
+logger = logging.getLogger(__name__)
+
 
 class PartitionStageService(BaseStageService):
     """CP_01_PARTITION & CU QuadTree RDO: Partition trees, split decisions, and 360-degree CU glass-box inspection"""
@@ -72,8 +76,8 @@ class PartitionStageService(BaseStageService):
                 parsed.ctu_actual_bits = int(actual_bits_ev.get("actual_bits_ctu", 0))
                 if actual_bits_ev.get("ctu_rs_addr") is not None:
                     parsed.ctu_rs_addr = int(actual_bits_ev["ctu_rs_addr"])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("CTU_ACTUAL_BITS lookup failed for job %s: %s", job_id, exc)
 
         return parsed
 
@@ -108,17 +112,16 @@ class PartitionStageService(BaseStageService):
         ctu_y: int | None = None,
         cu_x: int | None = None,
         cu_y: int | None = None,
-        cu_size: int | None = None
+        cu_size: int | None = None,
+        poc: int | None = None
     ) -> list[CuRdoDecisionCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
 
         raw_events = self.reader.read_all(trace_path, event_filter="CU_RDO_DECISION", ctu_x=ctu_x, ctu_y=ctu_y)
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        if poc is not None:
+            raw_events = [e for e in raw_events if e.get("poc", 0) == poc]
         if cu_x is not None:
             raw_events = [e for e in raw_events if e.get("cu_x") == cu_x]
         if cu_y is not None:
@@ -232,6 +235,7 @@ class PartitionStageService(BaseStageService):
 
         # 8. Intra Prediction
         intra = None
+        intra_ev = None
         if (target_node.mode or "").upper() == "INTRA":
             # In HM, RDO_INTRA_SEARCH and INTRA_REF_SAMPLES emit PU coordinates (pu_x, pu_y)
             intra_ev = self.reader.find_one(
@@ -343,7 +347,9 @@ class PartitionStageService(BaseStageService):
 
         primary_tq_ev = None
         for ev in tq_events:
-            sig_count = ev.get("sig_coeff_count", 0)
+            quant_list = ev.get("quant_coeff", [])
+            sig_count = ev.get("sig_coeff_count", sum(1 for q in quant_list if q != 0))
+            sparsity = round(sum(1 for q in quant_list if q == 0) / len(quant_list), 4) if quant_list else 0.0
             comp_name = str(ev.get("component", "Y"))
             tu_m = CUInspectionTransform(
                 tu_x=int(ev.get("tu_x", ev.get("cu_x", target_node.x))),
@@ -357,6 +363,7 @@ class PartitionStageService(BaseStageService):
                 cbf=bool(ev.get("cbf", sig_count > 0)),
                 sig_coeff_count=sig_count,
                 energy_compaction_ratio=float(ev.get("energy_compaction_ratio", 0.0)),
+                sparsity_ratio=sparsity,
                 qp=int(ev.get("qp", target_node.qp or 32)),
             )
             transforms.append(tu_m)
@@ -369,12 +376,33 @@ class PartitionStageService(BaseStageService):
             transform = transforms[0]
             primary_tq_ev = tq_events[0]
 
-        if primary_tq_ev and include_matrices:
+        if include_matrices and (primary_tq_ev or intra_ev):
+            pred_matrix: list[int] = []
+            recon_matrix: list[int] = []
+            if intra_ev:
+                pred_matrix = intra_ev.get("pred_data", [])
+                recon_matrix = intra_ev.get("reconstructed_data", intra_ev.get("reco_data", []))
+            if not recon_matrix:
+                recon_ev = self.reader.find_one(
+                    trace_path,
+                    lambda e: (
+                        e.get("poc", 0) == poc and
+                        e.get("cu_x") == target_node.x and
+                        e.get("cu_y") == target_node.y
+                    ),
+                    event_filter="RECON_PICTURE",
+                    ctu_x=ctu_x,
+                    ctu_y=ctu_y,
+                )
+                if recon_ev:
+                    recon_matrix = recon_ev.get("reco_y", [])
             matrices = CUInspectionMatrices(
-                residual=primary_tq_ev.get("residual", primary_tq_ev.get("resi_matrix", [])),
-                transform_coeff=primary_tq_ev.get("transform_coeff", primary_tq_ev.get("dct_coeff", [])),
-                quant_coeff=primary_tq_ev.get("quant_coeff", []),
-                dequant_coeff=primary_tq_ev.get("dequant_coeff", []),
+                residual=primary_tq_ev.get("residual", primary_tq_ev.get("resi_matrix", [])) if primary_tq_ev else [],
+                transform_coeff=primary_tq_ev.get("transform_coeff", primary_tq_ev.get("dct_coeff", [])) if primary_tq_ev else [],
+                quant_coeff=primary_tq_ev.get("quant_coeff", []) if primary_tq_ev else [],
+                dequant_coeff=primary_tq_ev.get("dequant_coeff", []) if primary_tq_ev else [],
+                prediction=pred_matrix,
+                reconstruction=recon_matrix,
             )
 
         return CUInspectionResponse(

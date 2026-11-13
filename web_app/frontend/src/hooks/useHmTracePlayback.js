@@ -105,17 +105,34 @@ export function useHmTracePlayback({
 
   const totalCtus = ctuSequence.length > 0 ? ctuSequence.length : geometry.totalCtus;
 
+  const targetSeqIdx = useMemo(() => {
+    if (targetCtuX !== null && targetCtuX !== undefined && targetCtuY !== null && targetCtuY !== undefined) {
+      return ctuSequence.findIndex((c) => c.ctuX === targetCtuX && c.ctuY === targetCtuY);
+    }
+    return -1;
+  }, [targetCtuX, targetCtuY, ctuSequence]);
+
   // Playhead state: 0 = unencoded initial frame; k in 1..totalCtus represents CTU (k-1) committed
   const [playheadCtuIdx, setPlayheadCtuIdx] = useState(0);
   const [isInitial, setIsInitial] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedMs, setSpeedMs] = useState(1000);
-
   // Micro CU index within the active CTU
   const [activeCuIdx, setActiveCuIdx] = useState(0);
-
   // Inspection target: independent of playhead
   const [inspectedCu, setInspectedCu] = useState(initialSelectedCu);
+
+  const [prevTargetSeqIdx, setPrevTargetSeqIdx] = useState(-1);
+
+  // Synchronize playhead when target coordinates change externally
+  if (prevTargetSeqIdx !== targetSeqIdx) {
+    setPrevTargetSeqIdx(targetSeqIdx);
+    if (targetSeqIdx !== -1) {
+      setPlayheadCtuIdx(targetSeqIdx + 1);
+      setIsInitial(false);
+      setActiveCuIdx(0);
+    }
+  }
 
   const timerRef = useRef(null);
 

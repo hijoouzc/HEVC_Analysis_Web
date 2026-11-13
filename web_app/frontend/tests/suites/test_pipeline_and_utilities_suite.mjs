@@ -4,7 +4,7 @@
  * - metricsUtils: calculateSse, calculateMse, calculatePsnr, calculateSad, calculateLagrangianLambda, calculateQuantStep
  * - InLoopFilterVisualizer: CP_06 Deblocking Filter (DBF) & SAO classification modes
  * - InterSearchVisualizer: CP_03 Inter Prediction, Motion Vectors, & AMVP candidates
- * - SetupScreen & AnalysisInspector: Screen 1 Setup, sequence configuration, & unified inspector telemetry
+ * - SetupScreen: Screen 1 Setup, sequence configuration, & CTU focus picker
  */
 
 import assert from 'node:assert';
@@ -167,26 +167,17 @@ it('InterSearchVisualizer adheres to Apple HIG and zero emoji guidelines', () =>
 });
 
 // =============================================================================
-// Test Suite 4: SetupScreen & AnalysisInspector Screen 1 Architecture
+// Test Suite 4: SetupScreen Screen 1 Architecture
 // =============================================================================
-console.log('\nTest Suite 4: SetupScreen & AnalysisInspector Telemetry Conformance');
+console.log('\nTest Suite 4: SetupScreen Telemetry Conformance');
 
 const setupSrc = readFileSync(resolve(__dirname, '../../src/components/app/SetupScreen.jsx'), 'utf8');
-const inspectorSrc = readFileSync(resolve(__dirname, '../../src/components/app/AnalysisInspector.jsx'), 'utf8');
 
 it('SetupScreen renders input source selection, resolution options, and CTU focus picker', () => {
   assert(setupSrc.includes('Source Image'), 'Displays Source Image upload card');
   assert(setupSrc.includes('FullFrameViewer'), 'Integrates FullFrameViewer for picture preview');
   assert(setupSrc.includes('onSelectCTU'), 'Binds onSelectCTU callback for focus selection');
   assert(setupSrc.includes('all_intra'), 'Supports all_intra profile selection');
-});
-
-it('AnalysisInspector acts as single source of truth for spatial telemetry and depth colors', () => {
-  assert(inspectorSrc.includes('AnalysisInspector'), 'Declares AnalysisInspector component');
-  assert(inspectorSrc.includes('HEVC_DEPTH_COLORS'), 'Binds HEVC depth color themes (D0..D3)');
-  assert(inspectorSrc.includes('getIntraModeInfo'), 'Binds getIntraModeInfo for active mode metadata');
-  assert(inspectorSrc.includes('numCols') && inspectorSrc.includes('numRows'), 'Computes CTU row and column geometry');
-  assert(inspectorSrc.includes('isBoundary'), 'Performs boundary clipping checks');
 });
 
 // =============================================================================

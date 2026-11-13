@@ -10,14 +10,17 @@ class ReconStageService(BaseStageService):
         self,
         job_id: str,
         ctu_x: int | None = None,
-        ctu_y: int | None = None
+        ctu_y: int | None = None,
+        poc: int | None = None
     ) -> list[ReconPictureCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
-        raw_events = self.reader.read_all(trace_path, event_filter="RECON_PICTURE", ctu_x=ctu_x, ctu_y=ctu_y)
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        raw_events = self.reader.read_all(
+            trace_path,
+            event_filter="RECON_PICTURE",
+            ctu_x=ctu_x,
+            ctu_y=ctu_y,
+            predicate=(lambda e: e.get("poc", 0) == poc) if poc is not None else None,
+        )
         return [recon_picture_parser.parse_event(e) for e in raw_events]

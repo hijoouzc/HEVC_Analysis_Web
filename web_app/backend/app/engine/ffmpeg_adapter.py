@@ -54,28 +54,29 @@ class FFmpegAdapter:
         max_ctu_x = max(0, num_ctu_w - 1)
         max_ctu_y = max(0, num_ctu_h - 1)
         
-        # When all_ctus or -1 is requested, preserve -1 to dump full frame
-        if getattr(roi, "all_ctus", False) or roi.ctu_x < 0 or roi.ctu_y < 0:
-            roi.all_ctus = True
-            roi.ctu_x = -1
-            roi.ctu_y = -1
+        # Preserve caller's ROI immutable by clamping on a local copy
+        clamped_roi = roi.model_copy()
+        if getattr(clamped_roi, "all_ctus", False) or clamped_roi.ctu_x < 0 or clamped_roi.ctu_y < 0:
+            clamped_roi.all_ctus = True
+            clamped_roi.ctu_x = -1
+            clamped_roi.ctu_y = -1
         else:
-            roi.ctu_x = min(max(0, roi.ctu_x), max_ctu_x)
-            roi.ctu_y = min(max(0, roi.ctu_y), max_ctu_y)
-        
+            clamped_roi.ctu_x = min(max(0, clamped_roi.ctu_x), max_ctu_x)
+            clamped_roi.ctu_y = min(max(0, clamped_roi.ctu_y), max_ctu_y)
+
         output_yuv.parent.mkdir(parents=True, exist_ok=True)
-        
+
         cmd = ["ffmpeg", "-y"]
         if frames > 1:
             cmd.extend(["-loop", "1", "-i", str(input_image), "-vframes", str(frames)])
         else:
             cmd.extend(["-i", str(input_image)])
         cmd.extend([
-            "-vf", f"scale={calc_w}:{calc_h}:in_color_matrix=auto:out_color_matrix=bt709",
+            "-vf", f"scale={calc_w}:{calc_h}:in_color_matrix=auto:out_color_matrix=bt709:out_range=full",
             "-colorspace", "bt709",
             "-color_primaries", "bt709",
             "-color_trc", "bt709",
-            "-color_range", "tv",
+            "-color_range", "pc",
             "-pix_fmt", "yuv420p",
             str(output_yuv)
         ])
@@ -120,8 +121,9 @@ class FFmpegAdapter:
             "-f", "rawvideo",
             "-s", f"{width}x{height}",
             "-pix_fmt", "yuv420p",
+            "-color_range", "pc",
             "-i", str(yuv_file),
-            "-vf", "scale=in_color_matrix=bt709:out_color_matrix=bt709",
+            "-vf", "scale=in_color_matrix=bt709:in_range=full:out_color_matrix=bt709:out_range=full",
             "-vframes", "1",
             str(png_output)
         ]

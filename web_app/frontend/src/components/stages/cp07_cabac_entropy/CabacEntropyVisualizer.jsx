@@ -58,7 +58,7 @@ function CabacEntropyVisualizer({
           <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>SCOPE:</span>
           <Badge variant="blue">CTU-Level Final Syntax Stream</Badge>
           <span style={{ color: 'var(--apple-label-tertiary)' }}>
-            HM TEncSbac writes decided CU syntax &bull; ITU-T H.265 §9.3 Arithmetic Engine
+            HM TEncSbac writes decided CU syntax &bull; CABAC Binary Arithmetic Engine
           </span>
         </div>
 

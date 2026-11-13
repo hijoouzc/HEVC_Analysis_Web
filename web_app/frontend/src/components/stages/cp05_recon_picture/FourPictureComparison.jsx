@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { getIntraModeInfo, getResidualColorAndTextColor, getSampleColorAndTextColor, bt709RgbToYuv } from '../../../utils/colorUtils';
+import {
+  getIntraModeInfo,
+  getResidualColorAndTextColor,
+  getSampleColorAndTextColor,
+  extractChannelBlockFromCanvas,
+  extractChannelPerimeterFromCanvas,
+} from '../../../utils/colorUtils';
 import { calculatePsnr } from '../../../utils/metricsUtils';
 import { generateIntraPredictionBlock } from '../../../utils/intraTraceUtils';
 import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
@@ -88,27 +94,34 @@ const FourPictureComparison = ({
   useEffect(() => {
     if (!activeOrigUrl) return;
     let isCurrent = true;
+    const isPlanarSource = Boolean(jobId && isChroma && activeOrigUrl !== imageSrc);
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       if (!isCurrent) return;
       const cvs = document.createElement('canvas');
-      const w = imageDims?.width || img.naturalWidth || 640;
-      const h = imageDims?.height || img.naturalHeight || 360;
+      const useNativePlaneDims = isPlanarSource && img.naturalWidth > 0 && img.naturalHeight > 0;
+      const w = useNativePlaneDims ? img.naturalWidth : (imageDims?.width || img.naturalWidth || 640);
+      const h = useNativePlaneDims ? img.naturalHeight : (imageDims?.height || img.naturalHeight || 360);
       cvs.width = w;
       cvs.height = h;
       const ctx = cvs.getContext('2d');
       if (ctx) {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(img, 0, 0, w, h);
-        setOrigFrameCanvas(cvs);
+        setOrigFrameCanvas({ canvas: cvs, isPlanarGray: isPlanarSource });
+      }
+    };
+    img.onerror = () => {
+      if (isCurrent && imageSrc && img.src !== imageSrc) {
+        img.src = imageSrc;
       }
     };
     img.src = activeOrigUrl;
     return () => {
       isCurrent = false;
     };
-  }, [activeOrigUrl, imageDims?.width, imageDims?.height]);
+  }, [activeOrigUrl, imageSrc, jobId, isChroma, imageDims?.width, imageDims?.height]);
 
   // Maintain offscreen canvas for reconstructed frame (for extracting recon luma and reconstructed perimeter)
   const [reconFrameCanvas, setReconFrameCanvas] = useState(null);
@@ -144,7 +157,7 @@ const FourPictureComparison = ({
     const numPixels = cuSize * cuSize;
     const refSpan = 2 * cuSize + 1;
 
-    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, cuSize);
+    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, baseCuSize);
 
     // Check if CP_05 RECON_PICTURE telemetry has matching reconstructed block
     let recoFromTelemetry = null;
@@ -169,32 +182,16 @@ const FourPictureComparison = ({
     const modeOrg = isModeMatched ? (isU ? currentMode?.org_u : isV ? currentMode?.org_v : currentMode?.orig_data) : null;
     if (Array.isArray(modeOrg) && modeOrg.length >= numPixels) {
       orig = modeOrg.slice(0, numPixels);
-    } else if (origFrameCanvas) {
+    } else if (origFrameCanvas?.canvas) {
       try {
-        const ctx = origFrameCanvas.getContext('2d');
-        if (ctx && origFrameCanvas.width > 0 && origFrameCanvas.height > 0) {
-          const frameW = origFrameCanvas.width;
-          const frameH = origFrameCanvas.height;
-          const safeX = Math.max(0, Math.min(Math.max(0, frameW - cuSize), absX));
-          const safeY = Math.max(0, Math.min(Math.max(0, frameH - cuSize), absY));
-          const safeW = Math.max(1, Math.min(cuSize, frameW - safeX));
-          const safeH = Math.max(1, Math.min(cuSize, frameH - safeY));
-
-          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
-          orig = new Array(numPixels);
-          for (let y = 0; y < cuSize; y++) {
-            for (let x = 0; x < cuSize; x++) {
-              const srcX = Math.min(safeW - 1, x);
-              const srcY = Math.min(safeH - 1, y);
-              const offset = (srcY * safeW + srcX) * 4;
-              const r = imgData.data[offset] ?? 128;
-              const g = imgData.data[offset + 1] ?? 128;
-              const b = imgData.data[offset + 2] ?? 128;
-              const { y: ySample, cb: cbSample, cr: crSample } = bt709RgbToYuv(r, g, b);
-              orig[y * cuSize + x] = isU ? cbSample : isV ? crSample : ySample;
-            }
-          }
-        }
+        orig = extractChannelBlockFromCanvas(origFrameCanvas.canvas, {
+          absX,
+          absY,
+          size: cuSize,
+          channel,
+          frameWidth: imgWidth,
+          isPlanarGray: origFrameCanvas.isPlanarGray,
+        });
       } catch (err) {
         console.warn('Could not extract orig from origFrameCanvas in FourPictureComparison:', err);
       }
@@ -213,42 +210,21 @@ const FourPictureComparison = ({
     // 2. Extract or synthesize Perimeter Reference Samples (refTop, refLeft)
     let refTop = isU ? (currentMode?.ref_top_u || currentMode?.ref_top) : isV ? (currentMode?.ref_top_v || currentMode?.ref_top) : currentMode?.ref_top;
     let refLeft = isU ? (currentMode?.ref_left_u || currentMode?.ref_left) : isV ? (currentMode?.ref_left_v || currentMode?.ref_left) : currentMode?.ref_left;
-    if ((!Array.isArray(refTop) || refTop.length < refSpan || !Array.isArray(refLeft) || refLeft.length < refSpan) && (reconFrameCanvas || origFrameCanvas)) {
-      const refCanvas = reconFrameCanvas || origFrameCanvas;
+    if ((!Array.isArray(refTop) || refTop.length < refSpan || !Array.isArray(refLeft) || refLeft.length < refSpan) && (reconFrameCanvas || origFrameCanvas?.canvas)) {
+      const refCanvas = reconFrameCanvas || origFrameCanvas.canvas;
+      const isPlanarRef = !reconFrameCanvas && Boolean(origFrameCanvas?.isPlanarGray);
       try {
-        const ctx = refCanvas.getContext('2d');
-        if (ctx && refCanvas.width > 0 && refCanvas.height > 0) {
-          const frameW = refCanvas.width;
-          const frameH = refCanvas.height;
-          const startX = Math.max(0, Math.min(frameW - 1, absX - 1));
-          const startY = Math.max(0, Math.min(frameH - 1, absY - 1));
-          const reqW = Math.max(1, Math.min(frameW - startX, 2 * cuSize + 2));
-          const reqH = Math.max(1, Math.min(frameH - startY, 2 * cuSize + 2));
-          const patch = ctx.getImageData(startX, startY, reqW, reqH);
-
-          const getSampleAt = (px, py) => {
-            const clampedX = Math.max(0, Math.min(reqW - 1, px - startX));
-            const clampedY = Math.max(0, Math.min(reqH - 1, py - startY));
-            const offset = (clampedY * reqW + clampedX) * 4;
-            const r = patch.data[offset] ?? 128;
-            const g = patch.data[offset + 1] ?? 128;
-            const b = patch.data[offset + 2] ?? 128;
-            const { y: ySample, cb: cbSample, cr: crSample } = bt709RgbToYuv(r, g, b);
-            return isU ? cbSample : isV ? crSample : ySample;
-          };
-
-          const corner = getSampleAt(absX - 1, absY - 1);
-          const topSamples = new Array(refSpan);
-          const leftSamples = new Array(refSpan);
-          topSamples[0] = corner;
-          leftSamples[0] = corner;
-
-          for (let i = 0; i < 2 * cuSize; i++) {
-            topSamples[i + 1] = getSampleAt(absX + i, absY - 1);
-            leftSamples[i + 1] = getSampleAt(absX - 1, absY + i);
-          }
-          refTop = topSamples;
-          refLeft = leftSamples;
+        const extracted = extractChannelPerimeterFromCanvas(refCanvas, {
+          absX,
+          absY,
+          size: cuSize,
+          channel,
+          frameWidth: imgWidth,
+          isPlanarGray: isPlanarRef,
+        });
+        if (extracted) {
+          refTop = extracted.refTop;
+          refLeft = extracted.refLeft;
         }
       } catch (err) {
         console.warn('Could not extract perimeter from canvas in FourPictureComparison:', err);
@@ -310,30 +286,14 @@ const FourPictureComparison = ({
       recon = recon.slice(0, numPixels);
     } else if (reconFrameCanvas) {
       try {
-        const ctx = reconFrameCanvas.getContext('2d');
-        if (ctx && reconFrameCanvas.width > 0 && reconFrameCanvas.height > 0) {
-          const frameW = reconFrameCanvas.width;
-          const frameH = reconFrameCanvas.height;
-          const safeX = Math.max(0, Math.min(Math.max(0, frameW - cuSize), absX));
-          const safeY = Math.max(0, Math.min(Math.max(0, frameH - cuSize), absY));
-          const safeW = Math.max(1, Math.min(cuSize, frameW - safeX));
-          const safeH = Math.max(1, Math.min(cuSize, frameH - safeY));
-
-          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
-          recon = new Array(numPixels);
-          for (let y = 0; y < cuSize; y++) {
-            for (let x = 0; x < cuSize; x++) {
-              const srcX = Math.min(safeW - 1, x);
-              const srcY = Math.min(safeH - 1, y);
-              const offset = (srcY * safeW + srcX) * 4;
-              const r = imgData.data[offset] ?? 128;
-              const g = imgData.data[offset + 1] ?? 128;
-              const b = imgData.data[offset + 2] ?? 128;
-              const { y: ySample, cb: cbSample, cr: crSample } = bt709RgbToYuv(r, g, b);
-              recon[y * cuSize + x] = isU ? cbSample : isV ? crSample : ySample;
-            }
-          }
-        }
+        recon = extractChannelBlockFromCanvas(reconFrameCanvas, {
+          absX,
+          absY,
+          size: cuSize,
+          channel,
+          frameWidth: imgWidth,
+          isPlanarGray: false,
+        });
       } catch (err) {
         console.warn('Could not extract recon from reconFrameCanvas in FourPictureComparison:', err);
       }
@@ -392,7 +352,7 @@ const FourPictureComparison = ({
       maxAbsErr,
       varReduction,
     };
-  }, [currentMode, selectedCu, ctuX, ctuY, reconPictureData, origFrameCanvas, reconFrameCanvas, isChroma, isU, isV]);
+  }, [currentMode, selectedCu, ctuX, ctuY, reconPictureData, origFrameCanvas, reconFrameCanvas, channel, imgWidth, isChroma, isU, isV]);
 
   const modeInfo = useMemo(() => {
     return currentMode ? getIntraModeInfo(currentMode.mode) : null;
@@ -423,7 +383,7 @@ const FourPictureComparison = ({
       : (layoutMode === 'single' ? '310px' : '300px');
     const cellFontSize = size <= 4 ? '1.05rem' : size <= 8 ? '0.78rem' : '0.56rem';
 
-    const matrixGrid = size >= 32 ? (
+    const matrixGrid = size >= 16 ? (
       <div
         style={{
           width: targetDim,
@@ -713,7 +673,6 @@ const FourPictureComparison = ({
               objectFit: 'contain',
               display: 'block',
               imageRendering: 'pixelated',
-              filter: type === 'resi' && !residualImgUrl ? 'contrast(300%) invert(20%)' : 'none',
             }}
           />
 

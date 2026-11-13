@@ -18,9 +18,18 @@ const BacIntervalStudio = ({
   externalBinFeed = null,
 }) => {
   const [mode, setMode] = useState('trace'); // 'trace' | 'sandbox'
-  const [bacState, setBacState] = useState(() => createInitialBacState());
-  const [activeStepIdx, setActiveStepIdx] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [bacRunner, setBacRunner] = useState(() => ({
+    bacState: createInitialBacState(),
+    activeStepIdx: 0,
+    isPlaying: false,
+  }));
+  const { bacState, activeStepIdx, isPlaying } = bacRunner;
+  const setIsPlaying = useCallback((updater) => {
+    setBacRunner(prev => ({
+      ...prev,
+      isPlaying: typeof updater === 'function' ? updater(prev.isPlaying) : Boolean(updater),
+    }));
+  }, []);
   const [playSpeed, setPlaySpeed] = useState(1); // 1x, 2x, 5x
   const [sandboxCustomInput, setSandboxCustomInput] = useState('10110');
 
@@ -52,51 +61,48 @@ const BacIntervalStudio = ({
     }));
   }, [mode, traceBins, sandboxCustomInput]);
 
-  // Handle external bin feed from BinarizationTreeViewer
+  // Handle external bin feed from BinarizationTreeViewer (render-time prop sync, zero useEffect cascade)
   const [prevExternalFeed, setPrevExternalFeed] = useState(externalBinFeed);
   if (externalBinFeed && externalBinFeed !== prevExternalFeed) {
     setPrevExternalFeed(externalBinFeed);
     if (externalBinFeed.binString) {
       setMode('sandbox');
       setSandboxCustomInput(externalBinFeed.binString);
-      setBacState(createInitialBacState());
-      setActiveStepIdx(0);
-      setIsPlaying(false);
+      setBacRunner({ bacState: createInitialBacState(), activeStepIdx: 0, isPlaying: false });
     }
   }
 
   // Reset BAC state whenever mode or custom input changes
   const handleReset = useCallback(() => {
-    setBacState(createInitialBacState());
-    setActiveStepIdx(0);
-    setIsPlaying(false);
+    setBacRunner({ bacState: createInitialBacState(), activeStepIdx: 0, isPlaying: false });
   }, []);
 
   // Step Forward
   const handleStepForward = useCallback(() => {
-    if (activeStepIdx >= activeBins.length) return;
-    const currentItem = activeBins[activeStepIdx];
-    const { newState } = stepBacEncode(bacState, currentItem.bin, currentItem.isBypass);
-    setBacState(newState);
-    setActiveStepIdx(prev => prev + 1);
-  }, [activeStepIdx, activeBins, bacState]);
+    setBacRunner(prev => {
+      if (prev.activeStepIdx >= activeBins.length) return prev;
+      const currentItem = activeBins[prev.activeStepIdx];
+      const { newState } = stepBacEncode(prev.bacState, currentItem.bin, currentItem.isBypass);
+      return { ...prev, bacState: newState, activeStepIdx: prev.activeStepIdx + 1 };
+    });
+  }, [activeBins]);
 
   // Step Backward
   const handleStepBackward = useCallback(() => {
-    if (activeStepIdx <= 0) return;
-    const targetIdx = activeStepIdx - 1;
-    // Replay up to targetIdx from clean initial state
-    let state = createInitialBacState();
-    for (let i = 0; i < targetIdx; i++) {
-      const item = activeBins[i];
-      const res = stepBacEncode(state, item.bin, item.isBypass);
-      state = res.newState;
-    }
-    setBacState(state);
-    setActiveStepIdx(targetIdx);
-  }, [activeStepIdx, activeBins]);
+    setBacRunner(prev => {
+      if (prev.activeStepIdx <= 0) return prev;
+      const targetIdx = prev.activeStepIdx - 1;
+      let state = createInitialBacState();
+      for (let i = 0; i < targetIdx; i++) {
+        const item = activeBins[i];
+        const res = stepBacEncode(state, item.bin, item.isBypass);
+        state = res.newState;
+      }
+      return { ...prev, bacState: state, activeStepIdx: targetIdx };
+    });
+  }, [activeBins]);
 
-  // Auto-play timer
+  // Auto-play timer (atomic state progression, zero nested setState calls)
   const playTimerRef = useRef(null);
   useEffect(() => {
     if (!isPlaying) {
@@ -106,17 +112,18 @@ const BacIntervalStudio = ({
 
     const intervalMs = Math.max(100, Math.round(900 / playSpeed));
     playTimerRef.current = setInterval(() => {
-      setActiveStepIdx(prevIdx => {
-        if (prevIdx >= activeBins.length) {
-          setIsPlaying(false);
-          return prevIdx;
+      setBacRunner(prev => {
+        if (prev.activeStepIdx >= activeBins.length) {
+          return { ...prev, isPlaying: false };
         }
-        setBacState(prevState => {
-          const item = activeBins[prevIdx];
-          const { newState } = stepBacEncode(prevState, item.bin, item.isBypass);
-          return newState;
-        });
-        return prevIdx + 1;
+        const item = activeBins[prev.activeStepIdx];
+        const { newState } = stepBacEncode(prev.bacState, item.bin, item.isBypass);
+        const nextIdx = prev.activeStepIdx + 1;
+        return {
+          bacState: newState,
+          activeStepIdx: nextIdx,
+          isPlaying: nextIdx < activeBins.length,
+        };
       });
     }, intervalMs);
 
@@ -127,9 +134,10 @@ const BacIntervalStudio = ({
 
   // Feed Manual Bin in Sandbox
   const handleFeedManualBin = (val, isBypass = false) => {
-    const { newState } = stepBacEncode(bacState, val, isBypass);
-    setBacState(newState);
-    setActiveStepIdx(prev => prev + 1);
+    setBacRunner(prev => {
+      const { newState } = stepBacEncode(prev.bacState, val, isBypass);
+      return { ...prev, bacState: newState, activeStepIdx: prev.activeStepIdx + 1 };
+    });
   };
 
   // Current calculations

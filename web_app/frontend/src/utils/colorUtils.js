@@ -318,3 +318,137 @@ export const getIntraModeInfo = (mode) => {
   return { name: `Mode ${mode}`, type: 'Intra', desc: `Intra Mode ${mode}` };
 };
 
+/**
+ * Computes source buffer origin and sampling stride for extracting an N×N channel block
+ * given canonical luma picture coordinates `(absX, absY)`.
+ */
+function resolveChannelSamplingLayout({ absX = 0, absY = 0, channel = 'Y', bufW = 0, frameWidth = 0, isPlanarGray = false }) {
+  const isU = channel === 'U' || channel === 'Cb';
+  const isV = channel === 'V' || channel === 'Cr';
+  const isChroma = isU || isV;
+  const isHalfResPlane = Boolean(isChroma && isPlanarGray && frameWidth > 0 && bufW > 0 && bufW <= Math.ceil(frameWidth / 2));
+
+  return {
+    isU,
+    isV,
+    baseX: isHalfResPlane ? Math.floor(absX / 2) : absX,
+    baseY: isHalfResPlane ? Math.floor(absY / 2) : absY,
+    step: isChroma && !isHalfResPlane ? 2 : 1,
+  };
+}
+
+function readChannelSampleFromRgba(rgba, byteOffset, { isU, isV, isPlanarGray }) {
+  const r = rgba[byteOffset] ?? 128;
+  if (isPlanarGray) {
+    return clamp(Math.round(r), 0, 255);
+  }
+  const g = rgba[byteOffset + 1] ?? 128;
+  const b = rgba[byteOffset + 2] ?? 128;
+  const { y, cb, cr } = bt709RgbToYuv(r, g, b);
+  return isU ? cb : isV ? cr : y;
+}
+
+/**
+ * Extracts an `size × size` sample array for `'Y' | 'Cb' | 'Cr'` from an RGBA pixel buffer.
+ * Handles both full-res BT.709 RGB buffers (4:2:0 2×2 co-sited chroma stride) and native
+ * grayscale planar chroma buffers (`/images/u`, `/images/v`).
+ */
+export function extractChannelBlockFromRgba(
+  rgba,
+  bufW,
+  bufH,
+  { absX = 0, absY = 0, size = 8, channel = 'Y', frameWidth = 0, isPlanarGray = false, layoutOverride = null }
+) {
+  if (!rgba || bufW <= 0 || bufH <= 0 || size <= 0) return null;
+  const layout = layoutOverride || resolveChannelSamplingLayout({ absX, absY, channel, bufW, frameWidth, isPlanarGray });
+  const { baseX, baseY, step } = layout;
+  const out = new Array(size * size);
+
+  for (let y = 0; y < size; y++) {
+    const py = clamp(baseY + y * step, 0, bufH - 1);
+    for (let x = 0; x < size; x++) {
+      const px = clamp(baseX + x * step, 0, bufW - 1);
+      const offset = (py * bufW + px) * 4;
+      out[y * size + x] = readChannelSampleFromRgba(rgba, offset, { ...layout, isPlanarGray });
+    }
+  }
+  return out;
+}
+
+/**
+ * Extracts `2*size + 1` top and left reference perimeter samples from an RGBA pixel buffer
+ * using the exact coordinate layout and BT.709 channel conversion as block extraction.
+ */
+export function extractChannelPerimeterFromRgba(
+  rgba,
+  bufW,
+  bufH,
+  { absX = 0, absY = 0, size = 8, channel = 'Y', frameWidth = 0, isPlanarGray = false, layoutOverride = null }
+) {
+  if (!rgba || bufW <= 0 || bufH <= 0 || size <= 0) return null;
+  const layout = layoutOverride || resolveChannelSamplingLayout({ absX, absY, channel, bufW, frameWidth, isPlanarGray });
+  const { baseX, baseY, step } = layout;
+  const refSpan = 2 * size + 1;
+
+  const sampleAt = (px, py) => {
+    const cx = clamp(px, 0, bufW - 1);
+    const cy = clamp(py, 0, bufH - 1);
+    return readChannelSampleFromRgba(rgba, (cy * bufW + cx) * 4, { ...layout, isPlanarGray });
+  };
+
+  const corner = sampleAt(baseX - step, baseY - step);
+  const refTop = new Array(refSpan);
+  const refLeft = new Array(refSpan);
+  refTop[0] = corner;
+  refLeft[0] = corner;
+
+  for (let i = 0; i < 2 * size; i++) {
+    refTop[i + 1] = sampleAt(baseX + i * step, baseY - step);
+    refLeft[i + 1] = sampleAt(baseX - step, baseY + i * step);
+  }
+  return { refTop, refLeft };
+}
+
+/**
+ * Canvas wrappers that read minimal bounding patches via `getImageData` for Y/Cb/Cr extraction.
+ */
+export function extractChannelBlockFromCanvas(canvas, opts) {
+  if (!canvas || canvas.width <= 0 || canvas.height <= 0) return null;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const { absX = 0, absY = 0, size = 8, channel = 'Y', frameWidth = 0, isPlanarGray = false } = opts || {};
+  const layout = resolveChannelSamplingLayout({ absX, absY, channel, bufW: canvas.width, frameWidth, isPlanarGray });
+  const startX = clamp(layout.baseX, 0, canvas.width - 1);
+  const startY = clamp(layout.baseY, 0, canvas.height - 1);
+  const span = Math.max(1, size * layout.step);
+  const reqW = clamp(span, 1, canvas.width - startX);
+  const reqH = clamp(span, 1, canvas.height - startY);
+  const patch = ctx.getImageData(startX, startY, reqW, reqH);
+  return extractChannelBlockFromRgba(patch.data, reqW, reqH, {
+    size,
+    channel,
+    isPlanarGray,
+    layoutOverride: { ...layout, baseX: layout.baseX - startX, baseY: layout.baseY - startY },
+  });
+}
+
+export function extractChannelPerimeterFromCanvas(canvas, opts) {
+  if (!canvas || canvas.width <= 0 || canvas.height <= 0) return null;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const { absX = 0, absY = 0, size = 8, channel = 'Y', frameWidth = 0, isPlanarGray = false } = opts || {};
+  const layout = resolveChannelSamplingLayout({ absX, absY, channel, bufW: canvas.width, frameWidth, isPlanarGray });
+  const startX = clamp(layout.baseX - layout.step, 0, canvas.width - 1);
+  const startY = clamp(layout.baseY - layout.step, 0, canvas.height - 1);
+  const span = Math.max(1, (2 * size + 2) * layout.step);
+  const reqW = clamp(span, 1, canvas.width - startX);
+  const reqH = clamp(span, 1, canvas.height - startY);
+  const patch = ctx.getImageData(startX, startY, reqW, reqH);
+  return extractChannelPerimeterFromRgba(patch.data, reqW, reqH, {
+    size,
+    channel,
+    isPlanarGray,
+    layoutOverride: { ...layout, baseX: layout.baseX - startX, baseY: layout.baseY - startY },
+  });
+}
+

@@ -89,6 +89,7 @@ function ReconPictureVisualizer({
         offCanvas.height = imgH;
         const offCtx = offCanvas.getContext('2d');
         if (!offCtx) return;
+        offCtx.imageSmoothingEnabled = false;
         offCtx.drawImage(img, 0, 0);
 
         const { absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, blockSize);

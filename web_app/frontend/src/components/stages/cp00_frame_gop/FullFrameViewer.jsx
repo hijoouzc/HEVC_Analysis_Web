@@ -186,13 +186,14 @@ const StaticCtuGridLayer = React.memo(function StaticCtuGridLayer({
  */
 const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
   activeCtu,
-  activeCu,
+  activeCu = null,
+  showCuHighlight = false,
   viewMode,
   showBoundary = false
 }) {
   return (
     <g className="active-selection-layer" pointerEvents="none">
-      {/* 1. Active Selected CTU Reticle */}
+      {/* 1. Active Selected CTU Reticle (Topmost CTU only, no CU overlay in full frame per HM standard) */}
       {activeCtu && (
         <>
           {/* If boundary CTU: render nominal 64x64 reticle extending into padding */}
@@ -209,6 +210,17 @@ const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
               vectorEffect="non-scaling-stroke"
             />
           )}
+          {/* High-contrast black under-stroke for sharp boundary visibility */}
+          <rect
+            x={activeCtu.px}
+            y={activeCtu.py}
+            width={activeCtu.pw}
+            height={activeCtu.ph}
+            fill="none"
+            stroke="#000000"
+            strokeWidth={4.5}
+            vectorEffect="non-scaling-stroke"
+          />
           <rect
             x={activeCtu.px}
             y={activeCtu.py}
@@ -222,8 +234,8 @@ const ActiveSelectionLayer = React.memo(function ActiveSelectionLayer({
         </>
       )}
 
-      {/* 2. Active Selected CU Box */}
-      {activeCu && (
+      {/* 2. Active Selected CU Box (Disabled in Full Frame Grid per HM standard: CU selection reserved for CTU QuadTree) */}
+      {showCuHighlight && activeCu && (
         <rect
           x={activeCu.x}
           y={activeCu.y}
@@ -374,21 +386,22 @@ function FullFrameViewer({
     }
   }, [localCtu, activeCu, onSelectCTU, onSelectCU]);
 
-  // Instantaneous click handler for leaf CU selection: click once to select, click again to deselect
-  const handleLeafClick = useCallback((leaf, leafCtuX, leafCtuY) => {
-    const isSameLeaf = activeCu && activeCu.x === leaf.x && activeCu.y === leaf.y && activeCu.width === leaf.width;
-    if (isSameLeaf) {
-      // Clicked on already selected CU -> Deselect CU!
+  // Click handler for leaf CU in FullFrameViewer: selects parent CTU only (CU selection reserved for CTU QuadTree)
+  const handleLeafClick = useCallback((_leaf, leafCtuX, leafCtuY) => {
+    if (localCtu && localCtu.x === leafCtuX && localCtu.y === leafCtuY) {
+      // Clicked on already selected CTU -> Deselect CTU!
+      if (!onSelectCTU) setUncontrolledCtu(null);
       setSelectedCu(null);
+      if (onSelectCTU) onSelectCTU(null, null);
       if (onSelectCU) onSelectCU(null);
     } else {
-      // Clicked on a CU -> Select it!
-      setSelectedCu(leaf);
+      // Clicked on a CTU -> Select it!
       if (!onSelectCTU) setUncontrolledCtu({ x: leafCtuX, y: leafCtuY });
+      setSelectedCu(null);
       if (onSelectCTU) onSelectCTU(leafCtuX, leafCtuY);
-      if (onSelectCU) onSelectCU(leaf);
+      if (onSelectCU) onSelectCU(null);
     }
-  }, [activeCu, onSelectCTU, onSelectCU]);
+  }, [localCtu, onSelectCTU, onSelectCU]);
 
   // Lightweight active CTU bounding box data (Tier 1: CTU HM standard)
   const activeCtuData = useMemo(() => {
@@ -744,10 +757,11 @@ function FullFrameViewer({
               onCtuClick={handleCtuClick}
             />
 
-            {/* LAYER 3: Active CTU & CU Selection Reticle (Ultra-lightweight ~5 DOM nodes, instantaneous <0.1ms update) */}
+            {/* LAYER 3: Active CTU Selection Reticle (Instantaneous <0.1ms update, CU selection is in QuadTree) */}
             <ActiveSelectionLayer
               activeCtu={activeCtuData}
               activeCu={activeCu}
+              showCuHighlight={false}
               viewMode={viewMode}
               showBoundary={showBoundary}
             />

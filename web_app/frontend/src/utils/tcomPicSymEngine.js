@@ -153,9 +153,10 @@ export function initTiles(grid, tileConfig = {}) {
     for (let c = 0; c < numCols - 1; c++) {
       const remainingCols = numCols - 1 - c;
       const maxAllowed = Math.max(1, frameWidthInCtus - usedW - remainingCols);
-      const requested = Array.isArray(tileConfig.colWidths)
-        ? Number(tileConfig.colWidths[c])
-        : Math.max(1, Math.floor(frameWidthInCtus / numCols));
+      const rawVal = Array.isArray(tileConfig.colWidths) ? tileConfig.colWidths[c] : undefined;
+      const requested = (rawVal !== undefined && !Number.isNaN(Number(rawVal)))
+        ? Number(rawVal)
+        : Math.max(1, Math.floor((frameWidthInCtus - usedW) / (remainingCols + 1)));
       const w = Math.max(1, Math.min(maxAllowed, Math.round(requested || 1)));
       colWidths[c] = w;
       usedW += w;
@@ -166,9 +167,10 @@ export function initTiles(grid, tileConfig = {}) {
     for (let r = 0; r < numRows - 1; r++) {
       const remainingRows = numRows - 1 - r;
       const maxAllowed = Math.max(1, frameHeightInCtus - usedH - remainingRows);
-      const requested = Array.isArray(tileConfig.rowHeights)
-        ? Number(tileConfig.rowHeights[r])
-        : Math.max(1, Math.floor(frameHeightInCtus / numRows));
+      const rawVal = Array.isArray(tileConfig.rowHeights) ? tileConfig.rowHeights[r] : undefined;
+      const requested = (rawVal !== undefined && !Number.isNaN(Number(rawVal)))
+        ? Number(rawVal)
+        : Math.max(1, Math.floor((frameHeightInCtus - usedH) / (remainingRows + 1)));
       const h = Math.max(1, Math.min(maxAllowed, Math.round(requested || 1)));
       rowHeights[r] = h;
       usedH += h;
@@ -505,6 +507,7 @@ export function partitionSlices(
     respectTileBoundaries,
     bitsPerCtuRs,
     apSlices,
+    slices: apSlices,
     ctuSliceMap,
     ctuRsToTsAddrMap,
   };

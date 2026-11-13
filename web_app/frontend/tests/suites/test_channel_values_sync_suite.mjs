@@ -83,7 +83,10 @@ console.log('\nTest Suite 5: Bug 4 - FourPictureComparison Chroma channel bindin
   assert(fpcContent.includes("const isV = channel === 'Cr' || channel === 'V';"), 'Derives isV in FourPictureComparison');
   assert(fpcContent.includes("const isChroma = isU || isV;"), 'Derives isChroma in FourPictureComparison');
   assert(fpcContent.includes("/images/${plane}"), 'Points to plane endpoint for chroma planes');
-  assert(fpcContent.includes("bt709RgbToYuv"), 'Converts extracted canvas pixels using BT.709 colorimetry');
+  assert(
+    fpcContent.includes("extractChannelBlockFromCanvas") && fpcContent.includes("extractChannelPerimeterFromCanvas"),
+    'Extracts planar/BT.709 channel samples via shared colorUtils helpers'
+  );
   assert(fpcContent.includes("channel={channel}"), 'Passes channel to PixelMatrixCanvas');
   assert(fpcContent.includes("getSampleColorAndTextColor(val, channel)"), 'Applies channel-aware color styling to matrix DOM cells');
   assert(fpcContent.includes("{isU ? 'Cb' : 'Cr'}"), 'Displays Cb/Cr badge on comparison cards when chroma is active');

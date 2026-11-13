@@ -289,9 +289,20 @@ def build_intra_pipeline_data(
             step3_candidates=CandidateSelectionStep(k_threshold=get_top_k_threshold(cu_size))
         )
 
-    # 1. MPM Derivation
-    if mpm_raw_event and "mpm_modes" in mpm_raw_event:
-        mpm_modes = mpm_raw_event["mpm_modes"]
+    # 1. MPM Derivation (supports both HM C++ mpm0/mpm1/mpm2 and legacy mpm_modes keys)
+    hm_mpm_modes = None
+    if mpm_raw_event:
+        if "mpm_modes" in mpm_raw_event:
+            hm_mpm_modes = mpm_raw_event["mpm_modes"]
+        elif all(k in mpm_raw_event for k in ("mpm0", "mpm1", "mpm2")):
+            hm_mpm_modes = [
+                int(mpm_raw_event["mpm0"]),
+                int(mpm_raw_event["mpm1"]),
+                int(mpm_raw_event["mpm2"]),
+            ]
+
+    if hm_mpm_modes is not None and mpm_raw_event is not None:
+        mpm_modes = hm_mpm_modes
         left_m = mpm_raw_event.get("left_mode", left_mode)
         above_m = mpm_raw_event.get("above_mode", above_mode)
         mpm_rule = f"HM C++ Derived: Left={left_m}, Above={above_m} -> {mpm_modes}"
@@ -336,9 +347,15 @@ def build_intra_pipeline_data(
     rmd_items_ordered = sorted(rmd_items, key=lambda x: x.mode)
 
     # 3. Construct unified candidate list (Top K + MPMs)
-    if mpm_raw_event and "candidate_modes" in mpm_raw_event:
-        candidate_list = mpm_raw_event["candidate_modes"]
-        top_k_modes = mpm_raw_event.get("top_k_modes", [m.mode for m in sorted_by_cost[:k_threshold]])
+    hm_candidates = None
+    if mpm_raw_event:
+        hm_candidates = mpm_raw_event.get("candidate_modes", mpm_raw_event.get("candidates"))
+    if hm_candidates is not None and mpm_raw_event is not None:
+        candidate_list = list(hm_candidates)
+        top_k_modes = mpm_raw_event.get(
+            "top_k_modes",
+            mpm_raw_event.get("top_k", [m.mode for m in sorted_by_cost[:k_threshold]])
+        )
     else:
         candidate_list = [m.mode for m in sorted_by_cost[:k_threshold]]
         for mpm in mpm_modes:
@@ -370,7 +387,8 @@ def build_intra_pipeline_data(
             if tid and tid > 0:
                 tu_by_trial.setdefault(tid, []).append(tue)
             cr = int(tue.get("cand_rank", 0))
-            cm = int(tue.get("cand_mode", 0))
+            raw_cm = tue.get("mode") if tue.get("mode") is not None else tue.get("cand_mode", 0)
+            cm = int(raw_cm)
             qp = int(tue.get("qp", 0))
             tu_by_tuple.setdefault((cr, cm, qp), []).append(tue)
 
@@ -449,9 +467,11 @@ def build_intra_pipeline_data(
             reco = [max(0, min(255, p + r)) for p, r in zip(pred, resi)]
             reco_resi = resi
 
-            # Compute SSE Distortion
+            # Compute SSE Distortion & QP-aware Lambda estimate
             sse = sum((o - rec) ** 2 for o, rec in zip(org, reco)) if org and reco else 0
-            bits_est = round(max(0.0, (m_data.cost - sse) / 0.85), 1)
+            eff_qp = m_data.qp if m_data.qp is not None and m_data.qp >= 0 else 32
+            lambda_est = 0.57 * (2.0 ** ((eff_qp - 12) / 3.0))
+            bits_est = round(max(0.0, (m_data.cost - sse) / max(0.1, lambda_est)), 1)
 
             is_winner = (cand_mode == best_luma_mode)
             rdo_details.append(RdoCandidateDetail(

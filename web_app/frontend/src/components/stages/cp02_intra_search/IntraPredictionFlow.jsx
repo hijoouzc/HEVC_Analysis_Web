@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { generateIntraPredictionBlock, getPixelTrace } from '../../../utils/intraTraceUtils';
-import { getIntraModeInfo, getSampleColorAndTextColor, getResidualColorAndTextColor, bt709YuvToRgb, SELECTION_HIGHLIGHT_COLOR } from '../../../utils/colorUtils';
+import {
+  getIntraModeInfo,
+  getSampleColorAndTextColor,
+  getResidualColorAndTextColor,
+  bt709YuvToRgb,
+  extractChannelBlockFromCanvas,
+  extractChannelPerimeterFromCanvas,
+  SELECTION_HIGHLIGHT_COLOR,
+} from '../../../utils/colorUtils';
 import { computeMdisSmoothedRef } from '../../../utils/metricsUtils';
 import { resolveCuCoordinates } from '../../../utils/cuCoordinates.js';
 import AngularCompass from './AngularCompass';
@@ -73,8 +81,18 @@ const IntraPredictionFlow = ({
   const showValues = propsShowValues !== undefined ? propsShowValues : internalShowValues;
   const setShowValues = setInternalShowValues;
 
-  const [selectedPixel, setSelectedPixel] = useState(null);
-  const [frameCanvas, setFrameCanvas] = useState(null);
+  const selectionContextKey = `${currentModeIdx}_${blockSize}_${channel}`;
+  const [selectedPixelState, setSelectedPixelState] = useState(null);
+  const selectedPixel = selectedPixelState?.key === selectionContextKey ? selectedPixelState.coord : null;
+  const setSelectedPixel = useCallback((coordOrUpdater) => {
+    setSelectedPixelState((prev) => {
+      const prevCoord = prev?.key === selectionContextKey ? prev.coord : null;
+      const nextCoord = typeof coordOrUpdater === 'function' ? coordOrUpdater(prevCoord) : coordOrUpdater;
+      return nextCoord ? { key: selectionContextKey, coord: nextCoord } : null;
+    });
+  }, [selectionContextKey]);
+
+  const [frameCanvasState, setFrameCanvasState] = useState(null);
 
   const handleSelectPixel = useCallback((coord) => {
     setSelectedPixel(prev => {
@@ -83,7 +101,7 @@ const IntraPredictionFlow = ({
       }
       return coord;
     });
-  }, []);
+  }, [setSelectedPixel]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -93,17 +111,10 @@ const IntraPredictionFlow = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedPixel]);
-
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect
-    setSelectedPixel(null);
-  }, [currentModeIdx, blockSize, channel]);
+  }, [selectedPixel, setSelectedPixel]);
 
   useEffect(() => {
     if (!imagePreview) {
-      // oxlint-disable-next-line react/set-state-in-effect
-      setFrameCanvas(null);
       return;
     }
     let isCurrent = true;
@@ -120,7 +131,7 @@ const IntraPredictionFlow = ({
       if (ctx) {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(img, 0, 0, w, h);
-        setFrameCanvas(cvs);
+        setFrameCanvasState({ src: imagePreview, canvas: cvs });
       }
     };
     img.src = imagePreview;
@@ -129,7 +140,7 @@ const IntraPredictionFlow = ({
     };
   }, [imagePreview, imageDims?.width, imageDims?.height]);
 
-  const activeFrameCanvas = imagePreview ? frameCanvas : null;
+  const activeFrameCanvas = (imagePreview && frameCanvasState?.src === imagePreview) ? frameCanvasState.canvas : null;
 
   useEffect(() => {
     if (!jobId || !API_BASE_URL) return;
@@ -205,7 +216,7 @@ const IntraPredictionFlow = ({
   const refSpan = 2 * N + 1;
 
   const { refTopRaw, refLeftRaw } = useMemo(() => {
-    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, N);
+    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, blockSize);
     const isRefMatched = modeData && (
       (modeData.pu_x === absX || modeData.pu_x === relX || modeData.cu_x === absX || modeData.cu_x === relX) &&
       (modeData.pu_y === absY || modeData.pu_y === relY || modeData.cu_y === absY || modeData.cu_y === relY)
@@ -220,39 +231,16 @@ const IntraPredictionFlow = ({
 
     if (activeFrameCanvas) {
       try {
-        const ctx = activeFrameCanvas.getContext('2d');
-        if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
-          const frameW = activeFrameCanvas.width;
-          const frameH = activeFrameCanvas.height;
-
-          const startX = Math.max(0, Math.min(frameW - 1, absX - 1));
-          const startY = Math.max(0, Math.min(frameH - 1, absY - 1));
-          const reqW = Math.max(1, Math.min(frameW - startX, 2 * N + 2));
-          const reqH = Math.max(1, Math.min(frameH - startY, 2 * N + 2));
-
-          const patch = ctx.getImageData(startX, startY, reqW, reqH);
-          const getLumaAt = (px, py) => {
-            const clampedX = Math.max(0, Math.min(reqW - 1, px - startX));
-            const clampedY = Math.max(0, Math.min(reqH - 1, py - startY));
-            const offset = (clampedY * reqW + clampedX) * 4;
-            const r = patch.data[offset] ?? 128;
-            const g = patch.data[offset + 1] ?? 128;
-            const b = patch.data[offset + 2] ?? 128;
-            return Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
-          };
-
-          const corner = getLumaAt(absX - 1, absY - 1);
-          const topSamples = new Array(refSpan);
-          const leftSamples = new Array(refSpan);
-          topSamples[0] = corner;
-          leftSamples[0] = corner;
-
-          for (let i = 0; i < 2 * N; i++) {
-            topSamples[i + 1] = getLumaAt(absX + i, absY - 1);
-            leftSamples[i + 1] = getLumaAt(absX - 1, absY + i);
-          }
-
-          return { refTopRaw: topSamples, refLeftRaw: leftSamples };
+        const extracted = extractChannelPerimeterFromCanvas(activeFrameCanvas, {
+          absX,
+          absY,
+          size: N,
+          channel,
+          frameWidth: imageDims?.width || activeFrameCanvas.width,
+          isPlanarGray: false,
+        });
+        if (extracted) {
+          return { refTopRaw: extracted.refTop, refLeftRaw: extracted.refLeft };
         }
       } catch (err) {
         console.warn('Could not extract perimeter from frame canvas:', err);
@@ -272,7 +260,7 @@ const IntraPredictionFlow = ({
     }
 
     return { refTopRaw: topFallback, refLeftRaw: leftFallback };
-  }, [rawRefTop, rawRefLeft, refSpan, activeFrameCanvas, selectedCu, ctuX, ctuY, N, modeData]);
+  }, [rawRefTop, rawRefLeft, refSpan, activeFrameCanvas, selectedCu, ctuX, ctuY, blockSize, N, channel, imageDims, modeData]);
 
   const isMDISSmoothed = (channel === 'Y') && (
     (modeData && modeData.b_use_filter !== undefined)
@@ -294,7 +282,7 @@ const IntraPredictionFlow = ({
   const refLeftActive = useMemo(() => isMDISSmoothed ? refLeftFilt : refLeftRaw, [isMDISSmoothed, refLeftFilt, refLeftRaw]);
 
   const orgData = useMemo(() => {
-    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, N);
+    const { relX, relY, absX, absY } = resolveCuCoordinates(selectedCu, ctuX, ctuY, blockSize);
     const isOrgMatched = modeData && (
       (modeData.pu_x === absX || modeData.pu_x === relX || modeData.cu_x === absX || modeData.cu_x === relX) &&
       (modeData.pu_y === absY || modeData.pu_y === relY || modeData.cu_y === absY || modeData.cu_y === relY)
@@ -305,28 +293,15 @@ const IntraPredictionFlow = ({
     }
     if (activeFrameCanvas) {
       try {
-        const ctx = activeFrameCanvas.getContext('2d');
-        if (ctx && activeFrameCanvas.width > 0 && activeFrameCanvas.height > 0) {
-          const safeX = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.width - N), absX));
-          const safeY = Math.max(0, Math.min(Math.max(0, activeFrameCanvas.height - N), absY));
-          const safeW = Math.max(1, Math.min(N, activeFrameCanvas.width - safeX));
-          const safeH = Math.max(1, Math.min(N, activeFrameCanvas.height - safeY));
-
-          const imgData = ctx.getImageData(safeX, safeY, safeW, safeH);
-          const luma = new Array(totalPixels);
-          for (let y = 0; y < N; y++) {
-            for (let x = 0; x < N; x++) {
-              const srcX = Math.min(safeW - 1, x);
-              const srcY = Math.min(safeH - 1, y);
-              const offset = (srcY * safeW + srcX) * 4;
-              const r = imgData.data[offset] ?? 128;
-              const g = imgData.data[offset + 1] ?? 128;
-              const b = imgData.data[offset + 2] ?? 128;
-              luma[y * N + x] = Math.max(0, Math.min(255, Math.round(0.2126 * r + 0.7152 * g + 0.0722 * b)));
-            }
-          }
-          return luma;
-        }
+        const samples = extractChannelBlockFromCanvas(activeFrameCanvas, {
+          absX,
+          absY,
+          size: N,
+          channel,
+          frameWidth: imageDims?.width || activeFrameCanvas.width,
+          isPlanarGray: false,
+        });
+        if (samples) return samples;
       } catch (err) {
         console.warn('Could not extract orgData from frame canvas:', err);
       }
@@ -344,7 +319,7 @@ const IntraPredictionFlow = ({
       return res;
     }
     return Array(totalPixels).fill(128);
-  }, [rawOrg, totalPixels, activeFrameCanvas, selectedCu, ctuX, ctuY, N, modeData]);
+  }, [rawOrg, totalPixels, activeFrameCanvas, selectedCu, ctuX, ctuY, blockSize, N, channel, imageDims, modeData]);
 
   const predData = useMemo(() => {
     if (rawPred && rawPred.length >= totalPixels) {

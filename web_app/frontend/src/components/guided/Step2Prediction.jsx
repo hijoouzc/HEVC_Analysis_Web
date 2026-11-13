@@ -33,6 +33,8 @@ export function Step2Prediction({
   quantData,
   interSearchData,
   frameGopData,
+  selectedPoc = 0,
+  onSelectPoc = null,
   onSelectBlock = null,
   partitionData = null,
   _onProceedToResidual = null,
@@ -220,6 +222,8 @@ export function Step2Prediction({
                 ctuY={ctuY}
                 selectedCu={selectedCu}
                 frameGopData={frameGopData}
+                selectedPoc={selectedPoc}
+                onSelectPoc={onSelectPoc}
               />
             )}
           </div>

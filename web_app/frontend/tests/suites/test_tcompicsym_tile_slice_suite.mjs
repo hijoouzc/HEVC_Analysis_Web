@@ -100,6 +100,27 @@ console.log('\nTest Suite 2: TComPicSym::xInitTiles() Uniform & Non-Uniform 2D P
   assert.strictEqual(uniform2x1.tileParameters[0].isWidthViolated, true, 'Tile 0 (192px) is marked width violated');
   assert.strictEqual(uniform2x1.tileParameters[1].isWidthViolated, false, 'Tile 1 (256px) satisfies >= 256px');
 
+  // Multi-column Non-Uniform testing (3 columns on 1920x1080 -> 30 CTU columns)
+  const grid1080p = computeCtuGridGeometry(1920, 1080, 64, 64, 4);
+  assert.strictEqual(grid1080p.frameWidthInCtus, 30);
+  const nonUniform3Cols = initTiles(grid1080p, {
+    uniformSpacing: false,
+    numCols: 3,
+    numRows: 1,
+    colWidths: [7, 10],
+  });
+  assert.deepStrictEqual(nonUniform3Cols.colWidths, [7, 10, 13], 'Multi-column explicit configuration [7, 10, 13]');
+
+  // Non-Uniform graceful fallback when middle column is omitted (fair share instead of trapped at 1 CTU)
+  const nonUniformFallback = initTiles(grid1080p, {
+    uniformSpacing: false,
+    numCols: 3,
+    numRows: 1,
+    colWidths: [7],
+  });
+  // 30 - 7 = 23 CTUs left over 2 remaining cols -> floor(23/2) = 11, remainder 12 -> [7, 11, 12]
+  assert.deepStrictEqual(nonUniformFallback.colWidths, [7, 11, 12], 'Non-uniform fallback fair share [7, 11, 12]');
+
   // Single tile default is always compliant
   const singleTile = initTiles(grid, { uniformSpacing: true, numCols: 1, numRows: 1 });
   assert.strictEqual(singleTile.isHevcMainProfileCompliant, true, 'Single tile 1x1 is always compliant');
@@ -244,15 +265,20 @@ console.log('\nTest Suite 5: TEncSlice::compressSlice() Stepper & Step1FrameTree
   assert.strictEqual(sim.compressSteps[0].allocatedSliceCountAtStep, 1, 'At TS=0 only 1 slice is allocated in m_apSlices');
   assert.strictEqual(sim.compressSteps[10].allocatedSliceCountAtStep, 2, 'At TS=10 second slice is dynamically allocated in m_apSlices');
   assert.strictEqual(sim.compressSteps[16].isCabacReset, true, 'TS=16 (firstCtuRsAddrOfTile for Tile 1) triggers CABAC context reset');
+  assert(Array.isArray(sim.sliceInfo.apSlices), 'sim.sliceInfo.apSlices must be an array');
+  assert(Array.isArray(sim.sliceInfo.slices), 'sim.sliceInfo.slices must be defined as an array alias');
+  assert(sim.sliceInfo.slices.length > 0, 'sim.sliceInfo.slices must have at least 1 slice');
 
   const visPath = resolve(__dirname, '../../src/components/stages/cp00_frame_gop/TComPicSymVisualizer.jsx');
   const visContent = readFileSync(visPath, 'utf8');
+  assert(!visContent.includes('sliceInfo.slices.length'), 'Visualizer must not use unsafe raw sliceInfo.slices.length');
   assert(visContent.includes('m_ctuTsToRsAddrMap'), 'Visualizer renders m_ctuTsToRsAddrMap');
   assert(visContent.includes('m_puiTileIdxMap') || visContent.includes('m_tileParameters'), 'Visualizer renders tile parameters');
   assert(visContent.includes('m_apSlices'), 'Visualizer renders m_apSlices');
   assert(visContent.includes('m_pictureCtuArray'), 'Visualizer renders m_pictureCtuArray');
   assert(visContent.includes('TComPicSym C++ MEMORY ARRAYS'), 'Visualizer includes sticky right-column C++ memory array dock');
   assert(visContent.includes('inspectedCtuStep'), 'Visualizer displays live inspected CTU telemetry in right dock');
+  assert(visContent.includes('topmost-active-ctu-reticle'), 'Visualizer renders topmost active CTU reticle layer on top of all SVG layers');
   assert(visContent.includes('handleDeselectCtu'), 'Visualizer contains handleDeselectCtu function');
   assert(visContent.includes('No CTU selected'), 'Visualizer renders clean placeholder when CTU is unselected');
 

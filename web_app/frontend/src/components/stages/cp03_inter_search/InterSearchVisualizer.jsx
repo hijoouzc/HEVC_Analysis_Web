@@ -12,14 +12,29 @@ function InterSearchVisualizer({
   ctuY,
   _selectedCu = null,
   frameGopData = [],
+  selectedPoc = 0,
+  onSelectPoc = null,
 }) {
   const [selectedPuIdx, setSelectedPuIdx] = useState(0);
 
-  const currentFrame = Array.isArray(frameGopData) && frameGopData.length > 0 ? frameGopData[0] : null;
+  const currentFrame = (Array.isArray(frameGopData) && frameGopData.length > 0)
+    ? (frameGopData.find(f => f.poc === selectedPoc) || frameGopData[0])
+    : null;
   const isIntraSlice = currentFrame && currentFrame.slice_type === 'I';
 
   const hasData = Array.isArray(interSearchData) && interSearchData.length > 0;
   const activePu = hasData && selectedPuIdx < interSearchData.length ? interSearchData[selectedPuIdx] : (hasData ? interSearchData[0] : null);
+  const hasBiPredL1 = (pu) => Boolean(
+    pu &&
+    pu.ref_idx_l1 !== null &&
+    pu.ref_idx_l1 !== undefined &&
+    pu.ref_idx_l1 >= 0 &&
+    pu.mv_x_l1 !== null &&
+    pu.mv_x_l1 !== undefined &&
+    pu.mv_y_l1 !== null &&
+    pu.mv_y_l1 !== undefined
+  );
+  const activeHasL1 = hasBiPredL1(activePu);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', boxSizing: 'border-box' }}>
@@ -39,14 +54,42 @@ function InterSearchVisualizer({
           boxSizing: 'border-box',
         }}
       >
-        {/* Metric 1: Inter Estimation Status */}
+        {/* Metric 1: Inter Estimation Status + POC Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>INTER ESTIMATION STATUS:</span>
+          {Array.isArray(frameGopData) && frameGopData.length > 1 && onSelectPoc && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              {frameGopData.map((frm) => {
+                const isSelected = (currentFrame ? currentFrame.poc : 0) === frm.poc;
+                return (
+                  <button
+                    key={`inter-poc-${frm.poc}`}
+                    type="button"
+                    onClick={() => onSelectPoc(frm.poc)}
+                    style={{
+                      height: '22px',
+                      padding: '0 6px',
+                      fontSize: '10px',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: isSelected ? 700 : 500,
+                      borderRadius: '4px',
+                      border: '0.5px solid var(--separator)',
+                      background: isSelected ? 'var(--system-blue)' : 'var(--fill-2)',
+                      color: isSelected ? '#FFFFFF' : 'var(--apple-label)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    POC {frm.poc} ({frm.slice_type})
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
             {hasData ? `${interSearchData.length} PUs Evaluated` : (isIntraSlice ? 'I-SLICE Anchor' : 'No Inter Records')}
           </span>
           <Badge variant={hasData ? 'blue' : 'gray'} style={{ fontSize: '9.5px', padding: '1px 5px' }}>
-            {hasData ? 'HM TEncSearch::predInterSearch' : 'Idle'}
+            {hasData ? (activeHasL1 ? 'Bi-Pred ME' : 'HM TEncSearch::predInterSearch') : 'Idle'}
           </Badge>
         </div>
 
@@ -56,7 +99,11 @@ function InterSearchVisualizer({
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ color: 'var(--apple-label-secondary)', fontWeight: 600 }}>ACTIVE PU MOTION VECTOR:</span>
           <span style={{ fontWeight: 700, color: 'var(--apple-label)' }}>
-            {activePu ? `(${activePu.mv_x}, ${activePu.mv_y})` : '(0, 0)'}
+            {activePu
+              ? (activeHasL1
+                  ? `L0(${activePu.mv_x}, ${activePu.mv_y}) · L1(${activePu.mv_x_l1}, ${activePu.mv_y_l1})`
+                  : `(${activePu.mv_x}, ${activePu.mv_y})`)
+              : '(0, 0)'}
           </span>
           <span style={{ color: 'var(--apple-label-secondary)', fontSize: '10.5px' }}>
             1/4-pel precision
@@ -162,25 +209,32 @@ function InterSearchVisualizer({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {interSearchData.map((pu, idx) => (
-                    <TableRow
-                      key={`pu-row-${idx}`}
-                      selected={idx === selectedPuIdx}
-                      onClick={() => setSelectedPuIdx(idx)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>PU #{pu.pu_idx}</TableCell>
-                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{pu.pu_w}×{pu.pu_h}</TableCell>
-                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>L{pu.ref_list}[{pu.ref_idx}]</TableCell>
-                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>({pu.mv_x}, {pu.mv_y})</TableCell>
-                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>({pu.mvd_x}, {pu.mvd_y})</TableCell>
-                      <TableCell style={{ fontFamily: 'var(--font-mono)' }}>#{pu.mvp_idx}</TableCell>
-                      <TableCell align="right" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-                        {Math.round(pu.cost).toLocaleString()}
-                      </TableCell>
-                      <TableCell align="right" style={{ fontFamily: 'var(--font-mono)' }}>{pu.bits}</TableCell>
-                    </TableRow>
-                  ))}
+                  {interSearchData.map((pu, idx) => {
+                    const rowHasL1 = hasBiPredL1(pu);
+                    return (
+                      <TableRow
+                        key={`pu-row-${idx}`}
+                        selected={idx === selectedPuIdx}
+                        onClick={() => setSelectedPuIdx(idx)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell style={{ fontFamily: 'var(--font-mono)' }}>PU #{pu.pu_idx}</TableCell>
+                        <TableCell style={{ fontFamily: 'var(--font-mono)' }}>{pu.pu_w}×{pu.pu_h}</TableCell>
+                        <TableCell style={{ fontFamily: 'var(--font-mono)' }}>
+                          L{pu.ref_list}[{pu.ref_idx}]{rowHasL1 ? ` + L1[${pu.ref_idx_l1}]` : ''}
+                        </TableCell>
+                        <TableCell style={{ fontFamily: 'var(--font-mono)' }}>
+                          {rowHasL1 ? `(${pu.mv_x},${pu.mv_y}) / (${pu.mv_x_l1},${pu.mv_y_l1})` : `(${pu.mv_x}, ${pu.mv_y})`}
+                        </TableCell>
+                        <TableCell style={{ fontFamily: 'var(--font-mono)' }}>({pu.mvd_x}, {pu.mvd_y})</TableCell>
+                        <TableCell style={{ fontFamily: 'var(--font-mono)' }}>#{pu.mvp_idx}</TableCell>
+                        <TableCell align="right" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+                          {Math.round(pu.cost).toLocaleString()}
+                        </TableCell>
+                        <TableCell align="right" style={{ fontFamily: 'var(--font-mono)' }}>{pu.bits}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -215,9 +269,21 @@ function InterSearchVisualizer({
                   <span>Candidate #{activePu.mvp_idx}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--apple-label-secondary)' }}>Motion Vector:</span>
+                  <span style={{ color: 'var(--apple-label-secondary)' }}>Motion Vector (L0):</span>
                   <span style={{ fontWeight: 700, color: 'var(--apple-blue)' }}>({activePu.mv_x}, {activePu.mv_y})</span>
                 </div>
+                {activeHasL1 && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--apple-label-secondary)' }}>Motion Vector (L1):</span>
+                      <span style={{ fontWeight: 700, color: 'var(--system-green)' }}>({activePu.mv_x_l1}, {activePu.mv_y_l1})</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: 'var(--apple-label-secondary)' }}>Ref Picture Index (L1):</span>
+                      <span>REF_PIC_LIST_1 [{activePu.ref_idx_l1}]</span>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--apple-label-secondary)' }}>Delta MV (MVD):</span>
                   <span>({activePu.mvd_x}, {activePu.mvd_y})</span>

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from app.domain.models.checkpoint import (
     IntraModeData,
@@ -21,7 +22,28 @@ from app.domain.exceptions import JobNotFoundError, InvalidInputError
 from app.services.analysis_service import analysis_service
 from app.checkpoints.registry import checkpoint_registry
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _call_checkpoint(job_id: str, fn, *args, **kwargs):
+    """Runs synchronous checkpoint queries off the event loop with consistent HTTP error mapping."""
+    try:
+        return await asyncio.to_thread(fn, job_id, *args, **kwargs)
+    except HTTPException:
+        raise
+    except JobNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    except InvalidInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        logger.exception(
+            "Unexpected error in checkpoint handler '%s' for job '%s'",
+            getattr(fn, "__name__", str(fn)),
+            job_id,
+        )
+        raise HTTPException(status_code=500, detail="Internal server error while reading checkpoint telemetry.")
+
 
 @router.get("/stages")
 async def list_registered_stages():
@@ -39,6 +61,8 @@ async def get_job_stages(job_id: str):
             "status": job.status,
             "stages_available": job.stages_available
         }
+    except InvalidInputError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except JobNotFoundError:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
@@ -50,25 +74,15 @@ async def get_partition_tree(
     job_id: str,
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
     ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
-    poc: int | None = Query(None, description="Optional target Picture Order Count"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_01_PARTITION: Retrieves the complete CTU QuadTree partition tree (depths 0-3)"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_partition_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_partition_data, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
 @router.get("/{job_id}/partitions", response_model=list[CTUPartitionCheckpoint])
 async def get_all_partitions(job_id: str):
     """Retrieves all CTU QuadTree partition trees available in the trace"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_all_partitions, job_id)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_all_partitions)
 
 @router.get("/{job_id}/cu-inspect", response_model=CUInspectionResponse)
 async def get_cu_inspection(
@@ -85,17 +99,16 @@ async def get_cu_inspection(
     Exposes complete spatial, quadtree partition, RDO decision, intra/inter prediction,
     and transform/quantization telemetry for any arbitrary CU coordinate.
     """
-    try:
-        return await asyncio.to_thread(
-            analysis_service.get_cu_inspection_data,
-            job_id, ctu_x=ctu_x, ctu_y=ctu_y, cu_x=cu_x, cu_y=cu_y, poc=poc, include_matrices=include_matrices
-        )
-    except InvalidInputError as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_cu_inspection_data,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        poc=poc,
+        include_matrices=include_matrices,
+    )
 
 # ==========================================
 # CP_02_INTRA_REF Endpoints
@@ -107,23 +120,20 @@ async def get_intra_ref_checkpoint(
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
     ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
     cu_x: int | None = Query(None, description="Optional target CU/PU X pixel coordinate"),
-    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate")
+    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_02_INTRA_REF: Retrieves raw and filtered reference samples (4N+1)"""
-    try:
-        return await asyncio.to_thread(
-            analysis_service.get_intra_ref_data,
-            job_id,
-            cu_size=cu_size,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_intra_ref_data,
+        cu_size=cu_size,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        poc=poc,
+    )
 
 # ==========================================
 # CP_01_CU_QUADTREE_RDO / RDO Decisions
@@ -136,37 +146,32 @@ async def get_rdo_decisions(
     ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
     cu_x: int | None = Query(None, description="Optional target CU X pixel coordinate"),
     cu_y: int | None = Query(None, description="Optional target CU Y pixel coordinate"),
-    cu_size: int | None = Query(None, description="Optional target CU block size (8, 16, 32, 64)")
+    cu_size: int | None = Query(None, description="Optional target CU block size (8, 16, 32, 64)"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """Retrieves real HM CU RDO decisions: cost_nosplit, cost_split, best_mode, and split_decision"""
-    try:
-        return await asyncio.to_thread(
-            analysis_service.get_rdo_decisions,
-            job_id,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y,
-            cu_size=cu_size
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_rdo_decisions,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        cu_size=cu_size,
+        poc=poc,
+    )
 
 # ==========================================
 # CP_02_INTRA_SEARCH / CP_03_INTRA_SEARCH Endpoints
 # ==========================================
 @router.get("/{job_id}/CP_02_INTRA_SEARCH/summary", response_model=IntraSearchSummary)
 @router.get("/{job_id}/CP_03_INTRA_SEARCH/summary", response_model=IntraSearchSummary)
-async def get_intra_search_summary(job_id: str):
+async def get_intra_search_summary(
+    job_id: str,
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
+):
     """Lightweight endpoint returning high-level intra prediction summary (<1 KB)"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_intra_search_summary, job_id)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_intra_search_summary, poc=poc)
 
 @router.get("/{job_id}/CP_02_INTRA_SEARCH/compare", response_model=IntraComparisonResult)
 @router.get("/{job_id}/CP_03_INTRA_SEARCH/compare", response_model=IntraComparisonResult)
@@ -177,14 +182,7 @@ async def compare_intra_candidates(
     cu_size: int | None = Query(None, description="Optional CU block size (4, 8, 16, 32, 64)")
 ):
     """Computes pixel-by-pixel differential prediction and cost comparison between two Intra modes"""
-    try:
-        return await asyncio.to_thread(analysis_service.compare_intra_modes, job_id, mode_a=mode_a, mode_b=mode_b, cu_size=cu_size)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except InvalidInputError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.compare_intra_modes, mode_a=mode_a, mode_b=mode_b, cu_size=cu_size)
 
 @router.get("/{job_id}/CP_02_INTRA_SEARCH", response_model=list[IntraModeData])
 @router.get("/{job_id}/CP_03_INTRA_SEARCH", response_model=list[IntraModeData])
@@ -195,24 +193,21 @@ async def get_intra_search_modes(
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
     ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
     cu_x: int | None = Query(None, description="Optional target CU/PU X pixel coordinate"),
-    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate")
+    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """Lazy-load full matrix and reference sample data for tested Intra modes"""
-    try:
-        return await asyncio.to_thread(
-            analysis_service.get_intra_search_data,
-            job_id,
-            mode=mode,
-            cu_size=cu_size,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_intra_search_data,
+        mode=mode,
+        cu_size=cu_size,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        poc=poc,
+    )
 
 @router.get("/{job_id}/CP_02_INTRA_SEARCH/pipeline", response_model=IntraPipelineFullResponse)
 @router.get("/{job_id}/CP_03_INTRA_SEARCH/pipeline", response_model=IntraPipelineFullResponse)
@@ -223,7 +218,8 @@ async def get_intra_pipeline_full(
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
     ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
     cu_x: int | None = Query(None, description="Optional target CU/PU X pixel coordinate"),
-    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate")
+    cu_y: int | None = Query(None, description="Optional target CU/PU Y pixel coordinate"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """
     CP_03_INTRA_SEARCH Pipeline: Complete 5-stage Intra Prediction & RDO Search Flow
@@ -233,20 +229,16 @@ async def get_intra_pipeline_full(
     Step 4: Full RDO Phase & QuadTree TU Decomposition
     Step 5: Chroma Mode Search & Best Mode Decision
     """
-    try:
-        return await asyncio.to_thread(
-            analysis_service.get_intra_pipeline_data,
-            job_id,
-            cu_size=cu_size,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_intra_pipeline_data,
+        cu_size=cu_size,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        poc=poc,
+    )
 
 # ==========================================
 # CP_06_TRANSFORM & CP_07_QUANT Endpoints
@@ -261,26 +253,23 @@ async def get_transform_checkpoints(
     cu_x: int | None = Query(None, description="Optional target CU X coordinate"),
     cu_y: int | None = Query(None, description="Optional target CU Y coordinate"),
     cu_size: int | None = Query(None, description="Optional target CU size"),
-    intra_mode: int | None = Query(None, description="Optional candidate intra mode index")
+    intra_mode: int | None = Query(None, description="Optional candidate intra mode index"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_06_TRANSFORM: Retrieves 2D DCT/DST transform coefficients and residual matrix"""
-    try:
-        active_comp = component or comp
-        return await asyncio.to_thread(
-            analysis_service.get_transform_quant_data,
-            job_id,
-            comp=active_comp,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y,
-            cu_size=cu_size,
-            intra_mode=intra_mode
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    active_comp = component or comp
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_transform_quant_data,
+        comp=active_comp,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        cu_size=cu_size,
+        intra_mode=intra_mode,
+        poc=poc,
+    )
 
 @router.get("/{job_id}/CP_07_QUANT", response_model=list[TransformQuantCheckpoint])
 async def get_quant_checkpoints(
@@ -292,26 +281,23 @@ async def get_quant_checkpoints(
     cu_x: int | None = Query(None, description="Optional target CU X coordinate"),
     cu_y: int | None = Query(None, description="Optional target CU Y coordinate"),
     cu_size: int | None = Query(None, description="Optional target CU size"),
-    intra_mode: int | None = Query(None, description="Optional candidate intra mode index")
+    intra_mode: int | None = Query(None, description="Optional candidate intra mode index"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_07_QUANT: Retrieves quantized transform coefficients and sparsity statistics"""
-    try:
-        active_comp = component or comp
-        return await asyncio.to_thread(
-            analysis_service.get_transform_quant_data,
-            job_id,
-            comp=active_comp,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y,
-            cu_size=cu_size,
-            intra_mode=intra_mode
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    active_comp = component or comp
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_transform_quant_data,
+        comp=active_comp,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        cu_size=cu_size,
+        intra_mode=intra_mode,
+        poc=poc,
+    )
 
 # ==========================================
 # Specialized 8 Checkpoints Standard Endpoints
@@ -319,41 +305,25 @@ async def get_quant_checkpoints(
 @router.get("/{job_id}/sequence-metadata", response_model=HevcSequenceMetadata)
 async def get_sequence_metadata(job_id: str):
     """Retrieves Sequence (SPS) and Picture (PPS) Parameter Sets metadata directly from HM-18.0"""
-    try:
-        data = await asyncio.to_thread(analysis_service.get_sequence_metadata, job_id)
-        if data is None:
-            raise HTTPException(status_code=404, detail=f"Sequence metadata not found for job '{job_id}'.")
-        return data
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    data = await _call_checkpoint(job_id, analysis_service.get_sequence_metadata)
+    if data is None:
+        raise HTTPException(status_code=404, detail=f"Sequence metadata not found for job '{job_id}'.")
+    return data
 
 @router.get("/{job_id}/CP_00_FRAME_GOP", response_model=list[FrameGopCheckpoint])
 async def get_frame_gop(job_id: str):
     """CP_00_FRAME_GOP: Retrieves Frame and GOP structure, temporal layer, and DPB reference lists"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_frame_gop_data, job_id)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_frame_gop_data)
 
 @router.get("/{job_id}/CP_03_INTER_SEARCH", response_model=list[InterSearchCheckpoint])
 async def get_inter_search(
     job_id: str,
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_03_INTER_SEARCH: Retrieves Inter Prediction, Motion Estimation (MV, MVD), and candidate data"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_inter_search_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_inter_search_data, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
 @router.get("/{job_id}/CP_04_TRANSFORM_RQT", response_model=list[TransformQuantCheckpoint])
 async def get_transform_rqt(
@@ -364,64 +334,48 @@ async def get_transform_rqt(
     cu_x: int | None = Query(None, description="Optional target CU X coordinate"),
     cu_y: int | None = Query(None, description="Optional target CU Y coordinate"),
     cu_size: int | None = Query(None, description="Optional target CU size"),
-    intra_mode: int | None = Query(None, description="Optional candidate intra mode index")
+    intra_mode: int | None = Query(None, description="Optional candidate intra mode index"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_04_TRANSFORM_RQT: Retrieves 6-domain Transform, RQT hierarchy, DST-VII, and TSM data"""
-    try:
-        return await asyncio.to_thread(
-            analysis_service.get_transform_quant_data,
-            job_id,
-            comp=comp,
-            ctu_x=ctu_x,
-            ctu_y=ctu_y,
-            cu_x=cu_x,
-            cu_y=cu_y,
-            cu_size=cu_size,
-            intra_mode=intra_mode
-        )
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(
+        job_id,
+        analysis_service.get_transform_quant_data,
+        comp=comp,
+        ctu_x=ctu_x,
+        ctu_y=ctu_y,
+        cu_x=cu_x,
+        cu_y=cu_y,
+        cu_size=cu_size,
+        intra_mode=intra_mode,
+        poc=poc,
+    )
 
 @router.get("/{job_id}/CP_05_RECON_PICTURE", response_model=list[ReconPictureCheckpoint])
 async def get_recon_picture(
     job_id: str,
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_05_RECON_PICTURE: Retrieves reconstructed picture buffer (Y, U, V) before in-loop filtering"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_recon_picture_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_recon_picture_data, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
 @router.get("/{job_id}/CP_06_INLOOP_FILTER", response_model=InLoopFilterFullResponse)
 async def get_inloop_filter(
     job_id: str,
     ctu_x: int | None = Query(None, description="Optional target CTU X coordinate"),
-    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate")
+    ctu_y: int | None = Query(None, description="Optional target CTU Y coordinate"),
+    poc: int | None = Query(None, ge=0, description="Optional target Picture Order Count"),
 ):
     """CP_06_INLOOP_FILTER: Retrieves Deblocking Filter (DBF) edge profiles and SAO decision offsets"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_inloop_filter_data, job_id, ctu_x=ctu_x, ctu_y=ctu_y)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_inloop_filter_data, ctu_x=ctu_x, ctu_y=ctu_y, poc=poc)
 
 @router.get("/{job_id}/CP_07_CABAC_ENTROPY", response_model=CabacEntropyFullResponse)
 async def get_cabac_entropy(
     job_id: str,
-    limit: int = Query(500, description="Maximum number of bin transition events to return")
+    limit: int = Query(500, ge=1, le=5000, description="Maximum number of bin transition events to return")
 ):
     """CP_07_CABAC_ENTROPY: Retrieves bitstream syntax element bins, context index, and FSM probability state"""
-    try:
-        return await asyncio.to_thread(analysis_service.get_cabac_entropy_data, job_id, limit=limit)
-    except JobNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return await _call_checkpoint(job_id, analysis_service.get_cabac_entropy_data, limit=limit)
 

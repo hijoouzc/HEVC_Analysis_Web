@@ -33,7 +33,6 @@ function TransformQuantVisualizer({
   const [internalComp, setInternalComp] = useState('Y'); // 'Y', 'Cb', 'Cr'
   const activeComp = propsChannel !== undefined ? propsChannel : internalComp;
   const setActiveComp = onSelectChannel || setInternalComp;
-  const [userSelectedTuIdx, setUserSelectedTuIdx] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null); // { x, y }
   const [activeWindow, setActiveWindow] = useState({ wx: 0, wy: 0 });
   const [zoomLevel, setZoomLevel] = useState('fit'); // 'fit' or 'zoom'
@@ -41,11 +40,6 @@ function TransformQuantVisualizer({
   const showValues = propsShowValues !== undefined ? propsShowValues : internalShowValues;
   const setShowValues = onToggleValues || setInternalShowValues;
   const [viewLayout, setViewLayout] = useState(initialViewLayout); // 'dual' | 'tree' | 'matrix'
-  const [prevInitialLayout, setPrevInitialLayout] = useState(initialViewLayout);
-  if (initialViewLayout !== prevInitialLayout) {
-    setPrevInitialLayout(initialViewLayout);
-    setViewLayout(initialViewLayout);
-  }
 
   const handleCellClick = useCallback((coord) => {
     setSelectedCell(prev => (prev && prev.x === coord.x && prev.y === coord.y ? null : coord));
@@ -54,6 +48,13 @@ function TransformQuantVisualizer({
   const cuCoords = useMemo(() => {
     return resolveCuCoordinates(_selectedCu, _ctuX, _ctuY, targetCuSize || 8);
   }, [_selectedCu, _ctuX, _ctuY, targetCuSize]);
+
+  const tuSelectionContextKey = `${_ctuX}_${_ctuY}_${targetCuX ?? cuCoords.absX}_${targetCuY ?? cuCoords.absY}_${targetCuSize ?? cuCoords.size}_${activeComp}`;
+  const [userTuSelectionState, setUserTuSelectionState] = useState(null);
+  const userSelectedTuIdx = userTuSelectionState?.key === tuSelectionContextKey ? userTuSelectionState.idx : null;
+  const setUserSelectedTuIdx = useCallback((idx) => {
+    setUserTuSelectionState(idx === null ? null : { key: tuSelectionContextKey, idx });
+  }, [tuSelectionContextKey]);
 
   // Filter events by selected component (supporting either transformData or quantData)
   const filteredEvents = useMemo(() => {
@@ -143,7 +144,7 @@ function TransformQuantVisualizer({
       setSelectedCell(null);
       setActiveWindow({ wx: 0, wy: 0 });
     }
-  }, [filteredEvents, targetCuX, targetCuY]);
+  }, [filteredEvents, targetCuX, targetCuY, setUserSelectedTuIdx]);
 
   if (!activeEvent) {
     return (

@@ -137,6 +137,7 @@ export function Step3ResidualTu({
       {/* Main Transform Visualizer */}
       <div className="stage-section-card">
         <TransformQuantVisualizer
+          key={mappedLayout}
           transformData={activeRecords}
           quantData={quantData}
           ctuX={ctuX}

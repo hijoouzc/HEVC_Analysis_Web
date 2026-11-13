@@ -15,6 +15,49 @@ function resolveCanvasColor(colorStr) {
 }
 
 /**
+ * Parses #RGB, #RRGGBB, rgb(...), rgba(...) into [r, g, b] bytes composited over dark slate (#2C2C2E).
+ */
+function parseCssColorToRgbBytes(colorStr) {
+  const s = resolveCanvasColor(colorStr).trim();
+  if (s.startsWith('#')) {
+    const hex = s.slice(1);
+    if (hex.length === 3) {
+      return [
+        parseInt(hex[0] + hex[0], 16) || 0,
+        parseInt(hex[1] + hex[1], 16) || 0,
+        parseInt(hex[2] + hex[2], 16) || 0,
+      ];
+    }
+    if (hex.length >= 6) {
+      return [
+        parseInt(hex.slice(0, 2), 16) || 0,
+        parseInt(hex.slice(2, 4), 16) || 0,
+        parseInt(hex.slice(4, 6), 16) || 0,
+      ];
+    }
+  }
+  const rgbaMatch = s.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+  if (rgbaMatch) {
+    const r = Number(rgbaMatch[1]) || 0;
+    const g = Number(rgbaMatch[2]) || 0;
+    const b = Number(rgbaMatch[3]) || 0;
+    const a = rgbaMatch[4] !== undefined ? Math.max(0, Math.min(1, Number(rgbaMatch[4]))) : 1;
+    if (a >= 0.999) {
+      return [Math.round(r), Math.round(g), Math.round(b)];
+    }
+    const baseR = 44;
+    const baseG = 44;
+    const baseB = 46;
+    return [
+      Math.round(r * a + baseR * (1 - a)),
+      Math.round(g * a + baseG * (1 - a)),
+      Math.round(b * a + baseB * (1 - a)),
+    ];
+  }
+  return [44, 44, 46];
+}
+
+/**
  * Individual memoized cell in the block matrix.
  * 100% Click-Only: zero hover attributes, zero hover listeners.
  */
@@ -148,6 +191,8 @@ function BlockMatrixGrid({
     canvas.height = width;
     ctx.imageSmoothingEnabled = false;
 
+    const imgData = ctx.createImageData(width, width);
+    const pixels = imgData.data;
     const dataLen = data.length;
     for (let y = 0; y < width; y++) {
       for (let x = 0; x < width; x++) {
@@ -155,10 +200,15 @@ function BlockMatrixGrid({
         const val = idx < dataLen ? (data[idx] ?? 0) : (data[idx % dataLen] ?? 0);
         const isDC = (x === 0 && y === 0);
         const style = getColor ? getColor(val, isDC, x, y) : { bg: '#2C2C2E' };
-        ctx.fillStyle = resolveCanvasColor(style.bg);
-        ctx.fillRect(x, y, 1, 1);
+        const [r, g, b] = parseCssColorToRgbBytes(style.bg);
+        const off = idx * 4;
+        pixels[off] = r;
+        pixels[off + 1] = g;
+        pixels[off + 2] = b;
+        pixels[off + 3] = 255;
       }
     }
+    ctx.putImageData(imgData, 0, 0);
   }, [data, width, getColor]);
 
   // Click on Macro Canvas: select 8x8 sub-window and click cell

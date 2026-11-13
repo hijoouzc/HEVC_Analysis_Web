@@ -32,6 +32,7 @@ function TComPicSymVisualizer({
   frameGopData = [],
   onSelectCTU,
   onNavigateToQuadTree,
+  onRegisterPlaybackState = null,
 }) {
   const actualW = Number(imageDims?.width) || 640;
   const actualH = Number(imageDims?.height) || 360;
@@ -41,7 +42,8 @@ function TComPicSymVisualizer({
   const [tileCols, setTileCols] = useState(1);
   const [tileRows, setTileRows] = useState(1);
   const [tileUniformSpacing, setTileUniformSpacing] = useState(true);
-  const [tileCol0Width, setTileCol0Width] = useState(4);
+  const [tileColWidths, setTileColWidths] = useState({});
+  const [tileRowHeights, setTileRowHeights] = useState({});
   const [sliceMode, setSliceMode] = useState(SLICE_CONSTRAINTS.FIXED_NUMBER_OF_CTU);
   const [sliceArgument, setSliceArgument] = useState(10);
   const [respectTileBoundaries, _setRespectTileBoundaries] = useState(true);
@@ -81,13 +83,47 @@ function TComPicSymVisualizer({
     const cols = Math.max(1, Math.min(maxTileCols, Number(tileCols) || 1));
     const rows = Math.max(1, Math.min(maxTileRows, Number(tileRows) || 1));
     const isUniform = tileUniformSpacing !== false;
+
+    let computedColWidths = undefined;
+    if (!isUniform && cols > 1) {
+      computedColWidths = [];
+      let usedW = 0;
+      for (let c = 0; c < cols - 1; c++) {
+        const remainingCols = cols - 1 - c;
+        const maxAllowed = Math.max(1, maxTileCols - usedW - remainingCols);
+        const userVal = tileColWidths[c];
+        const defaultVal = Math.max(1, Math.floor((maxTileCols - usedW) / (remainingCols + 1)));
+        const val = userVal !== undefined && !Number.isNaN(Number(userVal)) ? Number(userVal) : defaultVal;
+        const clamped = Math.max(1, Math.min(maxAllowed, val));
+        computedColWidths.push(clamped);
+        usedW += clamped;
+      }
+    }
+
+    let computedRowHeights = undefined;
+    if (!isUniform && rows > 1) {
+      computedRowHeights = [];
+      let usedH = 0;
+      for (let r = 0; r < rows - 1; r++) {
+        const remainingRows = rows - 1 - r;
+        const maxAllowed = Math.max(1, maxTileRows - usedH - remainingRows);
+        const userVal = tileRowHeights[r];
+        const defaultVal = Math.max(1, Math.floor((maxTileRows - usedH) / (remainingRows + 1)));
+        const val = userVal !== undefined && !Number.isNaN(Number(userVal)) ? Number(userVal) : defaultVal;
+        const clamped = Math.max(1, Math.min(maxAllowed, val));
+        computedRowHeights.push(clamped);
+        usedH += clamped;
+      }
+    }
+
     return {
       uniformSpacing: isUniform,
       numCols: cols,
       numRows: rows,
-      colWidths: !isUniform && cols > 1 ? [Math.max(1, Math.min(cols - 1, tileCol0Width))] : undefined,
+      colWidths: computedColWidths,
+      rowHeights: computedRowHeights,
     };
-  }, [tileCols, tileRows, tileUniformSpacing, tileCol0Width, maxTileCols, maxTileRows]);
+  }, [tileCols, tileRows, tileUniformSpacing, tileColWidths, tileRowHeights, maxTileCols, maxTileRows]);
 
   const ctuActualBitsMap = useMemo(() => {
     const map = {};
@@ -155,7 +191,39 @@ function TComPicSymVisualizer({
     return rs >= 0 && rs < grid.numCtusInFrame ? rs : null;
   }, [ctuX, ctuY, grid.frameWidthInCtus, grid.numCtusInFrame]);
 
-  const inspectedRsAddr = onSelectCTU ? sessionRsFromProps : localInspectedRsAddr;
+  const inspectedRsAddr = isPlayingTs
+    ? (tsRsMaps.ctuTsToRsAddrMap[safeTsAddr] ?? (onSelectCTU ? sessionRsFromProps : localInspectedRsAddr))
+    : (onSelectCTU ? sessionRsFromProps : localInspectedRsAddr);
+
+  const [prevSessionRs, setPrevSessionRs] = useState(undefined);
+  const [prevTsRsMaps, setPrevTsRsMaps] = useState(tsRsMaps);
+  const [prevIsPlayingTs, setPrevIsPlayingTs] = useState(false);
+
+  // When pausing playback, preserve the stepper position as current session RS
+  if (prevIsPlayingTs !== isPlayingTs) {
+    setPrevIsPlayingTs(isPlayingTs);
+    if (!isPlayingTs) {
+      const currentRs = tsRsMaps.ctuTsToRsAddrMap[safeTsAddr];
+      if (currentRs !== undefined) {
+        setPrevSessionRs(currentRs);
+        setLocalInspectedRsAddr(currentRs);
+      }
+    }
+  }
+
+  // Synchronize activeTsAddr and local inspection when external session props (ctuX, ctuY) change or tsRsMaps change
+  // STRICT GUARD: If isPlayingTs is true, Tile Scan is actively running; external props MUST NOT override activeTsAddr
+  if (!isPlayingTs && (prevSessionRs !== sessionRsFromProps || prevTsRsMaps !== tsRsMaps)) {
+    setPrevSessionRs(sessionRsFromProps);
+    setPrevTsRsMaps(tsRsMaps);
+    if (sessionRsFromProps !== null && sessionRsFromProps !== undefined) {
+      setLocalInspectedRsAddr(sessionRsFromProps);
+      const ts = tsRsMaps.ctuRsToTsAddrMap[sessionRsFromProps];
+      if (ts !== undefined && ts !== null) {
+        setActiveTsAddr(ts);
+      }
+    }
+  }
 
   const handleDeselectCtu = useCallback(() => {
     setLocalInspectedRsAddr(null);
@@ -164,7 +232,7 @@ function TComPicSymVisualizer({
     }
   }, [onSelectCTU]);
 
-  // Auto-advance TS stepper during playback
+  // Auto-advance TS stepper during playback (Strictly adheres to HEVC Tile Scan order)
   useEffect(() => {
     if (!isPlayingTs) return undefined;
     const timer = setInterval(() => {
@@ -173,20 +241,23 @@ function TComPicSymVisualizer({
           setIsPlayingTs(false);
           return prev;
         }
-        const nextTs = prev + 1;
-        const nextRs = tsRsMaps.ctuTsToRsAddrMap[nextTs];
-        if (nextRs !== undefined) {
-          setLocalInspectedRsAddr(nextRs);
-          const ctu = grid.ctuList[nextRs];
-          if (ctu && onSelectCTU) {
-            onSelectCTU(ctu.col, ctu.row);
-          }
-        }
-        return nextTs;
+        return prev + 1;
       });
     }, 550);
     return () => clearInterval(timer);
-  }, [isPlayingTs, grid.numCtusInFrame, grid.ctuList, tsRsMaps.ctuTsToRsAddrMap, onSelectCTU]);
+  }, [isPlayingTs, grid.numCtusInFrame]);
+
+  // Synchronize external selection to parent as TS stepper advances
+  useEffect(() => {
+    if (!isPlayingTs) return;
+    const nextRs = tsRsMaps.ctuTsToRsAddrMap[safeTsAddr];
+    if (nextRs !== undefined) {
+      const ctu = grid.ctuList[nextRs];
+      if (ctu && onSelectCTU) {
+        onSelectCTU(ctu.col, ctu.row);
+      }
+    }
+  }, [safeTsAddr, isPlayingTs, tsRsMaps.ctuTsToRsAddrMap, grid.ctuList, onSelectCTU]);
 
   const handleStepToTs = useCallback(
     (targetTs) => {
@@ -196,6 +267,7 @@ function TComPicSymVisualizer({
       const nextRs = tsRsMaps.ctuTsToRsAddrMap[clampedTs];
       if (nextRs !== undefined) {
         setLocalInspectedRsAddr(nextRs);
+        setPrevSessionRs(nextRs);
         const ctu = grid.ctuList[nextRs];
         if (ctu && onSelectCTU) {
           onSelectCTU(ctu.col, ctu.row);
@@ -204,6 +276,23 @@ function TComPicSymVisualizer({
     },
     [grid.numCtusInFrame, grid.ctuList, tsRsMaps.ctuTsToRsAddrMap, onSelectCTU]
   );
+
+  // Synchronize playback handlers to parent (Step1FrameTree)
+  useEffect(() => {
+    if (!onRegisterPlaybackState) return undefined;
+    onRegisterPlaybackState({
+      isPlaying: isPlayingTs,
+      safeTsAddr,
+      totalCtus: grid.numCtusInFrame,
+      onTogglePlay: () => setIsPlayingTs((p) => !p),
+      onStepNext: () => handleStepToTs(safeTsAddr + 1),
+      onStepPrev: () => handleStepToTs(safeTsAddr - 1),
+      onReset: () => handleStepToTs(0),
+    });
+    return () => {
+      onRegisterPlaybackState(null);
+    };
+  }, [onRegisterPlaybackState, isPlayingTs, safeTsAddr, grid.numCtusInFrame, handleStepToTs]);
 
   const handleClickCtu = useCallback(
     (rsAddr) => {
@@ -696,6 +785,138 @@ function TComPicSymVisualizer({
                   })}
               </g>
             )}
+
+            {/* =========================================================================
+                TOPMOST SELECTION & RUNNING RETICLE LAYER
+                Rendered at the very end of the SVG to guarantee absolute topmost z-order:
+                never occluded by slice colors, neighboring CTU fills, or tile boundaries.
+               ========================================================================= */}
+            {(() => {
+              const playheadRs = isPlayingTs && currentStep ? currentStep.ctuRsAddr : null;
+              const selectedRs = inspectedRsAddr;
+
+              const reticles = [];
+              if (selectedRs !== null && selectedRs !== undefined && grid.ctuList[selectedRs]) {
+                reticles.push({
+                  rs: selectedRs,
+                  type: 'selected',
+                  color: '#007AFF',
+                  glowFill: 'rgba(0, 122, 255, 0.18)',
+                  label: `CTU #${tsRsMaps.ctuRsToTsAddrMap[selectedRs]}`,
+                });
+              }
+
+              if (playheadRs !== null && playheadRs !== undefined && playheadRs !== selectedRs && grid.ctuList[playheadRs]) {
+                reticles.push({
+                  rs: playheadRs,
+                  type: 'playhead',
+                  color: '#FACC15',
+                  glowFill: 'rgba(250, 204, 21, 0.22)',
+                  label: `▶ TS #${safeTsAddr}`,
+                });
+              }
+
+              return reticles.map((ret) => {
+                const ctu = grid.ctuList[ret.rs];
+                if (!ctu) return null;
+                const cellW = showBoundaryPadding ? ctu.nominalW : ctu.validW;
+                const cellH = showBoundaryPadding ? ctu.nominalH : ctu.validH;
+                const cornerLen = Math.min(12, Math.floor(cellW / 4));
+
+                return (
+                  <g
+                    key={`topmost-reticle-${ret.type}-${ret.rs}`}
+                    pointerEvents="none"
+                    className="topmost-active-ctu-reticle"
+                  >
+                    {/* 1. Translucent highlight fill */}
+                    <rect
+                      x={ctu.px}
+                      y={ctu.py}
+                      width={cellW}
+                      height={cellH}
+                      fill={ret.glowFill}
+                    />
+
+                    {/* 2. Outer high-contrast black under-stroke (4.5px) */}
+                    <rect
+                      x={ctu.px}
+                      y={ctu.py}
+                      width={cellW}
+                      height={cellH}
+                      fill="none"
+                      stroke="#000000"
+                      strokeWidth="4.5"
+                      strokeLinejoin="miter"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* 3. Inner bright vibrant stroke (2.5px) */}
+                    <rect
+                      x={ctu.px}
+                      y={ctu.py}
+                      width={cellW}
+                      height={cellH}
+                      fill="none"
+                      stroke={ret.color}
+                      strokeWidth="2.5"
+                      strokeLinejoin="miter"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* 4. High-Precision Corner Brackets (HUD Reticle Look) */}
+                    {/* Top-Left Corner */}
+                    <path
+                      d={`M ${ctu.px} ${ctu.py + cornerLen} L ${ctu.px} ${ctu.py} L ${ctu.px + cornerLen} ${ctu.py}`}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="3.5"
+                      strokeLinecap="square"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {/* Top-Right Corner */}
+                    <path
+                      d={`M ${ctu.px + cellW - cornerLen} ${ctu.py} L ${ctu.px + cellW} ${ctu.py} L ${ctu.px + cellW} ${ctu.py + cornerLen}`}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="3.5"
+                      strokeLinecap="square"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {/* Bottom-Left Corner */}
+                    <path
+                      d={`M ${ctu.px} ${ctu.py + cellH - cornerLen} L ${ctu.px} ${ctu.py + cellH} L ${ctu.px + cornerLen} ${ctu.py + cellH}`}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="3.5"
+                      strokeLinecap="square"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                    {/* Bottom-Right Corner */}
+                    <path
+                      d={`M ${ctu.px + cellW - cornerLen} ${ctu.py + cellH} L ${ctu.px + cellW} ${ctu.py + cellH} L ${ctu.px + cellW} ${ctu.py + cellH - cornerLen}`}
+                      fill="none"
+                      stroke="#FFFFFF"
+                      strokeWidth="3.5"
+                      strokeLinecap="square"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* 5. Center pulse target indicator when playing */}
+                    {ret.type === 'playhead' && (
+                      <circle
+                        cx={ctu.px + cellW / 2}
+                        cy={ctu.py + cellH / 2}
+                        r="4.5"
+                        fill="#FACC15"
+                        stroke="#000000"
+                        strokeWidth="1.5"
+                      />
+                    )}
+                  </g>
+                );
+              });
+            })()}
           </svg>
         </div>
 
@@ -733,7 +954,7 @@ function TComPicSymVisualizer({
           boxSizing: 'border-box',
         }}
       >
-        {/* Dock Card 1: Tile & Slice Configuration Studio */}
+        {/* Dock Card 1: Tile Configuration Studio (PPS) */}
         <div
           className="stage-section-card"
           style={{
@@ -748,7 +969,7 @@ function TComPicSymVisualizer({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
-              1. TILE &amp; SLICE CONFIGURATION
+              1. TILE CONFIGURATION (PPS)
             </span>
             <button
               type="button"
@@ -838,6 +1059,8 @@ function TComPicSymVisualizer({
                       setTileCols(1);
                       setTileRows(1);
                       setTileUniformSpacing(true);
+                      setTileColWidths({});
+                      setTileRowHeights({});
                       setActiveTsAddr(0);
                     }}
                     title="Reset to HEVC Default (1×1 Single Tile)"
@@ -874,77 +1097,228 @@ function TComPicSymVisualizer({
 
             {/* Spacing Mode (Only visible when partitioned into > 1 Tile) */}
             {(tileCols > 1 || tileRows > 1) && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)' }}>
-                  Spacing:
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => setTileUniformSpacing(true)}
-                    style={{
-                      height: '22px',
-                      padding: '0 6px',
-                      fontSize: '9.5px',
-                      fontFamily: 'var(--font-mono)',
-                      borderRadius: '4px',
-                      background: tileUniformSpacing ? 'var(--apple-blue-subtle)' : 'var(--fill-4)',
-                      color: tileUniformSpacing ? 'var(--apple-blue)' : 'var(--apple-label-secondary)',
-                      border: tileUniformSpacing ? '1px solid var(--apple-blue)' : '1px solid var(--apple-hairline)',
-                      cursor: 'pointer',
-                      fontWeight: tileUniformSpacing ? 700 : 500,
-                    }}
-                    title="TileUniformSpacing = 1 (Automatic arithmetic division of CTUs)"
-                  >
-                    Uniform (1)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTileUniformSpacing(false)}
-                    style={{
-                      height: '22px',
-                      padding: '0 6px',
-                      fontSize: '9.5px',
-                      fontFamily: 'var(--font-mono)',
-                      borderRadius: '4px',
-                      background: !tileUniformSpacing ? 'var(--apple-orange-subtle)' : 'var(--fill-4)',
-                      color: !tileUniformSpacing ? 'var(--apple-orange)' : 'var(--apple-label-secondary)',
-                      border: !tileUniformSpacing ? '1px solid var(--apple-orange)' : '1px solid var(--apple-hairline)',
-                      cursor: 'pointer',
-                      fontWeight: !tileUniformSpacing ? 700 : 500,
-                    }}
-                    title="TileUniformSpacing = 0 (Explicit TileColumnWidthArray)"
-                  >
-                    Non-Uniform (0)
-                  </button>
-                  {!tileUniformSpacing && tileCols > 1 && (
-                    <input
-                      type="number"
-                      min="1"
-                      max={maxTileCols - 1}
-                      value={tileCol0Width}
-                      onChange={(e) => {
-                        const w = Math.max(1, Math.min(maxTileCols - 1, Number(e.target.value) || 1));
-                        setTileCol0Width(w);
-                        setActiveTsAddr(0);
-                      }}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)' }}>
+                    Spacing:
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setTileUniformSpacing(true)}
                       style={{
-                        width: '38px',
                         height: '22px',
+                        padding: '0 6px',
                         fontSize: '9.5px',
                         fontFamily: 'var(--font-mono)',
-                        textAlign: 'center',
-                        padding: '0 2px',
                         borderRadius: '4px',
-                        background: 'var(--fill-4)',
-                        color: 'var(--apple-label)',
-                        border: '1px solid var(--apple-hairline)',
-                        boxSizing: 'border-box',
+                        background: tileUniformSpacing ? 'var(--apple-blue-subtle)' : 'var(--fill-4)',
+                        color: tileUniformSpacing ? 'var(--apple-blue)' : 'var(--apple-label-secondary)',
+                        border: tileUniformSpacing ? '1px solid var(--apple-blue)' : '1px solid var(--apple-hairline)',
+                        cursor: 'pointer',
+                        fontWeight: tileUniformSpacing ? 700 : 500,
                       }}
-                      title={`TileColumnWidth[0] in CTUs (1..${maxTileCols - 1})`}
-                    />
-                  )}
+                      title="TileUniformSpacing = 1 (Automatic arithmetic division of CTUs)"
+                    >
+                      Uniform
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTileUniformSpacing(false)}
+                      style={{
+                        height: '22px',
+                        padding: '0 6px',
+                        fontSize: '9.5px',
+                        fontFamily: 'var(--font-mono)',
+                        borderRadius: '4px',
+                        background: !tileUniformSpacing ? 'var(--apple-orange-subtle)' : 'var(--fill-4)',
+                        color: !tileUniformSpacing ? 'var(--apple-orange)' : 'var(--apple-label-secondary)',
+                        border: !tileUniformSpacing ? '1px solid var(--apple-orange)' : '1px solid var(--apple-hairline)',
+                        cursor: 'pointer',
+                        fontWeight: !tileUniformSpacing ? 700 : 500,
+                      }}
+                      title="TileUniformSpacing = 0 (Explicit TileColumnWidthArray)"
+                    >
+                      Non-Uniform
+                    </button>
+                  </div>
                 </div>
+
+                {!tileUniformSpacing && tileCols > 1 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 6px',
+                      background: 'var(--fill-2)',
+                      borderRadius: '5px',
+                      border: '1px solid var(--apple-hairline)',
+                    }}
+                  >
+                    <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+                      Col Widths:
+                    </span>
+                    {Array.from({ length: tileCols - 1 }).map((_, c) => {
+                      let usedBefore = 0;
+                      for (let prevC = 0; prevC < c; prevC++) {
+                        usedBefore += (tileConfig.colWidths && tileConfig.colWidths[prevC]) || 1;
+                      }
+                      const remainingCols = tileCols - 1 - c;
+                      const maxAllowed = Math.max(1, maxTileCols - usedBefore - remainingCols);
+                      const currentVal = (tileConfig.colWidths && tileConfig.colWidths[c]) || 1;
+
+                      return (
+                        <div key={c} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
+                            Col{c}:
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxAllowed}
+                            value={currentVal}
+                            onChange={(e) => {
+                              const val = Number(e.target.value) || 1;
+                              const clamped = Math.max(1, Math.min(maxAllowed, val));
+                              setTileColWidths((prev) => ({ ...prev, [c]: clamped }));
+                              setActiveTsAddr(0);
+                            }}
+                            style={{
+                              width: '38px',
+                              height: '20px',
+                              fontSize: '9.5px',
+                              fontFamily: 'var(--font-mono)',
+                              textAlign: 'center',
+                              padding: '0 2px',
+                              borderRadius: '4px',
+                              background: 'var(--fill-4)',
+                              color: 'var(--apple-label)',
+                              border: '1px solid var(--apple-hairline)',
+                              boxSizing: 'border-box',
+                            }}
+                            title={`TileColumnWidth[${c}] in CTUs (1..${maxAllowed})`}
+                          />
+                        </div>
+                      );
+                    })}
+                    <span
+                      style={{ fontSize: '8.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)', marginLeft: 'auto' }}
+                      title="Last column automatically receives remaining CTUs per HM-18.0 TComPicSym.cpp:354"
+                    >
+                      (Col{tileCols - 1}: {tileInfo.colWidths[tileCols - 1] ?? 1} CTUs auto)
+                    </span>
+                  </div>
+                )}
+
+                {!tileUniformSpacing && tileRows > 1 && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '4px 6px',
+                      background: 'var(--fill-2)',
+                      borderRadius: '5px',
+                      border: '1px solid var(--apple-hairline)',
+                    }}
+                  >
+                    <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', fontWeight: 600 }}>
+                      Row Heights:
+                    </span>
+                    {Array.from({ length: tileRows - 1 }).map((_, r) => {
+                      let usedBefore = 0;
+                      for (let prevR = 0; prevR < r; prevR++) {
+                        usedBefore += (tileConfig.rowHeights && tileConfig.rowHeights[prevR]) || 1;
+                      }
+                      const remainingRows = tileRows - 1 - r;
+                      const maxAllowed = Math.max(1, maxTileRows - usedBefore - remainingRows);
+                      const currentVal = (tileConfig.rowHeights && tileConfig.rowHeights[r]) || 1;
+
+                      return (
+                        <div key={r} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                          <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
+                            Row{r}:
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max={maxAllowed}
+                            value={currentVal}
+                            onChange={(e) => {
+                              const val = Number(e.target.value) || 1;
+                              const clamped = Math.max(1, Math.min(maxAllowed, val));
+                              setTileRowHeights((prev) => ({ ...prev, [r]: clamped }));
+                              setActiveTsAddr(0);
+                            }}
+                            style={{
+                              width: '38px',
+                              height: '20px',
+                              fontSize: '9.5px',
+                              fontFamily: 'var(--font-mono)',
+                              textAlign: 'center',
+                              padding: '0 2px',
+                              borderRadius: '4px',
+                              background: 'var(--fill-4)',
+                              color: 'var(--apple-label)',
+                              border: '1px solid var(--apple-hairline)',
+                              boxSizing: 'border-box',
+                            }}
+                            title={`TileRowHeight[${r}] in CTUs (1..${maxAllowed})`}
+                          />
+                        </div>
+                      );
+                    })}
+                    <span
+                      style={{ fontSize: '8.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)', marginLeft: 'auto' }}
+                      title="Last row automatically receives remaining CTUs per HM-18.0 TComPicSym.cpp:365"
+                    >
+                      (Row{tileRows - 1}: {tileInfo.rowHeights[tileRows - 1] ?? 1} CTUs auto)
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Column Widths Live Summary (HM-18.0 TComPicSym.cpp:337-368) */}
+            {tileCols > 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '9.5px',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--apple-label-tertiary)',
+                  padding: '1px 2px',
+                }}
+              >
+                <span>Col Widths:</span>
+                <span style={{ color: !tileUniformSpacing ? 'var(--apple-orange)' : 'var(--apple-blue)', fontWeight: 600 }}>
+                  [ {tileInfo.colWidths.map((w, idx) => `TileCol ${idx}: ${w} CTUs`).join(' | ')} ]
+                </span>
+              </div>
+            )}
+
+            {/* Row Heights Live Summary */}
+            {tileRows > 1 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '9.5px',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--apple-label-tertiary)',
+                  padding: '1px 2px',
+                }}
+              >
+                <span>Row Heights:</span>
+                <span style={{ color: !tileUniformSpacing ? 'var(--apple-orange)' : 'var(--apple-blue)', fontWeight: 600 }}>
+                  [ {tileInfo.rowHeights.map((h, idx) => `TileRow ${idx}: ${h} CTUs`).join(' | ')} ]
+                </span>
               </div>
             )}
 
@@ -979,9 +1353,45 @@ function TComPicSymVisualizer({
                 </div>
               </div>
             )}
+          </div>
+        </div>
 
+        {/* Dock Card 2: Slice Configuration Studio */}
+        <div
+          className="stage-section-card"
+          style={{
+            padding: '10px 12px',
+            background: 'var(--apple-surface)',
+            border: '1px solid var(--apple-hairline)',
+            borderRadius: 'var(--card-radius)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
+              2. SLICE CONFIGURATION
+            </span>
+            <span
+              style={{
+                fontSize: '9.5px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--apple-blue)',
+                background: 'var(--apple-blue-subtle)',
+                padding: '1px 5px',
+                borderRadius: '3px',
+                fontWeight: 600,
+              }}
+            >
+              {(visibleSlices?.length ?? sliceInfo?.apSlices?.length ?? 1)} Slice{((visibleSlices?.length ?? sliceInfo?.apSlices?.length ?? 1) > 1) ? 's' : ''}
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {/* SliceMode selection */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)' }}>
+              <span style={{ fontSize: '10.5px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)', whiteSpace: 'nowrap' }}>
                 SliceMode:
               </span>
               <select
@@ -1011,45 +1421,65 @@ function TComPicSymVisualizer({
                 <option value={SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES}>2: FIXED_NUMBER_OF_BYTES</option>
                 <option value={SLICE_CONSTRAINTS.FIXED_NUMBER_OF_TILES}>3: FIXED_NUMBER_OF_TILES</option>
               </select>
-
-              {sliceMode !== SLICE_CONSTRAINTS.NO_SLICES && (
-                <input
-                  type="number"
-                  min={sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES ? 200 : 1}
-                  max={sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES ? 10000 : grid.numCtusInFrame}
-                  step={sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES ? 50 : 1}
-                  value={sliceArgument}
-                  onChange={(e) => {
-                    setSliceArgument(Math.max(1, Number(e.target.value) || 1));
-                  }}
-                  style={{
-                    width: '54px',
-                    height: '25px',
-                    fontSize: '10.5px',
-                    fontFamily: 'var(--font-mono)',
-                    padding: '0 5px',
-                    borderRadius: '5px',
-                    background: 'var(--fill-4)',
-                    color: 'var(--apple-label)',
-                    border: '1px solid var(--apple-hairline)',
-                    boxSizing: 'border-box',
-                  }}
-                  title={
-                    sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_CTU
-                      ? 'SliceArgument: max number of CTUs per slice'
-                      : sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES
-                        ? 'SliceArgument: max number of bytes per slice (MTU)'
-                        : sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_TILES
-                          ? 'SliceArgument: number of tiles per slice'
-                          : 'SliceArgument'
-                  }
-                />
-              )}
             </div>
+
+            {/* SliceArgument (rendered on a separate row below SliceMode to avoid overflow) */}
+            {sliceMode !== SLICE_CONSTRAINTS.NO_SLICES && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-secondary)' }}>
+                  {sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_CTU
+                    ? 'Max CTUs / Slice:'
+                    : sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES
+                      ? 'Max Bytes / Slice (MTU):'
+                      : 'Tiles / Slice:'}
+                </span>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <input
+                    type="number"
+                    min={sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES ? 200 : 1}
+                    max={sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES ? 10000 : grid.numCtusInFrame}
+                    step={sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES ? 50 : 1}
+                    value={sliceArgument}
+                    onChange={(e) => {
+                      setSliceArgument(Math.max(1, Number(e.target.value) || 1));
+                    }}
+                    style={{
+                      width: '60px',
+                      height: '23px',
+                      fontSize: '10.5px',
+                      fontFamily: 'var(--font-mono)',
+                      textAlign: 'center',
+                      padding: '0 4px',
+                      borderRadius: '4px',
+                      background: 'var(--fill-4)',
+                      color: 'var(--apple-label)',
+                      border: '1px solid var(--apple-hairline)',
+                      boxSizing: 'border-box',
+                    }}
+                    title={
+                      sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_CTU
+                        ? 'SliceArgument: max number of CTUs per slice'
+                        : sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES
+                          ? 'SliceArgument: max number of bytes per slice (MTU)'
+                          : sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_TILES
+                            ? 'SliceArgument: number of tiles per slice'
+                            : 'SliceArgument'
+                    }
+                  />
+                  <span style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
+                    {sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_CTU
+                      ? 'CTUs'
+                      : sliceMode === SLICE_CONSTRAINTS.FIXED_NUMBER_OF_BYTES
+                        ? 'Bytes'
+                        : 'Tiles'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Dock Card 2: compressSlice() TS Loop Stepper & Inspected CTU Telemetry */}
+        {/* Dock Card 3: compressSlice() TS Loop Stepper & Inspected CTU Telemetry */}
         <div
           className="stage-section-card"
           style={{
@@ -1064,7 +1494,7 @@ function TComPicSymVisualizer({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
-              2. compressSlice() STEPPER
+              3. compressSlice() STEPPER
             </span>
             <Badge
               variant="yellow"
@@ -1215,7 +1645,7 @@ function TComPicSymVisualizer({
           )}
         </div>
 
-        {/* Dock Card 3: Compact Tabbed TComPicSym C++ Memory Inspector */}
+        {/* Dock Card 4: Compact Tabbed TComPicSym C++ Memory Inspector */}
         <div
           className="stage-section-card"
           style={{
@@ -1231,7 +1661,7 @@ function TComPicSymVisualizer({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {/* TComPicSym C++ MEMORY ARRAYS */}
             <span style={{ fontSize: '10px', fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--apple-label-tertiary)' }}>
-              3. TComPicSym MEMORY ARRAYS
+              4. TComPicSym MEMORY ARRAYS
             </span>
             <SegmentedControl
               size="small"

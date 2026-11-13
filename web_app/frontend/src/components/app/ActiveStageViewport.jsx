@@ -53,6 +53,8 @@ const ActiveStageViewport = ({
   rdoDecisions = [],
   jobId,
   API_BASE_URL,
+  selectedPoc = 0,
+  onSelectPoc = null,
   showInspector: _showInspector,
   setShowInspector: _setShowInspector,
   handleSelectSize = null,
@@ -204,6 +206,8 @@ const ActiveStageViewport = ({
               onReAnalyze={(targetX, targetY) => handleUpload(null, targetX, targetY)}
               loading={loading}
               frameGopData={frameGopData}
+              selectedPoc={selectedPoc}
+              onSelectPoc={onSelectPoc}
               onProceedToPrediction={() => handleGuidedStepChange('STEP_2')}
               handleSelectSize={handleSelectSize}
               setCuSize={setCuSize}
@@ -260,6 +264,8 @@ const ActiveStageViewport = ({
               quantData={quantData}
               interSearchData={interSearchData}
               frameGopData={frameGopData}
+              selectedPoc={selectedPoc}
+              onSelectPoc={onSelectPoc}
               onSelectBlock={handleSelectBlock}
               partitionData={partitionData}
               onProceedToResidual={() => handleGuidedStepChange('STEP_3')}

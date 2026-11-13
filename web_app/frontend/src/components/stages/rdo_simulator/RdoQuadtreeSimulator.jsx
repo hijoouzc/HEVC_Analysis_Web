@@ -108,7 +108,7 @@ function RdoQuadtreeSimulator({
   const workerRef = useRef(null);
   const activeRequestIdRef = useRef(0);
 
-  // Synchronous calculation function (used for initial render, tests, and error fallback)
+  // Synchronous calculation helper (used for initial paint fallback, SSR/tests, and worker error fallback)
   const runSyncSimulation = useCallback(() => {
     return runTComDataCUSimulation({
       ctuPatch: activeCtuPatch,
@@ -122,12 +122,24 @@ function RdoQuadtreeSimulator({
     });
   }, [activeCtuPatch, deferredQp, ctuX, ctuY, imageDims, isGroundTruthActive, partitionData, currentCtuDecisions, candidateDetails]);
 
-  // Synchronous fallback (and initial value) for immediate render & tests
-  const syncSimResult = useMemo(() => {
-    return runSyncSimulation();
+  const runSyncSimulationRef = useRef(runSyncSimulation);
+  useEffect(() => {
+    runSyncSimulationRef.current = runSyncSimulation;
   }, [runSyncSimulation]);
 
-  // Web Worker lifecycle: run simulation off the main UI thread
+  // Initial synchronous snapshot computed once on mount (never re-runs during slider interactions)
+  const [initialSimResult] = useState(() => runTComDataCUSimulation({
+    ctuPatch: activeCtuPatch,
+    qp: deferredQp,
+    ctuX,
+    ctuY,
+    imageDims,
+    groundTruthNodes: isGroundTruthActive ? partitionData.nodes : null,
+    rdoDecisions: isGroundTruthActive ? currentCtuDecisions : null,
+    candidateDetails: isGroundTruthActive ? candidateDetails : null
+  }));
+
+  // Persistent Web Worker lifecycle (mounted once; never terminated per QP/CTU change)
   useEffect(() => {
     if (typeof window !== 'undefined' && typeof Worker !== 'undefined') {
       try {
@@ -142,14 +154,14 @@ function RdoQuadtreeSimulator({
               setWorkerResult(e.data.result);
             } else if (e.data?.status === 'error') {
               console.warn('Worker error, falling back to sync simulation:', e.data?.error);
-              setWorkerResult(runSyncSimulation());
+              setWorkerResult(runSyncSimulationRef.current());
             }
             setIsCalculating(false);
           }
         };
         worker.onerror = (err) => {
           console.warn('Worker runtime error, falling back to sync simulation:', err);
-          setWorkerResult(runSyncSimulation());
+          setWorkerResult(runSyncSimulationRef.current());
           setIsCalculating(false);
         };
         return () => {
@@ -160,14 +172,12 @@ function RdoQuadtreeSimulator({
         console.warn('Simulator Web Worker not supported in this environment, using main thread:', err);
       }
     }
-  }, [runSyncSimulation]);
+  }, []);
 
-  // Post simulation request to worker when inputs change; invalidate previous result
+  // Post simulation request to persistent worker when inputs change
   useEffect(() => {
     const reqId = ++activeRequestIdRef.current;
     if (workerRef.current) {
-      setWorkerResult(null);
-      setIsCalculating(true);
       workerRef.current.postMessage({
         id: reqId,
         params: {
@@ -181,10 +191,12 @@ function RdoQuadtreeSimulator({
           candidateDetails: isGroundTruthActive ? candidateDetails : null
         }
       });
+    } else {
+      setWorkerResult(runSyncSimulationRef.current());
     }
   }, [activeCtuPatch, deferredQp, ctuX, ctuY, imageDims, isGroundTruthActive, partitionData?.nodes, currentCtuDecisions, candidateDetails]);
 
-  const simResult = workerResult || syncSimResult;
+  const simResult = workerResult || initialSimResult;
 
   const totalSteps = simResult.totalSteps || 1;
   const safeStepIdx = Math.min(stepIdx, totalSteps - 1);

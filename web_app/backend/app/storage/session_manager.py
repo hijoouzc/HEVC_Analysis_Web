@@ -1,3 +1,4 @@
+import logging
 import re
 import shutil
 import uuid
@@ -5,6 +6,7 @@ from pathlib import Path
 from app.core.config import settings
 from app.domain.exceptions import JobNotFoundError, InvalidInputError
 
+logger = logging.getLogger(__name__)
 JOB_ID_REGEX = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 def validate_job_id(job_id: str) -> str:
@@ -17,20 +19,22 @@ class SessionManager:
         self.base_dir = (base_sessions_dir or settings.SESSIONS_DIR).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
         
-    def create_session(self, job_id: str | None = None) -> str:
+    def create_session(self, job_id: str | None = None, run_cleanup: bool = True) -> str:
         if job_id is not None:
             job_id = validate_job_id(job_id)
         else:
             job_id = uuid.uuid4().hex[:12]
         session_dir = (self.base_dir / job_id).resolve()
         if not session_dir.is_relative_to(self.base_dir):
-            raise InvalidInputError(f"Security restriction: Session path escape attempt detected.")
+            raise InvalidInputError("Security restriction: Session path escape attempt detected.")
+        already_existed = session_dir.exists()
         session_dir.mkdir(parents=True, exist_ok=True)
-        # Safely prune stale sessions to avoid disk leaks
-        try:
-            self.cleanup_old_sessions(max_age_hours=24, max_keep=30)
-        except Exception:
-            pass
+        # Safely prune stale sessions to avoid disk leaks (aligned with JobManager._MAX_JOBS)
+        if run_cleanup and not already_existed:
+            try:
+                self.cleanup_old_sessions(max_age_hours=24, max_keep=100)
+            except Exception as exc:
+                logger.warning("Session cleanup failed during create_session: %s", exc)
         return job_id
         
     def get_session_dir(self, job_id: str) -> Path:

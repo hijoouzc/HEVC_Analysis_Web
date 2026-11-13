@@ -15,18 +15,16 @@ class TransformStageService(BaseStageService):
         cu_x: int | None = None,
         cu_y: int | None = None,
         cu_size: int | None = None,
-        intra_mode: int | None = None
+        intra_mode: int | None = None,
+        poc: int | None = None
     ) -> list[TransformQuantCheckpoint]:
         trace_path = self.storage.get_trace_path(job_id)
         if not trace_path.exists():
             raise JobNotFoundError(job_id)
-            
+
         raw_events = self.reader.read_all(trace_path, event_filter="TRANSFORM_QUANT", ctu_x=ctu_x, ctu_y=ctu_y)
-        # Pre-filter dictionaries to avoid unnecessary Pydantic model instantiations
-        if ctu_x is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_x") == ctu_x]
-        if ctu_y is not None:
-            raw_events = [e for e in raw_events if e.get("ctu_y") == ctu_y]
+        if poc is not None:
+            raw_events = [e for e in raw_events if e.get("poc", 0) == poc]
         if cu_x is not None:
             raw_events = [e for e in raw_events if (e.get("cu_x") == cu_x or e.get("pu_x") == cu_x)]
         if cu_y is not None:

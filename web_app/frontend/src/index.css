@@ -1422,12 +1422,10 @@ h1 {
   0% {
     opacity: 0.45;
     transform: scale(0.92);
-    filter: brightness(1.4);
   }
   100% {
     opacity: 1;
     transform: scale(1);
-    filter: brightness(1);
   }
 }
 

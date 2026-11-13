@@ -1,5 +1,6 @@
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from app.core.config import settings
@@ -7,13 +8,15 @@ from app.api.v1.router import api_v1_router
 from app.services.analysis_service import analysis_service
 from app.storage.session_manager import session_manager
 
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Prune obsolete sessions older than 24 hours
     try:
-        session_manager.cleanup_old_sessions(max_age_hours=24, max_keep=50)
+        session_manager.cleanup_old_sessions(max_age_hours=24, max_keep=100)
     except Exception:
-        pass
+        logger.warning("Failed to prune obsolete sessions during startup", exc_info=True)
     yield
 
 def create_app() -> FastAPI:
@@ -71,7 +74,11 @@ def create_app() -> FastAPI:
                 scale_mode=scale_mode
             )
             return response.model_dump()
+        except HTTPException as e:
+            logger.warning("Legacy /upload rejected input: %s", e.detail)
+            return {"status": "error", "message": str(e.detail)}
         except Exception as e:
+            logger.exception("Unexpected error in legacy /upload endpoint")
             return {"status": "error", "message": str(e)}
 
     return application

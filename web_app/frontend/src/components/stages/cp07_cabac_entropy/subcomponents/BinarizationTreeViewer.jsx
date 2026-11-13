@@ -68,7 +68,7 @@ const BinarizationTreeViewer = ({ onSendToBacStudio = null }) => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Badge variant="blue">{activeDef.standardRef}</Badge>
+            <Badge variant="blue">{activeDef.category} Syntax</Badge>
             <Badge variant="gray">{activeDef.binarizationType}</Badge>
           </div>
         </div>

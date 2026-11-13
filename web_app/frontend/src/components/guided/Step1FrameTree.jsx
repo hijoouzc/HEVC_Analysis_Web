@@ -96,6 +96,8 @@ export function Step1FrameTree({
   onReAnalyze,
   loading,
   frameGopData,
+  selectedPoc = 0,
+  onSelectPoc = null,
   handleSelectSize: _handleSelectSize,
   setCuSize,
   setCurrentModeIdx,
@@ -104,6 +106,7 @@ export function Step1FrameTree({
 }) {
   // Start initially on 'frame' view with unencoded grid and Start Encode button
   const [subView, setSubView] = useState('frame'); // 'frame' | 'quadtree'
+  const [picsymPlayback, setPicsymPlayback] = useState(null);
 
   const handleCuNavigation = useCallback((node) => {
     if (!node) {
@@ -182,6 +185,14 @@ export function Step1FrameTree({
   }, [imageSrc, imageDims?.width, imageDims?.height]);
 
   const activeFrameCanvas = imageSrc ? frameCanvas : null;
+  const { isPlaying: isPlaybackPlaying, pausePlayback } = playback;
+
+  // When switching to 'picsym' view, pause any running raster playback from 'frame' view to prevent dual-timer collision
+  useEffect(() => {
+    if (subView === 'picsym' && isPlaybackPlaying) {
+      pausePlayback();
+    }
+  }, [subView, isPlaybackPlaying, pausePlayback]);
 
   // Extract raw samples from trace or source frame with mathematical BT.709 Luma
   const { samples: rawOrgSamples, sourceProvenance } = useMemo(() => {
@@ -279,7 +290,17 @@ export function Step1FrameTree({
       >
         {/* Left: Telemetry & State Indicators */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'nowrap', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-          {playback.isInitial ? (
+          {subView === 'picsym' ? (
+            picsymPlayback?.isPlaying ? (
+              <Badge variant="blue" style={{ fontWeight: 700, fontSize: '10px' }}>
+                ENCODING CTU {(picsymPlayback?.safeTsAddr ?? 0) + 1}/{picsymPlayback?.totalCtus ?? playback.totalCtus} (TS)
+              </Badge>
+            ) : (
+              <Badge variant="yellow" style={{ fontWeight: 700, fontSize: '10px' }}>
+                PAUSED (Tile &amp; Slice)
+              </Badge>
+            )
+          ) : playback.isInitial ? (
             <Badge variant="gray" style={{ fontWeight: 700, fontSize: '10px' }}>
               UNENCODED (64×64 Grid)
             </Badge>
@@ -300,7 +321,7 @@ export function Step1FrameTree({
           <span style={{ fontSize: '11px', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--apple-label)', whiteSpace: 'nowrap' }}>
             CTU: <strong>{ctuX !== null && ctuY !== null ? `(${ctuX}, ${ctuY})` : 'None'}</strong>
             <span style={{ color: 'var(--apple-label-tertiary)', marginLeft: '4px' }}>
-              [{playback.playheadCtuIdx > 0 ? playback.playheadCtuIdx : 0}/{playback.totalCtus}]
+              [{subView === 'picsym' && picsymPlayback ? picsymPlayback.safeTsAddr + 1 : (playback.playheadCtuIdx > 0 ? playback.playheadCtuIdx : 0)}/{subView === 'picsym' && picsymPlayback ? picsymPlayback.totalCtus : playback.totalCtus}]
             </span>
           </span>
 
@@ -341,8 +362,8 @@ export function Step1FrameTree({
           <Button
             variant="plain"
             size="mini"
-            onClick={playback.resetPlayback}
-            title="Reset to unencoded initial frame (clean 64x64 CTU grid)"
+            onClick={subView === 'picsym' && picsymPlayback?.onReset ? picsymPlayback.onReset : playback.resetPlayback}
+            title={subView === 'picsym' ? "Reset to TS=0" : "Reset to unencoded initial frame (clean 64x64 CTU grid)"}
             style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}
           >
             ↺ Reset
@@ -352,8 +373,8 @@ export function Step1FrameTree({
           <Button
             variant="tinted"
             size="mini"
-            disabled={playback.isInitial || playback.playheadCtuIdx <= 0}
-            onClick={playback.stepPrevCtu}
+            disabled={subView === 'picsym' ? (picsymPlayback?.safeTsAddr ?? 0) <= 0 : (playback.isInitial || playback.playheadCtuIdx <= 0)}
+            onClick={subView === 'picsym' && picsymPlayback?.onStepPrev ? picsymPlayback.onStepPrev : playback.stepPrevCtu}
             title="Step to previous CTU"
             style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}
           >
@@ -361,11 +382,11 @@ export function Step1FrameTree({
           </Button>
 
           {/* Primary Action Button */}
-          {playback.isPlaying ? (
+          {(subView === 'picsym' ? picsymPlayback?.isPlaying : playback.isPlaying) ? (
             <Button
               variant="primary"
               size="mini"
-              onClick={playback.pausePlayback}
+              onClick={subView === 'picsym' && picsymPlayback?.onTogglePlay ? picsymPlayback.onTogglePlay : playback.pausePlayback}
               title="Pause encoding playback"
               style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}
             >
@@ -375,15 +396,15 @@ export function Step1FrameTree({
             <Button
               variant="primary"
               size="mini"
-              onClick={playback.startPlayback}
+              onClick={subView === 'picsym' && picsymPlayback?.onTogglePlay ? picsymPlayback.onTogglePlay : playback.startPlayback}
               title={playback.isInitial ? "Start xCompressCU encode playback across frame CTUs" : "Resume playback"}
               style={{
                 fontSize: '11px',
                 fontFamily: 'var(--font-mono)',
-                background: playback.isInitial ? 'var(--system-green)' : 'var(--system-blue)',
+                background: (subView !== 'picsym' && playback.isInitial) ? 'var(--system-green)' : 'var(--system-blue)',
               }}
             >
-              {playback.isInitial ? '▶ Start Encode' : '▶ Play'}
+              {subView !== 'picsym' && playback.isInitial ? '▶ Start Encode' : '▶ Play'}
             </Button>
           )}
 
@@ -391,8 +412,8 @@ export function Step1FrameTree({
           <Button
             variant="tinted"
             size="mini"
-            disabled={playback.isCompleted}
-            onClick={playback.stepNextCtu}
+            disabled={subView === 'picsym' ? (picsymPlayback?.safeTsAddr ?? 0) >= (picsymPlayback?.totalCtus ?? 1) - 1 : playback.isCompleted}
+            onClick={subView === 'picsym' && picsymPlayback?.onStepNext ? picsymPlayback.onStepNext : playback.stepNextCtu}
             title="Step to next CTU in scan order"
             style={{ fontSize: '11px', fontFamily: 'var(--font-mono)' }}
           >
@@ -632,6 +653,7 @@ export function Step1FrameTree({
           ctuPartitionsMap={ctuPartitionsMap}
           partitionData={playback.activeCtuPartitions || partitionData}
           frameGopData={frameGopData}
+          onRegisterPlaybackState={setPicsymPlayback}
           onSelectCTU={(x, y) => {
             if (onSelectCTU) onSelectCTU(x, y);
             if (x === null || y === null) {
@@ -687,6 +709,8 @@ export function Step1FrameTree({
           selectedCu={selectedCu}
           onSelectCU={playback.setInspectedCu}
           frameGopData={frameGopData}
+          selectedPoc={selectedPoc}
+          onSelectPoc={onSelectPoc}
           committedCtuKeys={playback.committedCtuKeys}
         />
       )}

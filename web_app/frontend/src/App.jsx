@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import SetupScreen from './components/app/SetupScreen';
-import ActiveStageViewport from './components/app/ActiveStageViewport';
 import RdoQuadtreeSimulator from './components/stages/rdo_simulator/RdoQuadtreeSimulator';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import { useAnalysisSession } from './hooks/useAnalysisSession';
+
+const ActiveStageViewport = lazy(() => import('./components/app/ActiveStageViewport'));
 import {
   Window,
   WindowTitleBar,
@@ -72,6 +73,8 @@ function App() {
     setProfile,
     frames,
     setFrames,
+    selectedPoc,
+    handleSelectPoc,
     API_BASE_URL,
     handleFileChange,
     handleUpload,
@@ -302,7 +305,8 @@ function App() {
           {/* SCREEN 2: ACTIVE WORKSPACE (Stage Viewport Canvas + Right Inspector) */}
           {data && data.length > 0 && currentMode && (
             <div className="workspace-layout">
-              <ActiveStageViewport
+              <Suspense fallback={<div style={{ padding: '24px', fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--apple-label-secondary)' }}>Loading HM Analysis Workspace...</div>}>
+                <ActiveStageViewport
                 hasDesync={hasDesync}
                 analyzedCtu={analyzedCtu}
                 ctuX={ctuX}
@@ -335,13 +339,16 @@ function App() {
                 rdoDecisions={rdoDecisions}
                 jobId={jobId}
                 API_BASE_URL={API_BASE_URL}
+                selectedPoc={selectedPoc}
+                onSelectPoc={handleSelectPoc}
                 handleSelectSize={handleSelectSize}
                 handleSelectBlock={handleSelectBlock}
                 setCuSize={setCuSize}
                 setSelectedCu={setSelectedCu}
                 guidedStep={guidedStep}
                 setGuidedStep={setGuidedStep}
-              />
+                />
+              </Suspense>
             </div>
           )}
         </ErrorBoundary>

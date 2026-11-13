@@ -1,9 +1,12 @@
 import gc
 import json
+import logging
 import threading
 from collections import OrderedDict
 from pathlib import Path
 from typing import Iterator, Callable, Any
+
+logger = logging.getLogger(__name__)
 
 try:
     import orjson
@@ -39,7 +42,7 @@ class TraceReader:
     _cache: OrderedDict[
         str,
         tuple[
-            float,
+            tuple[int, int],
             list[dict[str, Any]],
             dict[str, list[dict[str, Any]]],
             dict[tuple[str, int, int], list[dict[str, Any]]],
@@ -62,15 +65,16 @@ class TraceReader:
         if not trace_file.exists():
             return None
         try:
-            mtime = trace_file.stat().st_mtime
+            st = trace_file.stat()
+            file_sig = (st.st_mtime_ns, st.st_size)
         except OSError:
             return None
 
         file_key = str(trace_file.resolve())
         with cls._lock:
             if file_key in cls._cache:
-                cached_mtime, all_events, by_type, by_type_ctu = cls._cache[file_key]
-                if cached_mtime == mtime:
+                cached_sig, all_events, by_type, by_type_ctu = cls._cache[file_key]
+                if cached_sig == file_sig:
                     cls._cache.move_to_end(file_key)
                     return all_events, by_type, by_type_ctu
                 else:
@@ -87,8 +91,8 @@ class TraceReader:
             # Double check under file_lock to ensure only one thread loads the file
             with cls._lock:
                 if file_key in cls._cache:
-                    cached_mtime, all_events, by_type, by_type_ctu = cls._cache[file_key]
-                    if cached_mtime == mtime:
+                    cached_sig, all_events, by_type, by_type_ctu = cls._cache[file_key]
+                    if cached_sig == file_sig:
                         cls._cache.move_to_end(file_key)
                         return all_events, by_type, by_type_ctu
 
@@ -96,6 +100,7 @@ class TraceReader:
             all_events: list[dict[str, Any]] = []
             by_type: dict[str, list[dict[str, Any]]] = {}
             by_type_ctu: dict[tuple[str, int, int], list[dict[str, Any]]] = {}
+            malformed_lines = 0
             try:
                 with open(trace_file, "rb") as f:
                     for line in f:
@@ -121,13 +126,17 @@ class TraceReader:
                                 except (ValueError, TypeError):
                                     pass
                         except Exception:
+                            malformed_lines += 1
                             continue
-            except OSError:
+            except OSError as exc:
+                logger.warning("Failed to read trace file %s: %s", trace_file, exc)
                 return None
 
-            evicted = False
+            if malformed_lines > 0:
+                logger.warning("Skipped %d malformed JSONL line(s) in %s", malformed_lines, trace_file)
+
             with cls._lock:
-                cls._cache[file_key] = (mtime, all_events, by_type, by_type_ctu)
+                cls._cache[file_key] = (file_sig, all_events, by_type, by_type_ctu)
                 cls._file_event_counts[file_key] = len(all_events)
                 cls._total_cached_events += len(all_events)
 
@@ -140,10 +149,6 @@ class TraceReader:
                     cls._file_locks.pop(old_key, None)
                     evicted_count = cls._file_event_counts.pop(old_key, 0)
                     cls._total_cached_events -= evicted_count
-                    evicted = True
-
-            if evicted:
-                gc.collect()
 
             return all_events, by_type, by_type_ctu
 
@@ -227,22 +232,31 @@ class TraceReader:
         cached = cls._get_cached_data(trace_file)
         if cached is not None:
             all_events, by_type, by_type_ctu = cached
+            used_ctu_index = False
             if event_filter is not None and ctu_x is not None and ctu_y is not None:
                 candidate_list = by_type_ctu.get((event_filter, ctu_x, ctu_y), [])
+                used_ctu_index = True
             elif event_filter is not None:
                 candidate_list = by_type.get(event_filter, [])
             else:
                 candidate_list = all_events
 
-            if predicate is None:
+            need_ctu_filter = not used_ctu_index and (ctu_x is not None or ctu_y is not None)
+            if predicate is None and not need_ctu_filter:
                 return candidate_list[:limit] if limit is not None else list(candidate_list)
 
             results = []
             for event in candidate_list:
-                if predicate(event):
-                    results.append(event)
-                    if limit is not None and len(results) >= limit:
-                        break
+                if need_ctu_filter:
+                    if ctu_x is not None and event.get("ctu_x") != ctu_x:
+                        continue
+                    if ctu_y is not None and event.get("ctu_y") != ctu_y:
+                        continue
+                if predicate is not None and not predicate(event):
+                    continue
+                results.append(event)
+                if limit is not None and len(results) >= limit:
+                    break
             return results
 
         results = []
@@ -297,14 +311,22 @@ class TraceReader:
         cached = cls._get_cached_data(trace_file)
         if cached is not None:
             all_events, by_type, by_type_ctu = cached
+            used_ctu_index = False
             if event_filter is not None and ctu_x is not None and ctu_y is not None:
                 candidates = by_type_ctu.get((event_filter, ctu_x, ctu_y), [])
+                used_ctu_index = True
             elif event_filter is not None:
                 candidates = by_type.get(event_filter, [])
             else:
                 candidates = all_events
 
+            need_ctu_filter = not used_ctu_index and (ctu_x is not None or ctu_y is not None)
             for event in candidates:
+                if need_ctu_filter:
+                    if ctu_x is not None and event.get("ctu_x") != ctu_x:
+                        continue
+                    if ctu_y is not None and event.get("ctu_y") != ctu_y:
+                        continue
                 if predicate(event):
                     return event
             return None

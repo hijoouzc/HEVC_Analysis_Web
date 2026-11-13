@@ -11,7 +11,6 @@ export { default as QuadtreeHierarchyGraph } from './common/QuadtreeHierarchyGra
 // App shell
 export { default as SetupScreen } from './app/SetupScreen';
 export { default as ActiveStageViewport } from './app/ActiveStageViewport';
-export { default as AnalysisInspector } from './app/AnalysisInspector';
 
 // Apple HIG Components
 export * from './apple';

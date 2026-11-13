@@ -30,7 +30,7 @@ class BaseStageService:
         """Resolve ROI parameters from explicit args or fallback to the job's recorded ROI."""
         target_cu, target_x, target_y = cu_size, ctu_x, ctu_y
         if target_cu is None or target_x is None or target_y is None:
-            job = self.job_mgr._jobs.get(job_id)
+            job = self.job_mgr.get_job_sync(job_id) if hasattr(self.job_mgr, "get_job_sync") else self.job_mgr._jobs.get(job_id)
             if job and job.roi:
                 if target_cu is None and job.roi.cu_size > 0:
                     target_cu = job.roi.cu_size
@@ -48,10 +48,13 @@ class BaseStageService:
         ctu_y: int | None = None,
         cu_x: int | None = None,
         cu_y: int | None = None,
+        poc: int | None = None,
     ) -> Callable[[dict], bool]:
-        """Create a predicate function to filter trace events by event name and ROI coordinates."""
+        """Create a predicate function to filter trace events by event name, POC, and ROI coordinates."""
         def predicate(e: dict) -> bool:
             if event_name is not None and e.get("event") != event_name:
+                return False
+            if poc is not None and e.get("poc", 0) != poc:
                 return False
             if cu_size is not None:
                 e_size = e.get("cu_size") if e.get("cu_size") is not None else e.get("pu_size")
